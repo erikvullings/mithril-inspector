@@ -92,8 +92,9 @@ this mechanism against real `m.render` passes (Mithril 2.3.8, jsdom):
   runtime (task 0010) must batch this per redraw from composed lifecycle hooks
   (task 0006) and scope registries per mount root.
 - `rangeOf` holds a strong reference from the instance record to its latest
-  component vnode (and thus its `dom`). Cleanup on unmount (§7.7) is task 0006;
-  until then removed instances retain their last range for stale-selection UX.
+  component vnode (and thus its `dom`). Cleanup on unmount (§7.7) is task 0006,
+  now resolved by ADR-105: an `onremove` wrapper drops the strong mapping while
+  a `WeakMap` keeps the record for stale-selection UX (§8.8) until GC.
 - Verified on Mithril 2.3.8 only. The array-view → `"["`-fragment normalization
   and the `dom`/`domSize` copy from `instance` should be re-checked when the
   supported Mithril range changes.

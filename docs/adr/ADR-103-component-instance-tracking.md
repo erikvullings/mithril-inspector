@@ -107,7 +107,7 @@ jsdom):
   tree events must batch after the render pass, where this is invisible.
 - The spike's `Map<ComponentId, record>` retains records for removed
   instances (useful for stale-selection UX, §8.8) and `childIds` is
-  creation-ordered, not render-ordered. Removal cleanup (§7.7) and tree
-  ordering are tasks 0006/0017.
+  creation-ordered, not render-ordered. Removal cleanup (§7.7) is now composed
+  by ADR-105's `onremove` wrapper (task 0006); tree ordering remains task 0017.
 - Verified on Mithril 2.3.8 only; the `vnode.state` carryover contract
   should be re-checked when bumping the supported Mithril range.

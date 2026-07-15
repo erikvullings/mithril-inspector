@@ -1,7 +1,4 @@
-import { defineConfig } from "vitest/config"
-
-export default defineConfig({
-  test: {
-    projects: ["packages/*/vitest.config.ts"],
-  },
-})
+export default [
+  "packages/*/vitest.config.ts",
+  "tests/fixtures/spikes/*/vitest.config.ts",
+]

@@ -84,3 +84,7 @@ mechanism against real `m.render` passes (Mithril 2.3.8, jsdom):
   vanish when the node is garbage collected.
 - The runtime package (task 0010) should scope registries per mount root and
   define how multiple roots share the generation counter.
+- Fragment-root *components* — where a component vnode's `dom`/`domSize` is
+  copied from a normalized `"["` instance — reuse this `domRangeOf` and the
+  generation-guarded node map; ADR-104 (task 0005) validates that case and the
+  reliability of `domSize` across redraws and async removal.

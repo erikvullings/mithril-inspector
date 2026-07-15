@@ -1,6 +1,6 @@
 # 0003 Spike: source-map preservation through TS/JSX
 
-Status: open
+Status: done
 Priority: high
 Owner: unassigned
 Agent: claude-fable
@@ -23,3 +23,4 @@ Phase 0 spike 2 (REQUIREMENTS.md §21). The inspector transform must inject code
 
 ## Agent Notes
 - 2026-07-15: task created from REQUIREMENTS.md conversion; no work started.
+- 2026-07-15 claude-fable: Built the spike at `tests/fixtures/spikes/sourcemap-preservation/`. `transformMithrilModule` (prototype) parses with `@babel/parser` 8 (typescript+jsx plugins, hand-rolled pre-order walk — no traverse/generator), wraps `m(...)` calls of the module's mithril default binding (aliases followed, non-mithril modules return null) and expression-position JSX roots with `__miSource("s<n>", ...)` via MagicString, and returns hires maps plus 1-based line/column markers (§6.3). Chains verified with 8 TDD'd tests across `src/transform.test.ts` and `src/pipeline.test.ts` (via `vitest run` in the package): 13/13 traced positions exact through (a) the transform's own map, (b) esbuild TS erasure, (c) esbuild TSX with `/** @jsx m */` (pragma still honored with the inspector import prepended above it), and (d) a third map-producing minify stage collapsing four literals onto one line — maps composed with `@ampproject/remapping`, queried with `@jridgewell/trace-mapping`. Package typecheck and `pnpm -r build/test/typecheck` clean. ADR at `docs/adr/ADR-102-transform-parser-and-sourcemaps.md` recommends @babel/parser + MagicString + remapping for 0009, with plugin-order findings for 0013. Known limitations: JSX wrapping is restricted to expression-position roots (children inherit the parent mapping until 0009 picks a mechanism); shadowed `m` bindings inside inner scopes are not excluded by the prototype walker.

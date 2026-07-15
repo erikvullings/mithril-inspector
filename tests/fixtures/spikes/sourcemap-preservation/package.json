@@ -1,0 +1,21 @@
+{
+  "name": "@mithril-inspector/spike-sourcemap-preservation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@ampproject/remapping": "^2.3.0",
+    "@babel/parser": "^8.0.4",
+    "@babel/types": "^8.0.4",
+    "@jridgewell/trace-mapping": "^0.3.31",
+    "esbuild": "^0.28.1",
+    "@types/mithril": "^2.2.8",
+    "magic-string": "^0.30.21",
+    "mithril": "^2.3.8",
+    "vitest": "^3.2.4"
+  }
+}

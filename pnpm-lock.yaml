@@ -20,7 +20,27 @@ importers:
 
   packages/esbuild: {}
 
-  packages/overlay: {}
+  packages/overlay:
+    dependencies:
+      '@mithril-inspector/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      mithril:
+        specifier: ^2.3.8
+        version: 2.3.8
+    devDependencies:
+      '@mithril-inspector/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@types/mithril':
+        specifier: ^2.2.8
+        version: 2.2.8
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(jsdom@29.1.1)
 
   packages/protocol: {}
 

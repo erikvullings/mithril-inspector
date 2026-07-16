@@ -9,10 +9,27 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@babel/parser": "^8.0.4",
+    "@mithril-inspector/protocol": "workspace:*",
+    "@rollup/pluginutils": "^5.4.0",
+    "magic-string": "^0.30.21"
+  },
+  "devDependencies": {
+    "@ampproject/remapping": "^2.3.0",
+    "@babel/types": "^8.0.4",
+    "@jridgewell/trace-mapping": "^0.3.31",
+    "@types/mithril": "^2.2.8",
+    "esbuild": "^0.28.1",
+    "mithril": "^2.3.8",
+    "vitest": "^3.2.7"
   }
 }

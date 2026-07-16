@@ -1,0 +1,1119 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`fixture snapshots (§19.1) > instruments aliased-import.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:ght51c1cu5lms", {"file":"/fixtures/aliased-import.ts","relativeFile":"fixtures/aliased-import.ts","sources":{"s1":{"line":3,"column":23,"endLine":5,"endColumn":2,"kind":"component-declaration","displayName":"Banner"},"s2":{"line":4,"column":3,"endLine":4,"endColumn":69,"kind":"component-view","displayName":"Banner"},"s3":{"line":4,"column":15,"endLine":4,"endColumn":69,"kind":"element","tagName":"header"},"s4":{"line":4,"column":40,"endLine":4,"endColumn":68,"kind":"element","tagName":"strong"}}});
+import Mithril from "mithril"
+
+export const Banner = __miComponent("m:ght51c1cu5lms:s1", {
+  view: () => __miSource("m:ght51c1cu5lms:s3", Mithril("header.banner", __miSource("m:ght51c1cu5lms:s4", Mithril("strong", "Aliased")))),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments aliased-import.ts > metadata 1`] = `
+{
+  "file": "/fixtures/aliased-import.ts",
+  "id": "m:ght51c1cu5lms",
+  "relativeFile": "fixtures/aliased-import.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/aliased-import.ts",
+      "column": 23,
+      "displayName": "Banner",
+      "endColumn": 2,
+      "endLine": 5,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:ght51c1cu5lms",
+      "relativeFile": "fixtures/aliased-import.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/aliased-import.ts",
+      "column": 3,
+      "displayName": "Banner",
+      "endColumn": 69,
+      "endLine": 4,
+      "kind": "component-view",
+      "line": 4,
+      "moduleId": "m:ght51c1cu5lms",
+      "relativeFile": "fixtures/aliased-import.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/aliased-import.ts",
+      "column": 15,
+      "endColumn": 69,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:ght51c1cu5lms",
+      "relativeFile": "fixtures/aliased-import.ts",
+      "sourceId": "s3",
+      "tagName": "header",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/aliased-import.ts",
+      "column": 40,
+      "endColumn": 68,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:ght51c1cu5lms",
+      "relativeFile": "fixtures/aliased-import.ts",
+      "sourceId": "s4",
+      "tagName": "strong",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments anonymous-default.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:1cuydtk87w1c4", {"file":"/fixtures/anonymous-default.ts","relativeFile":"fixtures/anonymous-default.ts","sources":{"s1":{"line":3,"column":16,"endLine":5,"endColumn":2,"kind":"component-declaration"},"s2":{"line":4,"column":3,"endLine":4,"endColumn":65,"kind":"component-view"},"s3":{"line":4,"column":15,"endLine":4,"endColumn":65,"kind":"element","tagName":"section"}}});
+import m from "mithril"
+
+export default __miComponent("m:1cuydtk87w1c4:s1", {
+  view: () => __miSource("m:1cuydtk87w1c4:s3", m("section.anonymous", "Anonymous default export")),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments anonymous-default.ts > metadata 1`] = `
+{
+  "file": "/fixtures/anonymous-default.ts",
+  "id": "m:1cuydtk87w1c4",
+  "relativeFile": "fixtures/anonymous-default.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/anonymous-default.ts",
+      "column": 16,
+      "endColumn": 2,
+      "endLine": 5,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:1cuydtk87w1c4",
+      "relativeFile": "fixtures/anonymous-default.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/anonymous-default.ts",
+      "column": 3,
+      "endColumn": 65,
+      "endLine": 4,
+      "kind": "component-view",
+      "line": 4,
+      "moduleId": "m:1cuydtk87w1c4",
+      "relativeFile": "fixtures/anonymous-default.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/anonymous-default.ts",
+      "column": 15,
+      "endColumn": 65,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:1cuydtk87w1c4",
+      "relativeFile": "fixtures/anonymous-default.ts",
+      "sourceId": "s3",
+      "tagName": "section",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments arrays.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:oabhi52a2gy1", {"file":"/fixtures/arrays.ts","relativeFile":"fixtures/arrays.ts","sources":{"s1":{"line":3,"column":21,"endLine":5,"endColumn":2,"kind":"component-declaration","displayName":"Grid"},"s2":{"line":4,"column":3,"endLine":4,"endColumn":82,"kind":"component-view","displayName":"Grid"},"s3":{"line":4,"column":15,"endLine":4,"endColumn":82,"kind":"element","tagName":"div"},"s4":{"line":4,"column":31,"endLine":4,"endColumn":45,"kind":"element","tagName":"span"},"s5":{"line":4,"column":47,"endLine":4,"endColumn":61,"kind":"element","tagName":"span"},"s6":{"line":4,"column":65,"endLine":4,"endColumn":79,"kind":"element","tagName":"span"}}});
+import m from "mithril"
+
+export const Grid = __miComponent("m:oabhi52a2gy1:s1", {
+  view: () => __miSource("m:oabhi52a2gy1:s3", m("div.grid", [[__miSource("m:oabhi52a2gy1:s4", m("span", "a")), __miSource("m:oabhi52a2gy1:s5", m("span", "b"))], [__miSource("m:oabhi52a2gy1:s6", m("span", "c"))]])),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments arrays.ts > metadata 1`] = `
+{
+  "file": "/fixtures/arrays.ts",
+  "id": "m:oabhi52a2gy1",
+  "relativeFile": "fixtures/arrays.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/arrays.ts",
+      "column": 21,
+      "displayName": "Grid",
+      "endColumn": 2,
+      "endLine": 5,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:oabhi52a2gy1",
+      "relativeFile": "fixtures/arrays.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/arrays.ts",
+      "column": 3,
+      "displayName": "Grid",
+      "endColumn": 82,
+      "endLine": 4,
+      "kind": "component-view",
+      "line": 4,
+      "moduleId": "m:oabhi52a2gy1",
+      "relativeFile": "fixtures/arrays.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/arrays.ts",
+      "column": 15,
+      "endColumn": 82,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:oabhi52a2gy1",
+      "relativeFile": "fixtures/arrays.ts",
+      "sourceId": "s3",
+      "tagName": "div",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/arrays.ts",
+      "column": 31,
+      "endColumn": 45,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:oabhi52a2gy1",
+      "relativeFile": "fixtures/arrays.ts",
+      "sourceId": "s4",
+      "tagName": "span",
+    },
+    "s5": {
+      "absoluteFile": "/fixtures/arrays.ts",
+      "column": 47,
+      "endColumn": 61,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:oabhi52a2gy1",
+      "relativeFile": "fixtures/arrays.ts",
+      "sourceId": "s5",
+      "tagName": "span",
+    },
+    "s6": {
+      "absoluteFile": "/fixtures/arrays.ts",
+      "column": 65,
+      "endColumn": 79,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:oabhi52a2gy1",
+      "relativeFile": "fixtures/arrays.ts",
+      "sourceId": "s6",
+      "tagName": "span",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments class-component.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:15pofn11dlp9w9", {"file":"/fixtures/class-component.ts","relativeFile":"fixtures/class-component.ts","sources":{"s1":{"line":3,"column":8,"endLine":9,"endColumn":2,"kind":"component-declaration","displayName":"Widget"},"s2":{"line":6,"column":3,"endLine":8,"endColumn":4,"kind":"component-view","displayName":"Widget"},"s3":{"line":7,"column":12,"endLine":7,"endColumn":50,"kind":"element","tagName":"div"},"s4":{"line":7,"column":28,"endLine":7,"endColumn":49,"kind":"element","tagName":"span"}}});
+import m from "mithril"
+
+export class Widget {
+  private label = "Widget"
+
+  view() {
+    return __miSource("m:15pofn11dlp9w9:s3", m("div.widget", __miSource("m:15pofn11dlp9w9:s4", m("span", this.label))))
+  }
+}
+__miComponent("m:15pofn11dlp9w9:s1", Widget);
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments class-component.ts > metadata 1`] = `
+{
+  "file": "/fixtures/class-component.ts",
+  "id": "m:15pofn11dlp9w9",
+  "relativeFile": "fixtures/class-component.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/class-component.ts",
+      "column": 8,
+      "displayName": "Widget",
+      "endColumn": 2,
+      "endLine": 9,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:15pofn11dlp9w9",
+      "relativeFile": "fixtures/class-component.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/class-component.ts",
+      "column": 3,
+      "displayName": "Widget",
+      "endColumn": 4,
+      "endLine": 8,
+      "kind": "component-view",
+      "line": 6,
+      "moduleId": "m:15pofn11dlp9w9",
+      "relativeFile": "fixtures/class-component.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/class-component.ts",
+      "column": 12,
+      "endColumn": 50,
+      "endLine": 7,
+      "kind": "element",
+      "line": 7,
+      "moduleId": "m:15pofn11dlp9w9",
+      "relativeFile": "fixtures/class-component.ts",
+      "sourceId": "s3",
+      "tagName": "div",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/class-component.ts",
+      "column": 28,
+      "endColumn": 49,
+      "endLine": 7,
+      "kind": "element",
+      "line": 7,
+      "moduleId": "m:15pofn11dlp9w9",
+      "relativeFile": "fixtures/class-component.ts",
+      "sourceId": "s4",
+      "tagName": "span",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments closure-component.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:1ocpyu61ffj99u", {"file":"/fixtures/closure-component.ts","relativeFile":"fixtures/closure-component.ts","sources":{"s1":{"line":3,"column":24,"endLine":11,"endColumn":2,"kind":"component-declaration","displayName":"Counter"},"s2":{"line":7,"column":5,"endLine":9,"endColumn":6,"kind":"component-view","displayName":"Counter"},"s3":{"line":8,"column":14,"endLine":8,"endColumn":73,"kind":"element","tagName":"button"}}});
+import m from "mithril"
+
+export const Counter = __miComponent("m:1ocpyu61ffj99u:s1", () => {
+  let count = 0
+
+  return {
+    view() {
+      return __miSource("m:1ocpyu61ffj99u:s3", m("button.counter", { onclick: () => (count += 1) }, count))
+    },
+  }
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments closure-component.ts > metadata 1`] = `
+{
+  "file": "/fixtures/closure-component.ts",
+  "id": "m:1ocpyu61ffj99u",
+  "relativeFile": "fixtures/closure-component.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/closure-component.ts",
+      "column": 24,
+      "displayName": "Counter",
+      "endColumn": 2,
+      "endLine": 11,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:1ocpyu61ffj99u",
+      "relativeFile": "fixtures/closure-component.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/closure-component.ts",
+      "column": 5,
+      "displayName": "Counter",
+      "endColumn": 6,
+      "endLine": 9,
+      "kind": "component-view",
+      "line": 7,
+      "moduleId": "m:1ocpyu61ffj99u",
+      "relativeFile": "fixtures/closure-component.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/closure-component.ts",
+      "column": 14,
+      "endColumn": 73,
+      "endLine": 8,
+      "kind": "element",
+      "line": 8,
+      "moduleId": "m:1ocpyu61ffj99u",
+      "relativeFile": "fixtures/closure-component.ts",
+      "sourceId": "s3",
+      "tagName": "button",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments fragments.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:m3ua7oy3zuew", {"file":"/fixtures/fragments.ts","relativeFile":"fixtures/fragments.ts","sources":{"s1":{"line":3,"column":21,"endLine":6,"endColumn":2,"kind":"component-declaration","displayName":"Frag"},"s2":{"line":4,"column":3,"endLine":5,"endColumn":74,"kind":"component-view","displayName":"Frag"},"s3":{"line":5,"column":5,"endLine":5,"endColumn":74,"kind":"element","tagName":"["},"s4":{"line":5,"column":34,"endLine":5,"endColumn":49,"kind":"element","tagName":"dt"},"s5":{"line":5,"column":51,"endLine":5,"endColumn":72,"kind":"element","tagName":"dd"}}});
+import m from "mithril"
+
+export const Frag = __miComponent("m:m3ua7oy3zuew:s1", {
+  view: () =>
+    __miSource("m:m3ua7oy3zuew:s3", m.fragment({ key: "pair" }, [__miSource("m:m3ua7oy3zuew:s4", m("dt", "term")), __miSource("m:m3ua7oy3zuew:s5", m("dd", "definition"))])),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments fragments.ts > metadata 1`] = `
+{
+  "file": "/fixtures/fragments.ts",
+  "id": "m:m3ua7oy3zuew",
+  "relativeFile": "fixtures/fragments.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/fragments.ts",
+      "column": 21,
+      "displayName": "Frag",
+      "endColumn": 2,
+      "endLine": 6,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:m3ua7oy3zuew",
+      "relativeFile": "fixtures/fragments.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/fragments.ts",
+      "column": 3,
+      "displayName": "Frag",
+      "endColumn": 74,
+      "endLine": 5,
+      "kind": "component-view",
+      "line": 4,
+      "moduleId": "m:m3ua7oy3zuew",
+      "relativeFile": "fixtures/fragments.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/fragments.ts",
+      "column": 5,
+      "endColumn": 74,
+      "endLine": 5,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:m3ua7oy3zuew",
+      "relativeFile": "fixtures/fragments.ts",
+      "sourceId": "s3",
+      "tagName": "[",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/fragments.ts",
+      "column": 34,
+      "endColumn": 49,
+      "endLine": 5,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:m3ua7oy3zuew",
+      "relativeFile": "fixtures/fragments.ts",
+      "sourceId": "s4",
+      "tagName": "dt",
+    },
+    "s5": {
+      "absoluteFile": "/fixtures/fragments.ts",
+      "column": 51,
+      "endColumn": 72,
+      "endLine": 5,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:m3ua7oy3zuew",
+      "relativeFile": "fixtures/fragments.ts",
+      "sourceId": "s5",
+      "tagName": "dd",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments hello.tsx > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:s8khlp1ntaszt", {"file":"/fixtures/hello.tsx","relativeFile":"fixtures/hello.tsx","sources":{"s1":{"line":8,"column":22,"endLine":14,"endColumn":2,"kind":"component-declaration","displayName":"Hello"},"s2":{"line":9,"column":3,"endLine":13,"endColumn":4,"kind":"component-view","displayName":"Hello"},"s3":{"line":10,"column":5,"endLine":12,"endColumn":15,"kind":"element","tagName":"section"}}});
+/** @jsx m */
+import m from "mithril"
+
+export interface HelloAttrs {
+  subject: string
+}
+
+export const Hello = __miComponent("m:s8khlp1ntaszt:s1", {
+  view: ({ attrs }: { attrs: HelloAttrs }) => (
+    __miSource("m:s8khlp1ntaszt:s3", <section class="hello">
+      <h1>Hello, {attrs.subject}</h1>
+    </section>)
+  ),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments hello.tsx > metadata 1`] = `
+{
+  "file": "/fixtures/hello.tsx",
+  "id": "m:s8khlp1ntaszt",
+  "relativeFile": "fixtures/hello.tsx",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/hello.tsx",
+      "column": 22,
+      "displayName": "Hello",
+      "endColumn": 2,
+      "endLine": 14,
+      "kind": "component-declaration",
+      "line": 8,
+      "moduleId": "m:s8khlp1ntaszt",
+      "relativeFile": "fixtures/hello.tsx",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/hello.tsx",
+      "column": 3,
+      "displayName": "Hello",
+      "endColumn": 4,
+      "endLine": 13,
+      "kind": "component-view",
+      "line": 9,
+      "moduleId": "m:s8khlp1ntaszt",
+      "relativeFile": "fixtures/hello.tsx",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/hello.tsx",
+      "column": 5,
+      "endColumn": 15,
+      "endLine": 12,
+      "kind": "element",
+      "line": 10,
+      "moduleId": "m:s8khlp1ntaszt",
+      "relativeFile": "fixtures/hello.tsx",
+      "sourceId": "s3",
+      "tagName": "section",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments inline-component.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:wvxq3i13pvgvu", {"file":"/fixtures/inline-component.ts","relativeFile":"fixtures/inline-component.ts","sources":{"s1":{"line":3,"column":22,"endLine":5,"endColumn":3,"kind":"element"},"s2":{"line":3,"column":24,"endLine":5,"endColumn":2,"kind":"component-declaration"},"s3":{"line":4,"column":3,"endLine":4,"endColumn":58,"kind":"component-view"},"s4":{"line":4,"column":15,"endLine":4,"endColumn":58,"kind":"element","tagName":"p"}}});
+import m from "mithril"
+
+export const vnode = __miSource("m:wvxq3i13pvgvu:s1", m(__miComponent("m:wvxq3i13pvgvu:s2", {
+  view: () => __miSource("m:wvxq3i13pvgvu:s4", m("p.inline", "Inline anonymous component")),
+})))
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments inline-component.ts > metadata 1`] = `
+{
+  "file": "/fixtures/inline-component.ts",
+  "id": "m:wvxq3i13pvgvu",
+  "relativeFile": "fixtures/inline-component.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/inline-component.ts",
+      "column": 22,
+      "endColumn": 3,
+      "endLine": 5,
+      "kind": "element",
+      "line": 3,
+      "moduleId": "m:wvxq3i13pvgvu",
+      "relativeFile": "fixtures/inline-component.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/inline-component.ts",
+      "column": 24,
+      "endColumn": 2,
+      "endLine": 5,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:wvxq3i13pvgvu",
+      "relativeFile": "fixtures/inline-component.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/inline-component.ts",
+      "column": 3,
+      "endColumn": 58,
+      "endLine": 4,
+      "kind": "component-view",
+      "line": 4,
+      "moduleId": "m:wvxq3i13pvgvu",
+      "relativeFile": "fixtures/inline-component.ts",
+      "sourceId": "s3",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/inline-component.ts",
+      "column": 15,
+      "endColumn": 58,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:wvxq3i13pvgvu",
+      "relativeFile": "fixtures/inline-component.ts",
+      "sourceId": "s4",
+      "tagName": "p",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments keyed-list.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:1qormhc19kvy70", {"file":"/fixtures/keyed-list.ts","relativeFile":"fixtures/keyed-list.ts","sources":{"s1":{"line":5,"column":26,"endLine":7,"endColumn":2,"kind":"component-declaration","displayName":"KeyedList"},"s2":{"line":6,"column":3,"endLine":6,"endColumn":79,"kind":"component-view","displayName":"KeyedList"},"s3":{"line":6,"column":15,"endLine":6,"endColumn":79,"kind":"element","tagName":"ul"},"s4":{"line":6,"column":49,"endLine":6,"endColumn":77,"kind":"element","tagName":"li"}}});
+import m from "mithril"
+
+const items = ["alpha", "beta", "gamma"]
+
+export const KeyedList = __miComponent("m:1qormhc19kvy70:s1", {
+  view: () => __miSource("m:1qormhc19kvy70:s3", m("ul.keyed", items.map((item) => __miSource("m:1qormhc19kvy70:s4", m("li", { key: item }, item))))),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments keyed-list.ts > metadata 1`] = `
+{
+  "file": "/fixtures/keyed-list.ts",
+  "id": "m:1qormhc19kvy70",
+  "relativeFile": "fixtures/keyed-list.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/keyed-list.ts",
+      "column": 26,
+      "displayName": "KeyedList",
+      "endColumn": 2,
+      "endLine": 7,
+      "kind": "component-declaration",
+      "line": 5,
+      "moduleId": "m:1qormhc19kvy70",
+      "relativeFile": "fixtures/keyed-list.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/keyed-list.ts",
+      "column": 3,
+      "displayName": "KeyedList",
+      "endColumn": 79,
+      "endLine": 6,
+      "kind": "component-view",
+      "line": 6,
+      "moduleId": "m:1qormhc19kvy70",
+      "relativeFile": "fixtures/keyed-list.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/keyed-list.ts",
+      "column": 15,
+      "endColumn": 79,
+      "endLine": 6,
+      "kind": "element",
+      "line": 6,
+      "moduleId": "m:1qormhc19kvy70",
+      "relativeFile": "fixtures/keyed-list.ts",
+      "sourceId": "s3",
+      "tagName": "ul",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/keyed-list.ts",
+      "column": 49,
+      "endColumn": 77,
+      "endLine": 6,
+      "kind": "element",
+      "line": 6,
+      "moduleId": "m:1qormhc19kvy70",
+      "relativeFile": "fixtures/keyed-list.ts",
+      "sourceId": "s4",
+      "tagName": "li",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments nested-calls.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:1zf8mm3me02y", {"file":"/fixtures/nested-calls.ts","relativeFile":"fixtures/nested-calls.ts","sources":{"s1":{"line":3,"column":23,"endLine":6,"endColumn":2,"kind":"component-declaration","displayName":"Nested"},"s2":{"line":4,"column":3,"endLine":5,"endColumn":93,"kind":"component-view","displayName":"Nested"},"s3":{"line":5,"column":5,"endLine":5,"endColumn":93,"kind":"element","tagName":"div"},"s4":{"line":5,"column":20,"endLine":5,"endColumn":79,"kind":"element","tagName":"div"},"s5":{"line":5,"column":36,"endLine":5,"endColumn":78,"kind":"element","tagName":"div"},"s6":{"line":5,"column":52,"endLine":5,"endColumn":63,"kind":"element","tagName":"i"},"s7":{"line":5,"column":65,"endLine":5,"endColumn":76,"kind":"element","tagName":"i"},"s8":{"line":5,"column":81,"endLine":5,"endColumn":92,"kind":"element","tagName":"footer"}}});
+import m from "mithril"
+
+export const Nested = __miComponent("m:1zf8mm3me02y:s1", {
+  view: () =>
+    __miSource("m:1zf8mm3me02y:s3", m("div.outer", __miSource("m:1zf8mm3me02y:s4", m("div.middle", __miSource("m:1zf8mm3me02y:s5", m("div.inner", [__miSource("m:1zf8mm3me02y:s6", m("i", "a")), __miSource("m:1zf8mm3me02y:s7", m("i", "b"))])))), __miSource("m:1zf8mm3me02y:s8", m("footer")))),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments nested-calls.ts > metadata 1`] = `
+{
+  "file": "/fixtures/nested-calls.ts",
+  "id": "m:1zf8mm3me02y",
+  "relativeFile": "fixtures/nested-calls.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/nested-calls.ts",
+      "column": 23,
+      "displayName": "Nested",
+      "endColumn": 2,
+      "endLine": 6,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:1zf8mm3me02y",
+      "relativeFile": "fixtures/nested-calls.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/nested-calls.ts",
+      "column": 3,
+      "displayName": "Nested",
+      "endColumn": 93,
+      "endLine": 5,
+      "kind": "component-view",
+      "line": 4,
+      "moduleId": "m:1zf8mm3me02y",
+      "relativeFile": "fixtures/nested-calls.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/nested-calls.ts",
+      "column": 5,
+      "endColumn": 93,
+      "endLine": 5,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:1zf8mm3me02y",
+      "relativeFile": "fixtures/nested-calls.ts",
+      "sourceId": "s3",
+      "tagName": "div",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/nested-calls.ts",
+      "column": 20,
+      "endColumn": 79,
+      "endLine": 5,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:1zf8mm3me02y",
+      "relativeFile": "fixtures/nested-calls.ts",
+      "sourceId": "s4",
+      "tagName": "div",
+    },
+    "s5": {
+      "absoluteFile": "/fixtures/nested-calls.ts",
+      "column": 36,
+      "endColumn": 78,
+      "endLine": 5,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:1zf8mm3me02y",
+      "relativeFile": "fixtures/nested-calls.ts",
+      "sourceId": "s5",
+      "tagName": "div",
+    },
+    "s6": {
+      "absoluteFile": "/fixtures/nested-calls.ts",
+      "column": 52,
+      "endColumn": 63,
+      "endLine": 5,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:1zf8mm3me02y",
+      "relativeFile": "fixtures/nested-calls.ts",
+      "sourceId": "s6",
+      "tagName": "i",
+    },
+    "s7": {
+      "absoluteFile": "/fixtures/nested-calls.ts",
+      "column": 65,
+      "endColumn": 76,
+      "endLine": 5,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:1zf8mm3me02y",
+      "relativeFile": "fixtures/nested-calls.ts",
+      "sourceId": "s7",
+      "tagName": "i",
+    },
+    "s8": {
+      "absoluteFile": "/fixtures/nested-calls.ts",
+      "column": 81,
+      "endColumn": 92,
+      "endLine": 5,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:1zf8mm3me02y",
+      "relativeFile": "fixtures/nested-calls.ts",
+      "sourceId": "s8",
+      "tagName": "footer",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments odd-formatting.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:6h5qcapfqqda", {"file":"/fixtures/odd-formatting.ts","relativeFile":"fixtures/odd-formatting.ts","sources":{"s1":{"line":4,"column":20,"endLine":12,"endColumn":2,"kind":"component-declaration","displayName":"Odd"},"s2":{"line":5,"column":3,"endLine":11,"endColumn":4,"kind":"component-view","displayName":"Odd"},"s3":{"line":5,"column":15,"endLine":11,"endColumn":4,"kind":"element","tagName":"div"},"s4":{"line":8,"column":7,"endLine":8,"endColumn":37,"kind":"element","tagName":"span"},"s5":{"line":9,"column":25,"endLine":9,"endColumn":39,"kind":"element","tagName":"b"},"s6":{"line":9,"column":41,"endLine":10,"endColumn":28,"kind":"element","tagName":"u"}}});
+import m from "mithril"
+
+// prettier-ignore
+export const Odd = __miComponent("m:6h5qcapfqqda:s1", {
+  view: () => __miSource("m:6h5qcapfqqda:s3", m(
+    // comment between callee and selector
+    "div#odd" ,
+      __miSource("m:6h5qcapfqqda:s4", m ( "span" , "weird spacing" )) ,
+    /* block comment */ __miSource("m:6h5qcapfqqda:s5", m("b", "bold")), __miSource("m:6h5qcapfqqda:s6", m("u",
+      "split across lines")),
+  )),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments odd-formatting.ts > metadata 1`] = `
+{
+  "file": "/fixtures/odd-formatting.ts",
+  "id": "m:6h5qcapfqqda",
+  "relativeFile": "fixtures/odd-formatting.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/odd-formatting.ts",
+      "column": 20,
+      "displayName": "Odd",
+      "endColumn": 2,
+      "endLine": 12,
+      "kind": "component-declaration",
+      "line": 4,
+      "moduleId": "m:6h5qcapfqqda",
+      "relativeFile": "fixtures/odd-formatting.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/odd-formatting.ts",
+      "column": 3,
+      "displayName": "Odd",
+      "endColumn": 4,
+      "endLine": 11,
+      "kind": "component-view",
+      "line": 5,
+      "moduleId": "m:6h5qcapfqqda",
+      "relativeFile": "fixtures/odd-formatting.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/odd-formatting.ts",
+      "column": 15,
+      "endColumn": 4,
+      "endLine": 11,
+      "kind": "element",
+      "line": 5,
+      "moduleId": "m:6h5qcapfqqda",
+      "relativeFile": "fixtures/odd-formatting.ts",
+      "sourceId": "s3",
+      "tagName": "div",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/odd-formatting.ts",
+      "column": 7,
+      "endColumn": 37,
+      "endLine": 8,
+      "kind": "element",
+      "line": 8,
+      "moduleId": "m:6h5qcapfqqda",
+      "relativeFile": "fixtures/odd-formatting.ts",
+      "sourceId": "s4",
+      "tagName": "span",
+    },
+    "s5": {
+      "absoluteFile": "/fixtures/odd-formatting.ts",
+      "column": 25,
+      "endColumn": 39,
+      "endLine": 9,
+      "kind": "element",
+      "line": 9,
+      "moduleId": "m:6h5qcapfqqda",
+      "relativeFile": "fixtures/odd-formatting.ts",
+      "sourceId": "s5",
+      "tagName": "b",
+    },
+    "s6": {
+      "absoluteFile": "/fixtures/odd-formatting.ts",
+      "column": 41,
+      "endColumn": 28,
+      "endLine": 10,
+      "kind": "element",
+      "line": 9,
+      "moduleId": "m:6h5qcapfqqda",
+      "relativeFile": "fixtures/odd-formatting.ts",
+      "sourceId": "s6",
+      "tagName": "u",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments renamed-default.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:b60pxl1kz01el", {"file":"/fixtures/renamed-default.ts","relativeFile":"fixtures/renamed-default.ts","sources":{"s1":{"line":3,"column":21,"endLine":5,"endColumn":2,"kind":"component-declaration","displayName":"Note"},"s2":{"line":4,"column":3,"endLine":4,"endColumn":56,"kind":"component-view","displayName":"Note"},"s3":{"line":4,"column":15,"endLine":4,"endColumn":56,"kind":"element","tagName":"aside"}}});
+import { default as h } from "mithril"
+
+export const Note = __miComponent("m:b60pxl1kz01el:s1", {
+  view: () => __miSource("m:b60pxl1kz01el:s3", h("aside.note", "Renamed default import")),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments renamed-default.ts > metadata 1`] = `
+{
+  "file": "/fixtures/renamed-default.ts",
+  "id": "m:b60pxl1kz01el",
+  "relativeFile": "fixtures/renamed-default.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/renamed-default.ts",
+      "column": 21,
+      "displayName": "Note",
+      "endColumn": 2,
+      "endLine": 5,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:b60pxl1kz01el",
+      "relativeFile": "fixtures/renamed-default.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/renamed-default.ts",
+      "column": 3,
+      "displayName": "Note",
+      "endColumn": 56,
+      "endLine": 4,
+      "kind": "component-view",
+      "line": 4,
+      "moduleId": "m:b60pxl1kz01el",
+      "relativeFile": "fixtures/renamed-default.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/renamed-default.ts",
+      "column": 15,
+      "endColumn": 56,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:b60pxl1kz01el",
+      "relativeFile": "fixtures/renamed-default.ts",
+      "sourceId": "s3",
+      "tagName": "aside",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments require-import.js > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:10m63i01uwl72s", {"file":"/fixtures/require-import.js","relativeFile":"fixtures/require-import.js","sources":{"s1":{"line":4,"column":15,"endLine":4,"endColumn":59,"kind":"element","tagName":"main"}}});
+const m = require("mithril")
+
+exports.App = {
+  view: () => __miSource("m:10m63i01uwl72s:s1", m("main.legacy", "CommonJS require binding")),
+}
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments require-import.js > metadata 1`] = `
+{
+  "file": "/fixtures/require-import.js",
+  "id": "m:10m63i01uwl72s",
+  "relativeFile": "fixtures/require-import.js",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/require-import.js",
+      "column": 15,
+      "endColumn": 59,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:10m63i01uwl72s",
+      "relativeFile": "fixtures/require-import.js",
+      "sourceId": "s1",
+      "tagName": "main",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments trusted-html.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:14nmefa1p5i3e2", {"file":"/fixtures/trusted-html.ts","relativeFile":"fixtures/trusted-html.ts","sources":{"s1":{"line":3,"column":24,"endLine":5,"endColumn":2,"kind":"component-declaration","displayName":"Trusted"},"s2":{"line":4,"column":3,"endLine":4,"endColumn":66,"kind":"component-view","displayName":"Trusted"},"s3":{"line":4,"column":15,"endLine":4,"endColumn":66,"kind":"element","tagName":"div"},"s4":{"line":4,"column":32,"endLine":4,"endColumn":65,"kind":"element","tagName":"<"}}});
+import m from "mithril"
+
+export const Trusted = __miComponent("m:14nmefa1p5i3e2:s1", {
+  view: () => __miSource("m:14nmefa1p5i3e2:s3", m("div.trusted", __miSource("m:14nmefa1p5i3e2:s4", m.trust("<b>server rendered</b>")))),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments trusted-html.ts > metadata 1`] = `
+{
+  "file": "/fixtures/trusted-html.ts",
+  "id": "m:14nmefa1p5i3e2",
+  "relativeFile": "fixtures/trusted-html.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/trusted-html.ts",
+      "column": 24,
+      "displayName": "Trusted",
+      "endColumn": 2,
+      "endLine": 5,
+      "kind": "component-declaration",
+      "line": 3,
+      "moduleId": "m:14nmefa1p5i3e2",
+      "relativeFile": "fixtures/trusted-html.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/trusted-html.ts",
+      "column": 3,
+      "displayName": "Trusted",
+      "endColumn": 66,
+      "endLine": 4,
+      "kind": "component-view",
+      "line": 4,
+      "moduleId": "m:14nmefa1p5i3e2",
+      "relativeFile": "fixtures/trusted-html.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/trusted-html.ts",
+      "column": 15,
+      "endColumn": 66,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:14nmefa1p5i3e2",
+      "relativeFile": "fixtures/trusted-html.ts",
+      "sourceId": "s3",
+      "tagName": "div",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/trusted-html.ts",
+      "column": 32,
+      "endColumn": 65,
+      "endLine": 4,
+      "kind": "element",
+      "line": 4,
+      "moduleId": "m:14nmefa1p5i3e2",
+      "relativeFile": "fixtures/trusted-html.ts",
+      "sourceId": "s4",
+      "tagName": "<",
+    },
+  },
+}
+`;
+
+exports[`fixture snapshots (§19.1) > instruments user-card.ts > code 1`] = `
+"import { registerModule as __miRegisterModule, source as __miSource, component as __miComponent } from "@mithril-inspector/runtime";
+__miRegisterModule("m:1kf8vf3tko3dv", {"file":"/fixtures/user-card.ts","relativeFile":"fixtures/user-card.ts","sources":{"s1":{"line":8,"column":25,"endLine":14,"endColumn":2,"kind":"component-declaration","displayName":"UserCard"},"s2":{"line":9,"column":3,"endLine":13,"endColumn":7,"kind":"component-view","displayName":"UserCard"},"s3":{"line":10,"column":5,"endLine":13,"endColumn":7,"kind":"element","tagName":"article"},"s4":{"line":11,"column":7,"endLine":11,"endColumn":26,"kind":"element","tagName":"h2"},"s5":{"line":12,"column":7,"endLine":12,"endColumn":53,"kind":"element","tagName":"button"},"s6":{"line":12,"column":55,"endLine":12,"endColumn":71,"kind":"element","tagName":"span"}}});
+import m from "mithril"
+
+export interface UserCardAttrs {
+  name: string
+  onEdit: () => void
+}
+
+export const UserCard = __miComponent("m:1kf8vf3tko3dv:s1", {
+  view: ({ attrs }: { attrs: UserCardAttrs }) =>
+    __miSource("m:1kf8vf3tko3dv:s3", m("article.user-card", [
+      __miSource("m:1kf8vf3tko3dv:s4", m("h2", attrs.name)),
+      __miSource("m:1kf8vf3tko3dv:s5", m("button", { onclick: attrs.onEdit }, "Edit")), __miSource("m:1kf8vf3tko3dv:s6", m("span.spacer")),
+    ])),
+})
+"
+`;
+
+exports[`fixture snapshots (§19.1) > instruments user-card.ts > metadata 1`] = `
+{
+  "file": "/fixtures/user-card.ts",
+  "id": "m:1kf8vf3tko3dv",
+  "relativeFile": "fixtures/user-card.ts",
+  "sources": {
+    "s1": {
+      "absoluteFile": "/fixtures/user-card.ts",
+      "column": 25,
+      "displayName": "UserCard",
+      "endColumn": 2,
+      "endLine": 14,
+      "kind": "component-declaration",
+      "line": 8,
+      "moduleId": "m:1kf8vf3tko3dv",
+      "relativeFile": "fixtures/user-card.ts",
+      "sourceId": "s1",
+    },
+    "s2": {
+      "absoluteFile": "/fixtures/user-card.ts",
+      "column": 3,
+      "displayName": "UserCard",
+      "endColumn": 7,
+      "endLine": 13,
+      "kind": "component-view",
+      "line": 9,
+      "moduleId": "m:1kf8vf3tko3dv",
+      "relativeFile": "fixtures/user-card.ts",
+      "sourceId": "s2",
+    },
+    "s3": {
+      "absoluteFile": "/fixtures/user-card.ts",
+      "column": 5,
+      "endColumn": 7,
+      "endLine": 13,
+      "kind": "element",
+      "line": 10,
+      "moduleId": "m:1kf8vf3tko3dv",
+      "relativeFile": "fixtures/user-card.ts",
+      "sourceId": "s3",
+      "tagName": "article",
+    },
+    "s4": {
+      "absoluteFile": "/fixtures/user-card.ts",
+      "column": 7,
+      "endColumn": 26,
+      "endLine": 11,
+      "kind": "element",
+      "line": 11,
+      "moduleId": "m:1kf8vf3tko3dv",
+      "relativeFile": "fixtures/user-card.ts",
+      "sourceId": "s4",
+      "tagName": "h2",
+    },
+    "s5": {
+      "absoluteFile": "/fixtures/user-card.ts",
+      "column": 7,
+      "endColumn": 53,
+      "endLine": 12,
+      "kind": "element",
+      "line": 12,
+      "moduleId": "m:1kf8vf3tko3dv",
+      "relativeFile": "fixtures/user-card.ts",
+      "sourceId": "s5",
+      "tagName": "button",
+    },
+    "s6": {
+      "absoluteFile": "/fixtures/user-card.ts",
+      "column": 55,
+      "endColumn": 71,
+      "endLine": 12,
+      "kind": "element",
+      "line": 12,
+      "moduleId": "m:1kf8vf3tko3dv",
+      "relativeFile": "fixtures/user-card.ts",
+      "sourceId": "s6",
+      "tagName": "span",
+    },
+  },
+}
+`;

@@ -1,6 +1,6 @@
 # 0008 Protocol package: shared types and constants
 
-Status: open
+Status: done
 Priority: high
 Owner: unassigned
 Agent: claude-haiku
@@ -23,3 +23,4 @@ REQUIREMENTS.md §4 defines `@mithril-inspector/protocol`: shared serializable t
 
 ## Agent Notes
 - 2026-07-15: task created from REQUIREMENTS.md conversion; no work started.
+- 2026-07-16 claude-haiku: Implemented @mithril-inspector/protocol with all required types and constants per REQUIREMENTS §4, §6.3, §7.1–7.3, §7.6, §9.4, §10.1. Package exports: ID types (ComponentId/VNodeId/ModuleId) with constructors and guards, SourceLocation, ModuleRecord/ModuleInspectionMetadata, ComponentRecord/ComponentPatch, VNodeRecord, DomRange/DomAssociation, RuntimeEvent, InspectorSnapshot, MithrilInspectorHook, EditorRequest/Response/ErrorResponse types with error codes, PROTOCOL_VERSION=1. Uses type-only imports for DOM types (Node), zero runtime dependencies, strict TypeScript. Tests: 8 tests covering ID constructors/guards and type availability; typecheck clean; all acceptance criteria met. Verified by: pnpm test (8/8), pnpm typecheck (no errors).

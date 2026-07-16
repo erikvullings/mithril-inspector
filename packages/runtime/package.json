@@ -14,5 +14,14 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@mithril-inspector/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/mithril": "^2.2.8",
+    "jsdom": "^29.1.1",
+    "mithril": "^2.3.8",
+    "vitest": "^3.2.4"
   }
 }

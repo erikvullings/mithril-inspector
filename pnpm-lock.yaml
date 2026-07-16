@@ -26,7 +26,24 @@ importers:
 
   packages/rollup: {}
 
-  packages/runtime: {}
+  packages/runtime:
+    dependencies:
+      '@mithril-inspector/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
+      '@types/mithril':
+        specifier: ^2.2.8
+        version: 2.2.8
+      jsdom:
+        specifier: ^29.1.1
+        version: 29.1.1
+      mithril:
+        specifier: ^2.3.8
+        version: 2.3.8
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(jsdom@29.1.1)
 
   packages/server: {}
 

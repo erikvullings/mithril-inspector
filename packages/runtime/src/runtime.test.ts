@@ -2,9 +2,9 @@ import m from "mithril"
 import type { Component } from "mithril"
 import type { ModuleId, PreviewPath, RuntimeEvent } from "@mithril-inspector/protocol"
 import { makeComponentId, PROTOCOL_VERSION } from "@mithril-inspector/protocol"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { createRuntime } from "./runtime.js"
+import { createRuntime, getRuntime } from "./runtime.js"
 import type { InspectorRuntime } from "./runtime.js"
 import type { ModuleRegistrationInput } from "./source-registry.js"
 import { getInspectorHook, source as globalSource } from "./index.js"
@@ -427,5 +427,218 @@ describe("InspectorRuntime end-to-end", () => {
       expect(runtime.statePreview(unknown)).toBeNull()
       expect(runtime.expandPreview(unknown, "attrs", [])).toBeNull()
     })
+  })
+})
+
+describe("dom-associated events (§9.4, task 0021)", () => {
+  it("emits a dom-associated event on flush with the resolved source and component for each associated node", () => {
+    const events: RuntimeEvent[] = []
+    runtime.subscribe((e) => events.push(e))
+    const App = runtime.component(`${MODULE}:s1`, {
+      view: () => runtime.source(`${MODULE}:s2`, m("div.app")),
+    } as Component)
+    m.render(root, m(App))
+    runtime.flush()
+
+    const domEvent = events.find(
+      (e): e is Extract<RuntimeEvent, { type: "dom-associated" }> => e.type === "dom-associated",
+    )
+    const div = root.querySelector("div.app")!
+    const record = domEvent?.records.find((r) => r.domRange.first === div)
+    expect(record?.source?.line).toBe(4)
+    expect(record?.componentId).toBe(runtime.resolveDomComponent(div))
+  })
+
+  it("coalesces every node associated in one flush into a single dom-associated event, not one per node", () => {
+    const events: RuntimeEvent[] = []
+    runtime.subscribe((e) => events.push(e))
+    const items = ["a", "b", "c"].map((label) => runtime.source(`${MODULE}:s2`, m(`div.${label}`)))
+    m.render(root, items)
+    runtime.flush()
+
+    const domEvents = events.filter((e) => e.type === "dom-associated")
+    expect(domEvents).toHaveLength(1)
+    expect(
+      (domEvents[0] as Extract<RuntimeEvent, { type: "dom-associated" }>).records.length,
+    ).toBeGreaterThanOrEqual(3)
+  })
+
+  it("does not emit dom-associated when nothing was tagged this flush", () => {
+    const events: RuntimeEvent[] = []
+    runtime.subscribe((e) => events.push(e))
+    // A component mount with no runtime.source() calls inside its view.
+    const App = runtime.component(`${MODULE}:s1`, { view: () => m("div.app") } as Component)
+    m.render(root, m(App))
+    runtime.flush()
+    expect(events.some((e) => e.type === "dom-associated")).toBe(false)
+  })
+})
+
+describe("getSnapshot/event consistency for a mid-stream subscriber (§9.4, task 0021)", () => {
+  it("does not re-announce a component already reflected in getSnapshot(), and does not miss later changes", () => {
+    const AppA = runtime.component(`${MODULE}:s1`, { view: () => m("div.a") } as Component)
+    const usageA = m(AppA)
+    m.render(root, usageA)
+    runtime.flush()
+    const idA = runtime.components.idOf(usageA.state as object)!
+
+    // Subscribe only after A is already reflected in getSnapshot().
+    const events: RuntimeEvent[] = []
+    runtime.subscribe((e) => events.push(e))
+    expect(runtime.getSnapshot().components.has(idA)).toBe(true)
+
+    const AppB = runtime.component(`${MODULE}:s1`, { view: () => m("div.b") } as Component)
+    const usageB = m(AppB)
+    m.render(root, usageB)
+    runtime.flush()
+
+    const addedIds = events
+      .filter((e): e is Extract<RuntimeEvent, { type: "components-added" }> => e.type === "components-added")
+      .flatMap((e) => e.records.map((r) => r.id))
+    const removedIds = events
+      .filter((e): e is Extract<RuntimeEvent, { type: "components-removed" }> => e.type === "components-removed")
+      .flatMap((e) => e.ids)
+
+    // A was already known before subscribing — not re-announced as added.
+    expect(addedIds).not.toContain(idA)
+    expect(removedIds).toContain(idA)
+    const idB = runtime.components.idOf(usageB.state as object)!
+    expect(addedIds).toContain(idB)
+
+    const snapshot = runtime.getSnapshot()
+    expect(snapshot.components.has(idA)).toBe(false)
+    expect(snapshot.components.has(idB)).toBe(true)
+  })
+})
+
+describe("resetTracking() and reset delivery (§16, §9.4, task 0021)", () => {
+  it("emits reset immediately to active subscribers and clears component/dom-association state", () => {
+    const App = runtime.component(`${MODULE}:s1`, {
+      view: () => runtime.source(`${MODULE}:s2`, m("div.app")),
+    } as Component)
+    m.render(root, m(App))
+    runtime.flush()
+    expect(runtime.getSnapshot().components.size).toBe(1)
+
+    const events: RuntimeEvent[] = []
+    runtime.subscribe((e) => events.push(e))
+    runtime.resetTracking()
+
+    expect(events).toEqual([{ type: "reset" }])
+    expect(runtime.getSnapshot().components.size).toBe(0)
+    expect(runtime.getSnapshot().domAssociations.size).toBe(0)
+  })
+
+  it("defers reset delivery to the first subscriber when resetTracking() is called with none active", () => {
+    runtime.resetTracking()
+    const events: RuntimeEvent[] = []
+    runtime.subscribe((e) => events.push(e))
+    expect(events).toEqual([{ type: "reset" }])
+  })
+
+  it("does not redeliver a pending reset to a second, later subscriber", () => {
+    runtime.resetTracking()
+    const first: RuntimeEvent[] = []
+    runtime.subscribe((e) => first.push(e))
+    expect(first).toEqual([{ type: "reset" }])
+
+    const second: RuntimeEvent[] = []
+    runtime.subscribe((e) => second.push(e))
+    expect(second).toEqual([])
+  })
+
+  it("orphaned instances still mounted across a reset reappear once their view next runs", () => {
+    const App = runtime.component(`${MODULE}:s1`, { view: () => m("div.app") } as Component)
+    const usage = m(App)
+    m.render(root, usage)
+    runtime.flush()
+
+    runtime.resetTracking()
+    expect(runtime.getSnapshot().components.size).toBe(0)
+
+    // The still-mounted instance redraws again after the reset.
+    m.render(root, m(App))
+    runtime.flush()
+    expect(runtime.getSnapshot().components.size).toBe(1)
+  })
+})
+
+describe("microtask/rAF event batching (§9.4, task 0021)", () => {
+  it("coalesces N components mounted in one redraw into a single components-added notification via the default microtask scheduler", async () => {
+    const auto = createRuntime() // default queueMicrotask
+    auto.registerSourceModule(MODULE, registration)
+    const events: RuntimeEvent[] = []
+    auto.subscribe((e) => events.push(e))
+
+    const Item: Component = { view: () => m("li") }
+    const InstrumentedItem = auto.component(`${MODULE}:s1`, Item)
+    m.render(
+      root,
+      [1, 2, 3, 4, 5].map(() => m(InstrumentedItem)),
+    )
+    // Not flushed yet — a microtask was merely scheduled.
+    expect(events).toHaveLength(0)
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const addedEvents = events.filter((e) => e.type === "components-added")
+    expect(addedEvents).toHaveLength(1)
+    expect((addedEvents[0] as Extract<RuntimeEvent, { type: "components-added" }>).records).toHaveLength(5)
+  })
+
+  it("coalesces N components mounted in one redraw into a single notification via a requestAnimationFrame scheduler (fake timers)", () => {
+    vi.useFakeTimers()
+    try {
+      const rafRuntime = createRuntime({ schedule: (flush) => requestAnimationFrame(flush) })
+      rafRuntime.registerSourceModule(MODULE, registration)
+      const events: RuntimeEvent[] = []
+      rafRuntime.subscribe((e) => events.push(e))
+
+      const Item: Component = { view: () => m("li") }
+      const InstrumentedItem = rafRuntime.component(`${MODULE}:s1`, Item)
+      m.render(
+        root,
+        [1, 2, 3].map(() => m(InstrumentedItem)),
+      )
+      expect(events).toHaveLength(0)
+
+      vi.advanceTimersByTime(16)
+
+      const addedEvents = events.filter((e) => e.type === "components-added")
+      expect(addedEvents).toHaveLength(1)
+      expect((addedEvents[0] as Extract<RuntimeEvent, { type: "components-added" }>).records).toHaveLength(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe("getRuntime() multiple-runtime detection (§16, task 0021)", () => {
+  it("logs a diagnostic and installs a fresh runtime when an incompatible existing hook is found, delivering reset to the first subscriber", () => {
+    const fakeExisting = { protocolVersion: 999 } as unknown as InspectorRuntime
+    ;(globalThis as { __MITHRIL_INSPECTOR__?: unknown }).__MITHRIL_INSPECTOR__ = fakeExisting
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const fresh = getRuntime()
+    expect(fresh).not.toBe(fakeExisting)
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    expect(warnSpy.mock.calls[0]?.[0]).toMatch(/Multiple Mithril runtimes were detected/)
+    warnSpy.mockRestore()
+
+    const events: RuntimeEvent[] = []
+    fresh.subscribe((e) => events.push(e))
+    expect(events).toEqual([{ type: "reset" }])
+  })
+
+  it("reuses an existing hook of the same protocol version without warning or resetting", () => {
+    const compatibleExisting = createRuntime({ schedule: () => {} })
+    ;(globalThis as { __MITHRIL_INSPECTOR__?: unknown }).__MITHRIL_INSPECTOR__ = compatibleExisting
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const resolved = getRuntime()
+    expect(resolved).toBe(compatibleExisting)
+    expect(warnSpy).not.toHaveBeenCalled()
+    warnSpy.mockRestore()
   })
 })

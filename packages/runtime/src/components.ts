@@ -1,5 +1,6 @@
 import type {
   ComponentId,
+  ComponentPatch,
   ComponentRecord,
   DomRange,
   RuntimeEvent,
@@ -60,6 +61,18 @@ interface InstanceRecord {
   readonly createdAt: number
   updatedAt: number
   updateCount: number
+  // The domRange/childIds last sent to subscribers (in a components-added or
+  // components-updated event), so `flush` can include only fields that
+  // actually changed in a components-updated patch (§9.4 "no full-record
+  // spam") instead of resending the full record on every redraw.
+  emittedDomRange: DomRange | null
+  emittedChildIds: ComponentId[]
+  // The registry `epoch` this record was allocated in (task 0021 reset()).
+  // `byState` is a WeakMap and can't be cleared directly, so a still-mounted
+  // instance's stale entry is instead invalidated by epoch: the next redraw
+  // that reads it sees a mismatch and reallocates a fresh record, rather than
+  // silently staying orphaned outside `byId`/`roots` forever.
+  readonly epoch: number
 }
 
 export interface ComponentRegistry {
@@ -86,6 +99,13 @@ export interface ComponentRegistry {
   displayNameOf(id: ComponentId): string
   /** Re-walk mounted roots and rebuild the node → component map; emit batched events. */
   flush(): void
+  /**
+   * Drop all live instance/ownership bookkeeping and any pending batched
+   * events (§9.4 `reset`, task 0021). Definition-level overrides (§14
+   * display-name/hidden/serializer) are untouched — they are keyed by the
+   * application's definition object, not by mount, and survive a reset.
+   */
+  reset(): void
   /** The nearest (innermost) component instance owning `node`, or `null`. */
   resolveDomComponent(node: Node): ComponentId | null
   /**
@@ -209,9 +229,15 @@ export function createComponentRegistry(
   }
   const byNode = new WeakMap<Node, NodeEntry>()
   let generation = 0
+  // Bumped by reset() (task 0021); see `InstanceRecord.epoch`.
+  let epoch = 0
 
   const addedThisBatch: InstanceRecord[] = []
   const removedThisBatch: ComponentId[] = []
+  // Ids whose `updateCount` was bumped this batch (§9.4 components-updated).
+  // A Set so a state touched by several redraws before one flush is only
+  // ever considered once.
+  const updatedThisBatch = new Set<ComponentId>()
 
   const allocate = (state: object, vnode: object, meta: DefMeta): InstanceRecord => {
     const owner = ownerByVnode.get(vnode)
@@ -227,12 +253,21 @@ export function createComponentRegistry(
       createdAt: timestamp,
       updatedAt: timestamp,
       updateCount: 0,
+      emittedDomRange: null,
+      emittedChildIds: [],
+      epoch,
     }
     byState.set(state, record)
     byId.set(record.id, record)
     if (owner === undefined) roots.add(record)
     addedThisBatch.push(record)
     return record
+  }
+
+  /** A `byState` entry from the current epoch, or `undefined` (stale-after-reset entries are treated as untracked, task 0021). */
+  const liveRecordOf = (state: object): InstanceRecord | undefined => {
+    const record = byState.get(state)
+    return record !== undefined && record.epoch === epoch ? record : undefined
   }
 
   const recordOwnedVnodes = (owner: InstanceRecord, value: unknown): void => {
@@ -256,7 +291,11 @@ export function createComponentRegistry(
 
   const cleanup = (state: unknown): void => {
     if (typeof state !== "object" || state === null) return
-    const record = byState.get(state)
+    // A stale-epoch record was already dropped by reset() and never
+    // re-reported since (no redraw touched it before removal) — nothing to
+    // report here either, or `removedThisBatch` would carry a phantom id no
+    // subscriber ever heard was added (task 0021).
+    const record = liveRecordOf(state)
     if (record === undefined) return
     record.mounted = false
     byId.delete(record.id)
@@ -286,7 +325,8 @@ export function createComponentRegistry(
     wrapped.view = function (this: unknown, vnode: unknown) {
       onActivity()
       const state = (vnode as Rendered).state
-      const record = typeof state === "object" && state !== null ? byState.get(state) ?? allocate(state, vnode as object, meta) : undefined
+      const record =
+        typeof state === "object" && state !== null ? liveRecordOf(state) ?? allocate(state, vnode as object, meta) : undefined
       if (record === undefined) return app.view.call(this, vnode)
       record.latestVnode = vnode as Rendered
       scopeStack.push(record)
@@ -321,6 +361,7 @@ export function createComponentRegistry(
       if (record !== undefined) {
         record.updateCount += 1
         record.updatedAt = now()
+        updatedThisBatch.add(record.id)
       }
       if (app.onupdate !== undefined) return app.onupdate.call(this, vnode)
       return undefined
@@ -401,7 +442,16 @@ export function createComponentRegistry(
     wrapped.render = function (this: unknown, vnode: unknown) {
       onActivity()
       const state = this as object
-      const record = byState.get(state) ?? allocate(state, vnode as object, meta)
+      const existing = liveRecordOf(state)
+      const record = existing ?? allocate(state, vnode as object, meta)
+      // A resolver has no onupdate-equivalent hook (§6.5 — Mithril calls only
+      // `render`), so a repeated call on an already-allocated instance is
+      // itself the update signal.
+      if (existing !== undefined) {
+        record.updateCount += 1
+        record.updatedAt = now()
+        updatedThisBatch.add(record.id)
+      }
       scopeStack.push(record)
       try {
         const result = def.render.call(this, vnode)
@@ -443,7 +493,7 @@ export function createComponentRegistry(
       const vnode = value as Rendered
       if (isComponentTag(vnode.tag)) {
         const state = vnode.state
-        const record = typeof state === "object" && state !== null ? byState.get(state) : undefined
+        const record = typeof state === "object" && state !== null ? liveRecordOf(state) : undefined
         if (record !== undefined) {
           record.latestVnode = vnode
           eachRangeNode(domRangeOf(vnode), (node) => registerRange(node, record.id))
@@ -465,6 +515,17 @@ export function createComponentRegistry(
     }
     root.childIds.length = 0
     visit(root.latestVnode, root)
+  }
+
+  const domRangeEqual = (a: DomRange | null, b: DomRange | null): boolean => {
+    if (a === null || b === null) return a === b
+    return a.first === b.first && a.last === b.last
+  }
+
+  const childIdsEqual = (a: readonly ComponentId[], b: readonly ComponentId[]): boolean => {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false
+    return true
   }
 
   interface DisplayNameResult {
@@ -572,7 +633,7 @@ export function createComponentRegistry(
       return def
     },
     idOf(state) {
-      return byState.get(state)?.id
+      return liveRecordOf(state)?.id
     },
     recordOf(id) {
       const record = byId.get(id)
@@ -598,14 +659,73 @@ export function createComponentRegistry(
       for (const root of roots) {
         if (root.latestVnode !== null) visitForOwnership(root)
       }
+
+      // A state allocated and updated within the same batch (several redraws
+      // before one flush) is reported once, in full, via components-added —
+      // toRecord() below reads current (post-walk) fields, so the added
+      // record already reflects the latest domRange/childIds. Likewise, a
+      // state updated then removed within the same batch is reported once,
+      // via components-removed.
+      const addedIds = new Set(addedThisBatch.map((record) => record.id))
+      const removedIds = new Set(removedThisBatch)
+
       if (addedThisBatch.length > 0) {
-        emit({ type: "components-added", records: addedThisBatch.map(toRecord) })
+        const records = addedThisBatch.map((record) => {
+          const componentRecord = toRecord(record)
+          record.emittedDomRange = componentRecord.domRange
+          record.emittedChildIds = [...componentRecord.childIds]
+          return componentRecord
+        })
+        emit({ type: "components-added", records })
         addedThisBatch.length = 0
       }
+
+      if (updatedThisBatch.size > 0) {
+        const patches: ComponentPatch[] = []
+        for (const id of updatedThisBatch) {
+          if (addedIds.has(id) || removedIds.has(id)) continue
+          const record = byId.get(id)
+          if (record === undefined || !isVisible(record)) continue
+          const range = record.latestVnode === null ? null : domRangeOf(record.latestVnode)
+          const patch: ComponentPatch = { id, updateCount: record.updateCount, updatedAt: record.updatedAt }
+          if (!domRangeEqual(record.emittedDomRange, range)) {
+            patch.domRange = range
+            record.emittedDomRange = range
+          }
+          if (!childIdsEqual(record.emittedChildIds, record.childIds)) {
+            patch.childIds = [...record.childIds]
+            record.emittedChildIds = patch.childIds
+          }
+          patches.push(patch)
+        }
+        updatedThisBatch.clear()
+        if (patches.length > 0) emit({ type: "components-updated", records: patches })
+      }
+
       if (removedThisBatch.length > 0) {
         emit({ type: "components-removed", ids: [...removedThisBatch] })
         removedThisBatch.length = 0
       }
+    },
+    reset() {
+      byId.clear()
+      roots.clear()
+      addedThisBatch.length = 0
+      removedThisBatch.length = 0
+      updatedThisBatch.clear()
+      // Invalidates every `byState` entry (`liveRecordOf`, task 0021): a
+      // still-mounted instance's own state object is unaffected by reset, so
+      // without this, its next redraw would find its old record via
+      // `byState.get` and wrongly conclude it is still tracked, orphaning it
+      // outside `byId`/`roots` forever instead of reallocating.
+      epoch += 1
+      // Bump so any lingering `byNode` entries from before the reset are
+      // overwritten (not appended to) the next time a surviving instance's
+      // range is re-registered; `resolveDomComponent`'s own `byId.get`
+      // validity check already makes stale entries harmless to read even
+      // without this (§17 weak-reference cleanliness, not a correctness
+      // requirement).
+      generation += 1
     },
     resolveDomComponent(node) {
       for (let current: Node | null = node; current !== null; current = current.parentNode) {

@@ -178,4 +178,26 @@ describe("createDomAssociationRegistry", () => {
     expect(Object.keys(vnode.attrs as object)).toEqual(before)
     expect(Object.getOwnPropertySymbols(vnode)).toEqual([])
   })
+
+  it("reset() clears associated nodes and drops pending tags queued before it (task 0021 full-invalidation)", () => {
+    const { assoc, register } = setup()
+    register(baseSources)
+    m.render(root, assoc.tag(`${MODULE}:s1`, m("div.box")))
+    assoc.flush()
+    expect(assoc.associatedNodes()).toHaveLength(1)
+
+    // Tag and render a second node but reset before the next flush — its
+    // pending tag must not resurface once flush() runs again.
+    const lateVnode = assoc.tag(`${MODULE}:s2`, m("span.late"))
+    m.render(root, [lateVnode])
+    expect(assoc.hasPending()).toBe(true)
+
+    assoc.reset()
+    expect(assoc.associatedNodes()).toHaveLength(0)
+    expect(assoc.hasPending()).toBe(false)
+
+    assoc.flush()
+    expect(assoc.associatedNodes()).toHaveLength(0)
+    expect(assoc.resolveDomSource(root.querySelector("span.late")!)).toBeNull()
+  })
 })

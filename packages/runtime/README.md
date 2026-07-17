@@ -221,6 +221,79 @@ Both are exposed on `InspectorRuntime` as `componentAncestry`/
 *rendered element*'s own exact mapping (`resolveDomSource` on the component's
 `domRange.first`) as the third and generally most-precise §9.3 open target.
 
+## Batched runtime events (§9.4, task 0021)
+
+`subscribe(listener)` delivers coalesced `RuntimeEvent`s on every `flush()` —
+one notification per event type per flush, never one per changed record:
+
+```ts
+type RuntimeEvent =
+  | { type: "components-added"; records: ComponentRecord[] }
+  | { type: "components-updated"; records: ComponentPatch[] }
+  | { type: "components-removed"; ids: ComponentId[] }
+  | { type: "dom-associated"; records: DomAssociation[] }
+  | { type: "reset" }
+```
+
+- **`components-added`** / **`components-removed`** — an instance allocated or
+  cleaned up this batch (task 0017 registry, unchanged by this task).
+- **`components-updated`** carries a `ComponentPatch` per instance whose
+  `updateCount` was bumped this batch (an `onupdate` firing, or — since a
+  route-resolver has no `onupdate`-equivalent hook — a repeated `render()`
+  call on an already-allocated resolver). `id`/`updateCount`/`updatedAt` are
+  always present; `domRange`/`childIds` are included only when they actually
+  changed since the last emitted record for that instance (§9.4 "no
+  full-record spam") — `attrs`/`state` are deliberately never pushed through
+  this stream, consistent with §7.4's lazy, pull-based
+  `attrsPreview`/`statePreview` (task 0020). An instance also added or removed
+  within the same batch (e.g. two redraws before one flush) is reported once,
+  via `components-added`/`components-removed`, not additionally here.
+- **`dom-associated`** carries one `DomAssociation` per node (re)tagged by
+  `source()` this flush, covering every node in a single event regardless of
+  how many were touched. Skipped entirely (not even built) when nobody is
+  subscribed, since resolving each node's nearest source/component is real,
+  measured cost with no other consumer.
+- **`reset`** signals a full invalidation — the subscriber should discard
+  everything and re-derive from a fresh `getSnapshot()`. Emitted by
+  `resetTracking()` (below) and, if a subscriber is already listening, by the
+  §16 error boundary when a repeatedly-failing feature disables itself. A
+  `reset` fired with **no subscriber currently attached** is not silently
+  dropped — it is delivered to whichever listener calls `subscribe()` next
+  (a later subscriber does not also receive it).
+
+`resetTracking()` clears all component and DOM-association tracking and emits
+`reset` per the rule above. It is the primitive for two §16 scenarios:
+
+- **HMR full-invalidation** — a caller-driven reset an adapter can call from a
+  real "the whole module graph was invalidated" hook. Wiring an actual Vite
+  call site is a follow-up (this task is runtime-only, matching how task 0017
+  left route-resolver transform detection as a follow-up); ordinary per-file
+  HMR (ADR-106) does **not** call this — it produces normal
+  `components-added`/`components-removed` pairs as instances naturally
+  remount.
+- **Multiple-runtime detection** — `getRuntime()` calls it on the runtime it
+  installs when it finds an *incompatible* existing hook already at
+  `window.__MITHRIL_INSPECTOR__` (a protocol-version mismatch — two different
+  bundled copies of the inspector). It also logs a `console.warn` diagnostic
+  and never touches the existing hook beyond reading its `protocolVersion`
+  (§16: its shape is untrusted). A *compatible*-version existing hook is
+  still reused silently, as before (task 0016).
+
+**Known caveat**: `resetTracking()` drops bookkeeping for still-mounted
+instances too. An instance that stays mounted across a reset without any
+redraw touching it again before it's read (e.g. `getSnapshot()`) simply
+appears absent until its `view`/`render` next runs, at which point it is
+reallocated with a fresh `ComponentId` and reported via `components-added` —
+by design (a reset is a deliberate "start over" signal, and re-adoption
+avoids the alternative of leaking every pre-reset instance's bookkeeping
+forever via an unclearable `WeakMap`).
+
+`getSnapshot()` and the event stream stay consistent for a subscriber that
+attaches mid-session: `getSnapshot()` reflects every currently-live instance
+regardless of when it was added, and subsequent events report only what
+changes *after* that point — an already-known instance is never re-announced
+as added, and a later removal is still delivered.
+
 ## Safe serializer and redaction (§7.4, §15, task 0020)
 
 `ComponentRecord.attrs`/`.state` are raw, read-only references (§7.3) — never
@@ -300,3 +373,24 @@ to the raw value rather than breaking the preview (§16).
   on a larger one (~4096 components) — not yet profiled to find the actual
   cost driver. Worth a real profiling pass before 0019/0022 add more
   per-flush work on top of this layer.
+- Task 0021's `dom-associated` event construction (one `resolveDomComponent` +
+  one `resolveDomSource` ancestor-walk per associated node, every flush with
+  an active subscriber) is a real, measured addition to redraw cost. A small
+  synthetic spot-check (85 components, source-tagging every element, an
+  active no-op subscriber) measured `"source"` mode's overhead *against a bare
+  `m.render` with no runtime at all* going from ~113% to ~185% after this
+  task — i.e. this specific micro-benchmark's absolute cost was already far
+  past §17's "<10%" framing *before* this task (a pre-existing characteristic
+  of `source()`'s tagging + association-map rebuild, not introduced here) and
+  grew further because of it. The §17-literal, mode-relative comparison this
+  task's acceptance criteria actually asks for (`"components"`/`"full"` vs
+  `"source"`, the same methodology task 0017 used) stayed inside the 20%
+  budget across repeated runs (roughly 5-19% for `"components"`, 10-13% for
+  `"full"`). The one cheap mitigation applied: the whole `dom-associated`
+  payload is skipped when `subscribers.size === 0` (identical behavior, since
+  an event with no listener is already a no-op) — real headroom remains by
+  resolving source/component identity from `domAssoc.flush()`'s own
+  per-node tag registration instead of a separate post-hoc ancestor walk, not
+  attempted here to keep this task's change surface bounded. Flagging
+  honestly per task 0017's own precedent rather than either hiding it or
+  blocking indefinitely on a deeper fix.

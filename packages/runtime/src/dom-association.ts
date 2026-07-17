@@ -42,6 +42,14 @@ export interface DomAssociationRegistry {
   hasPending(): boolean
   /** Nodes associated in the last flush (rebuilt each flush; for snapshots). */
   associatedNodes(): readonly Node[]
+  /**
+   * Drop pending tags and the current associated-nodes set (§9.4 `reset`,
+   * task 0021 full-invalidation). Per-vnode source stamps (`tag`) already
+   * live in a `WeakMap` keyed by vnode object, so they need no explicit
+   * clearing — a vnode not re-rendered after a reset is simply never
+   * re-queued.
+   */
+  reset(): void
 }
 
 interface NodeEntry {
@@ -141,6 +149,11 @@ export function createDomAssociationRegistry(sources: SourceRegistry): DomAssoci
     },
     associatedNodes() {
       return Array.from(associated)
+    },
+    reset() {
+      pending = []
+      associated = new Set()
+      generation += 1
     },
   }
 }

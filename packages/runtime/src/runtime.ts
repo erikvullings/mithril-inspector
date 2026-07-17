@@ -116,6 +116,14 @@ export interface InspectorRuntime extends MithrilInspectorHook {
   flush(): void
   /** Request a batched flush after the current render pass. */
   scheduleFlush(): void
+  /**
+   * Drop all component/DOM-association tracking and notify subscribers that
+   * the tree was fully invalidated (§9.4 `reset`, §16, task 0021). The
+   * primitive for HMR full-invalidation and multiple-runtime detection; if no
+   * subscriber is currently listening the reset is delivered to the next one
+   * that calls {@link subscribe} instead of being silently dropped.
+   */
+  resetTracking(): void
 
   // --- Configuration.
   setMode(mode: InspectorMode): void
@@ -160,6 +168,11 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
 
   const subscribers = new Set<InspectorListener>()
   const excludedHosts = new Set<Node>()
+  // A `reset` fired with no active subscriber (e.g. right after a
+  // getRuntime() multiple-runtime-mismatch install, before anyone could
+  // possibly have subscribed yet) is not silently lost — it is delivered to
+  // whichever subscriber attaches next (§16, task 0021).
+  let pendingReset = false
 
   // Manual protocol registrations (the hook's register* methods). The transform
   // uses the free functions above; these stay empty in normal operation and
@@ -170,12 +183,23 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
 
   const boundary: ErrorBoundary = createErrorBoundary({
     debug: options.debug ?? false,
-    onDisable: () => notify({ type: "reset" }),
+    onDisable: () => emitReset(),
   })
 
   const notify = (event: RuntimeEvent): void => {
     for (const listener of subscribers) {
       boundary.guard("subscriber", () => listener(event), undefined)
+    }
+  }
+
+  // Shared by the error boundary's onDisable and resetTracking(): deliver a
+  // reset now if anyone is listening, otherwise remember it for the first
+  // future subscriber (see `pendingReset` above).
+  const emitReset = (): void => {
+    if (subscribers.size > 0) {
+      notify({ type: "reset" })
+    } else {
+      pendingReset = true
     }
   }
 
@@ -344,12 +368,42 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
         () => {
           domAssoc.flush()
           components.flush()
+          // §9.4: one batched dom-associated event per flush, covering every
+          // node (re)tagged this render pass — not one notification per node.
+          // Building the per-node records is real, measured cost (each entry
+          // walks up the DOM for its nearest component/source); skip it
+          // entirely when nobody is subscribed, since `notify` would discard
+          // the result anyway (perf spot-check, task 0021).
+          if (subscribers.size > 0) {
+            const nodes = domAssoc.associatedNodes()
+            if (nodes.length > 0) {
+              const records: DomAssociation[] = nodes.map((node) => ({
+                vnodeId: vnodeIdForNode(node),
+                domRange: { first: node, last: node },
+                componentId: components.resolveDomComponent(node),
+                source: domAssoc.resolveDomSource(node),
+              }))
+              notify({ type: "dom-associated", records })
+            }
+          }
           return undefined
         },
         undefined,
       )
     },
     scheduleFlush,
+    resetTracking() {
+      boundary.guard(
+        "association",
+        () => {
+          domAssoc.reset()
+          components.reset()
+          emitReset()
+          return undefined
+        },
+        undefined,
+      )
+    },
 
     // --- Configuration ------------------------------------------------------
     setMode(next) {
@@ -435,6 +489,10 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
     },
     subscribe(listener: InspectorListener) {
       subscribers.add(listener)
+      if (pendingReset) {
+        pendingReset = false
+        boundary.guard("subscriber", () => listener({ type: "reset" }), undefined)
+      }
       return () => {
         subscribers.delete(listener)
       }
@@ -487,7 +545,23 @@ export function getRuntime(): InspectorRuntime {
     singleton = existing
     return existing
   }
+  if (existing !== undefined) {
+    // §16: an incompatible runtime is already installed at the global hook —
+    // two different protocol-version copies of the inspector ended up
+    // bundled into the same page. Never touch `existing` beyond reading its
+    // protocol version (its shape is untrusted); install a fresh runtime
+    // instead of silently overwriting, and log a diagnostic.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[mithril-inspector] Multiple Mithril runtimes were detected: an incompatible runtime ` +
+        `(protocol v${String(existing.protocolVersion)}) is already installed at window.__MITHRIL_INSPECTOR__. ` +
+        `Installing a fresh runtime (protocol v${PROTOCOL_VERSION}); the previous instance's subscribers are orphaned.`,
+    )
+  }
   singleton = createRuntime()
+  // The new singleton starts with zero subscribers, so this reset is
+  // delivered to whichever consumer subscribes to it first (task 0021).
+  if (existing !== undefined) singleton.resetTracking()
   globalObject[GLOBAL_KEY] = singleton
   return singleton
 }

@@ -1,6 +1,6 @@
 import m from "mithril"
 import type { Component, Vnode } from "mithril"
-import type { ComponentId, ModuleId, RuntimeEvent } from "@mithril-inspector/protocol"
+import type { ComponentId, ComponentPatch, ModuleId, RuntimeEvent } from "@mithril-inspector/protocol"
 import { makeComponentId } from "@mithril-inspector/protocol"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -693,6 +693,27 @@ describe("route-resolvers (task 0017, runtime-only per {render} shape)", () => {
     expect(registry.idOf(resolver as object)).toBe(id)
     expect(registry.recordOf(id)?.mounted).toBe(true)
   })
+
+  it("bumps updateCount and emits components-updated on a repeated render() call (task 0021)", () => {
+    const events: RuntimeEvent[] = []
+    const { registry } = setup({ events, mode: "components" })
+    const resolverDef: RouteResolverDef = { render: () => m("div.page", "v1") }
+    const resolver = registry.instrument(`${MODULE}:s1`, resolverDef)
+    m.render(root, resolver.render({ attrs: {} }) as ReturnType<typeof m>)
+    registry.flush()
+    const id = idOf(registry, resolver as object)
+    expect(registry.recordOf(id)?.updateCount).toBe(0)
+    events.length = 0
+
+    m.render(root, resolver.render({ attrs: {} }) as ReturnType<typeof m>)
+    registry.flush()
+
+    expect(registry.recordOf(id)?.updateCount).toBe(1)
+    const updated = events.find((e) => e.type === "components-updated") as
+      | { type: "components-updated"; records: ComponentPatch[] }
+      | undefined
+    expect(updated?.records.map((r) => r.id)).toEqual([id])
+  })
 })
 
 describe("function-declaration closures — a known, permanent limitation (task 0017)", () => {
@@ -781,6 +802,234 @@ describe("keyed reorder identity (task 0017)", () => {
     expect([...idByLabel.values()]).not.toContain(idByLabelAfter.get("e"))
     // The removed item's id is no longer live.
     expect(registry.isMapped(idByLabel.get("b")!)).toBe(false)
+  })
+})
+
+describe("components-updated patch events (§9.4, task 0021)", () => {
+  it("emits a components-updated patch with updateCount/updatedAt on a redraw, distinct from added/removed", () => {
+    const events: RuntimeEvent[] = []
+    const { registry } = setup({ events })
+    const App: Component<{ label: string }> = { view: (vnode) => m("div.app", vnode.attrs.label) }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    const usage = m(Instrumented, { label: "one" })
+    m.render(root, usage)
+    registry.flush()
+    const id = idOf(registry, usage.state as object)
+    events.length = 0
+
+    m.render(root, m(Instrumented, { label: "two" }))
+    registry.flush()
+
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe("components-updated")
+    const patches = (events[0] as { type: "components-updated"; records: ComponentPatch[] }).records
+    expect(patches).toEqual([{ id, updateCount: 1, updatedAt: expect.any(Number) }])
+  })
+
+  it("omits domRange and childIds from the patch when neither changed", () => {
+    const events: RuntimeEvent[] = []
+    const { registry } = setup({ events })
+    // Same tag/position every redraw: Mithril reuses the DOM element and
+    // patches its text content in place, so `vnode.dom` never changes.
+    const App: Component<{ label: string }> = { view: (vnode) => m("div.app", vnode.attrs.label) }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    m.render(root, m(Instrumented, { label: "one" }))
+    registry.flush()
+
+    m.render(root, m(Instrumented, { label: "two" }))
+    registry.flush()
+
+    const patch = events.find((e) => e.type === "components-updated") as
+      | { type: "components-updated"; records: ComponentPatch[] }
+      | undefined
+    expect(patch?.records[0]).not.toHaveProperty("domRange")
+    expect(patch?.records[0]).not.toHaveProperty("childIds")
+  })
+
+  it("includes domRange in the patch when the component's own DOM node is replaced", () => {
+    const events: RuntimeEvent[] = []
+    const { registry } = setup({ events })
+    // A different tag forces Mithril to create a brand-new DOM node.
+    const App: Component<{ big: boolean }> = {
+      view: (vnode) => (vnode.attrs.big ? m("div.big") : m("span.small")),
+    }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    m.render(root, m(Instrumented, { big: false }))
+    registry.flush()
+
+    m.render(root, m(Instrumented, { big: true }))
+    registry.flush()
+
+    const patch = events.find((e) => e.type === "components-updated") as
+      | { type: "components-updated"; records: ComponentPatch[] }
+      | undefined
+    expect(patch?.records[0]?.domRange?.first).toBe(root.querySelector("div.big"))
+    expect(patch?.records[0]).not.toHaveProperty("childIds")
+  })
+
+  it("includes childIds in the patch when render order changes, without a domRange change", () => {
+    const events: RuntimeEvent[] = []
+    const { registry } = setup({ events })
+    const Item: Component<{ label: string }> = { view: (vnode) => m("li", vnode.attrs.label) }
+    const InstrumentedItem = registry.instrument(`${MODULE}:s2`, Item)
+    const List: Component<{ order: string[] }> = {
+      view: (vnode) =>
+        m(
+          "ul",
+          vnode.attrs.order.map((label) => m(InstrumentedItem, { key: label, label })),
+        ),
+    }
+    const InstrumentedList = registry.instrument(`${MODULE}:s1`, List)
+    const listUsage = m(InstrumentedList, { order: ["a", "b", "c"] })
+    m.render(root, listUsage)
+    registry.flush()
+    const listId = idOf(registry, listUsage.state as object)
+    const ul = root.querySelector("ul")!
+    events.length = 0
+
+    m.render(root, m(InstrumentedList, { order: ["c", "a", "b"] }))
+    registry.flush()
+
+    // Same <ul> element, only its children were reordered inside it.
+    expect(root.querySelector("ul")).toBe(ul)
+    const patch = events.find((e) => e.type === "components-updated") as
+      | { type: "components-updated"; records: ComponentPatch[] }
+      | undefined
+    const listPatch = patch?.records.find((r) => r.id === listId)
+    expect(listPatch).not.toHaveProperty("domRange")
+    expect(listPatch?.childIds).toHaveLength(3)
+    expect(listPatch?.childIds).not.toEqual(registry.recordOf(listId)?.childIds.slice().reverse())
+    expect(listPatch?.childIds).toEqual(registry.recordOf(listId)?.childIds)
+  })
+
+  it("attributes each sibling to exactly one event type within a single flush — added, updated, or removed, not cross-contaminated", () => {
+    const events: RuntimeEvent[] = []
+    const { registry } = setup({ events })
+    // Keyed by a stable `id` distinct from the displayed `text`, so changing
+    // "a"'s text is a real in-place update, not a remove+add via a key change.
+    const Item: Component<{ text: string }> = { view: (vnode) => m("li", vnode.attrs.text) }
+    const InstrumentedItem = registry.instrument(`${MODULE}:s2`, Item)
+    interface Row {
+      key: string
+      text: string
+    }
+    const List: Component<{ rows: Row[] }> = {
+      view: (vnode) =>
+        m(
+          "ul",
+          vnode.attrs.rows.map((row) => m(InstrumentedItem, { key: row.key, text: row.text })),
+        ),
+    }
+    const InstrumentedList = registry.instrument(`${MODULE}:s1`, List)
+    const rows1: Row[] = [
+      { key: "a", text: "a" },
+      { key: "b", text: "b" },
+      { key: "c", text: "c" },
+    ]
+    m.render(root, m(InstrumentedList, { rows: rows1 }))
+    registry.flush()
+    const idByKey = new Map<string, ComponentId>()
+    for (const row of rows1) {
+      const li = Array.from(root.querySelectorAll("li")).find((el) => el.textContent === row.text)!
+      idByKey.set(row.key, registry.resolveDomComponent(li)!)
+    }
+    events.length = 0
+
+    // In one redraw: "a" is updated in place (same key, new text), "b" drops
+    // out (remove), "d" is newly inserted (add) — "c" is untouched.
+    const rows2: Row[] = [
+      { key: "a", text: "a-updated" },
+      { key: "c", text: "c" },
+      { key: "d", text: "d" },
+    ]
+    m.render(root, m(InstrumentedList, { rows: rows2 }))
+    registry.flush()
+
+    const added = events.find((e) => e.type === "components-added") as
+      | { type: "components-added"; records: { id: ComponentId }[] }
+      | undefined
+    const updated = events.find((e) => e.type === "components-updated") as
+      | { type: "components-updated"; records: ComponentPatch[] }
+      | undefined
+    const removed = events.find((e) => e.type === "components-removed") as
+      | { type: "components-removed"; ids: ComponentId[] }
+      | undefined
+
+    const addedIds = added?.records.map((r) => r.id) ?? []
+    const updatedIds = updated?.records.map((r) => r.id) ?? []
+    const removedIds = removed?.ids ?? []
+
+    expect(updatedIds).toContain(idByKey.get("a"))
+    expect(removedIds).toEqual([idByKey.get("b")])
+    expect(addedIds).not.toContain(idByKey.get("a"))
+    expect(addedIds).not.toContain(idByKey.get("c"))
+    expect(updatedIds).not.toContain(idByKey.get("b"))
+    expect(removedIds).not.toContain(idByKey.get("a"))
+    // Every id appears in exactly one of the three batches.
+    const allIds = [...addedIds, ...updatedIds, ...removedIds]
+    expect(new Set(allIds).size).toBe(allIds.length)
+  })
+
+  it("excludes an instance from components-updated when it was also added within the same batch (two redraws before one flush)", () => {
+    const events: RuntimeEvent[] = []
+    const { registry } = setup({ events })
+    const App: Component<{ label: string }> = { view: (vnode) => m("div.app", vnode.attrs.label) }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+
+    // Mount, then update — both before the registry ever flushes.
+    const usage = m(Instrumented, { label: "one" })
+    m.render(root, usage)
+    m.render(root, m(Instrumented, { label: "two" }))
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe("components-added")
+    const added = (events[0] as { type: "components-added"; records: { id: ComponentId }[] }).records
+    expect(added.map((r) => r.id)).toEqual([id])
+  })
+
+  it("excludes an instance from components-updated when it was also removed within the same batch", () => {
+    const events: RuntimeEvent[] = []
+    const { registry } = setup({ events })
+    const App: Component<{ label: string }> = { view: (vnode) => m("div.app", vnode.attrs.label) }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    const usage = m(Instrumented, { label: "one" })
+    m.render(root, usage)
+    registry.flush()
+    events.length = 0
+
+    // Update, then remove — both before the next flush.
+    m.render(root, m(Instrumented, { label: "two" }))
+    m.render(root, [])
+    registry.flush()
+
+    expect(events).toHaveLength(1)
+    expect(events[0]?.type).toBe("components-removed")
+  })
+
+  it("coalesces N updated components in one redraw into a single components-updated event, not N notifications", () => {
+    const events: RuntimeEvent[] = []
+    const { registry } = setup({ events })
+    const Item: Component<{ label: string }> = { view: (vnode) => m("li", vnode.attrs.label) }
+    const InstrumentedItem = registry.instrument(`${MODULE}:s2`, Item)
+    const labels = ["a", "b", "c", "d", "e"]
+    const List: Component<{ suffix: string }> = {
+      view: (vnode) => m("ul", labels.map((label) => m(InstrumentedItem, { key: label, label: label + vnode.attrs.suffix }))),
+    }
+    const InstrumentedList = registry.instrument(`${MODULE}:s1`, List)
+    m.render(root, m(InstrumentedList, { suffix: "-v1" }))
+    registry.flush()
+    events.length = 0
+
+    m.render(root, m(InstrumentedList, { suffix: "-v2" }))
+    registry.flush()
+
+    const updateEvents = events.filter((e) => e.type === "components-updated")
+    expect(updateEvents).toHaveLength(1)
+    const patches = (updateEvents[0] as { records: ComponentPatch[] }).records
+    // The list itself plus all 5 items updated (label text changed).
+    expect(patches.length).toBe(6)
   })
 })
 

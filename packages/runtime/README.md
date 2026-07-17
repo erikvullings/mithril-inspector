@@ -8,9 +8,11 @@ Phase 0 spikes: vnode→DOM association (ADR-101), fragment-root components
 (ADR-104), lifecycle hook composition (ADR-105), component-instance tracking
 (ADR-103) and HMR mapping survival (ADR-106).
 
-Phase 1 ships the `"source"` mode: an element-to-source registry plus
+Phase 1 shipped the `"source"` mode: an element-to-source registry plus
 DOM/source association so the overlay can resolve a hovered DOM node to its
-original source location.
+original source location. Task 0017 (Phase 2) adds mounted component-instance
+IDs and parent-child tracking (`ComponentRecord`, §7.3) behind the `mode`
+gate — see "Modes" below.
 
 ## Transform-facing contract
 
@@ -52,7 +54,7 @@ hook.resolveDomSource(node)     // nearest SourceLocation for a DOM node, or nul
 hook.resolveDomComponent(node)  // nearest ComponentId owning a DOM node, or null
 hook.sourceOfVnode(vnode)       // source stamped on a specific vnode, or null
 hook.excludeHost(overlayHost)   // keep the overlay host out of tracking (§8.2)
-hook.setMode("source")          // "source" | "components" | "full" (scaffolding)
+hook.setMode("source")          // "source" | "components" | "full" (§17, see "Modes" below)
 hook.invalidateModule("m:…")    // drop a module's stale sources on HMR (ADR-106)
 hook.getRedactionConfig()       // resolved { keys, replacement } policy (§15)
 hook.getSnapshot()              // { components, vnodes, modules, domAssociations }
@@ -98,12 +100,85 @@ import {
 } from "@mithril-inspector/runtime"
 ```
 
-## Known Phase 1 limitations
+## Modes (§17, task 0017)
 
-- Class and standalone-`function` component *declarations* are registered for
-  display-name resolution but not lifecycle-wrapped (their element picking still
-  works via `source()`); object and closure components are fully instrumented.
-- `mode` is scaffolding: `source`, `components` and `full` are accepted but do
-  not yet gate behaviour differently.
+```ts
+mode: "source"      // default — element/source mapping and editor navigation only
+mode: "components"  // + component-instance tracking: class and route-resolver
+                     //   kinds, render-ordered childIds (see below)
+mode: "full"         // scaffolding — same as "components" today
+```
+
+Object and closure component instance-tracking (nearest-component lookup,
+parent/child linkage) predates this gate — it was pulled forward into
+`"source"` for the 0.1.0-alpha.1 release (task 0016) to support hover/basic
+ancestry (§20.1.5, §20.1.10) and stays unconditional in every mode, so it does
+not regress. `mode: "components"`/`"full"` *additionally* activate class and
+route-resolver tracking, which task 0017 introduced already gated (there was
+no earlier alpha behavior to preserve for those two kinds).
+
+## Component instance tracking (task 0017)
+
+`ComponentRegistry.instrument()` (internal; driven by the transform's
+`__miComponent`) tracks these `ComponentRecord.kind` values:
+
+- **`object`** / **`closure`** — always tracked, any mode (see above).
+- **`anonymous`** — an `object`-shaped inline component with no discoverable
+  name at all (§2.4); a read-time refinement, not a separate wrap path.
+- **`class`** — tracked in `mode: "components"`/`"full"` via ADR-103's
+  "prototype facade" mechanism, with one production caveat: a `class`
+  constructor's own `.prototype` property is **non-writable** (unlike a plain
+  `function`), so unlike object/closure the wrap can't be a fresh reference
+  swapped in — it mutates the *existing* prototype object's `view` and six
+  hooks in place instead (snapshotting the originals first so the wrapped
+  methods don't recurse into themselves). This is more invasive than the
+  object/closure path — it touches an object the application's own code still
+  holds a reference to — but it's the only mechanism available for a
+  `class Foo {}` *declaration* binding the transform can't rebind, and it
+  works identically for `const Foo = class {}` expressions. `instanceof` and
+  `.constructor` against the original class keep working (only specific
+  methods are overwritten, not the prototype chain).
+- **`route-resolver`** — an `m.route()` table entry shaped `{ render, onmatch? }`
+  instead of `{ view }`. Tracked in `mode: "components"`/`"full"` as a *root*
+  instance (a resolver has no lexical owner and no `vnode.state` of its own —
+  Mithril calls `resolver.render(vnode)` directly, confirmed against
+  `mithril/api/router.js`; the wrapped resolver object itself is the identity
+  carrier). Has no unmount signal (a resolver just stops being called when the
+  route changes), so once allocated it stays `mounted: true` for the app's
+  lifetime. **Runtime-only**: the transform doesn't yet detect `{render}`
+  object literals inside a real `m.route()` table (§6.5 only detects
+  `view`-shaped components), so this currently only activates through
+  `instrument()`/the public `inspectComponent()` API directly, not
+  automatically for an app's actual route table — a follow-up transform
+  change.
+- **`function`** — declared in the protocol type but the runtime cannot
+  currently produce it. A bare `function Foo() { return {view} }`
+  *declaration* is fundamentally unwrappable from the runtime alone: the
+  transform's `__miComponent` registration call for a declaration discards its
+  return (the binding can't be rebound), and there's no way to intercept calls
+  to the original, un-rebound reference without either global-`m`
+  interception (forbidden, ADR-005) or a transform-side call-site rewrite (out
+  of scope for a runtime-only task). No heuristic distinguishes this from a
+  `const Foo = () => {...}` closure expression at the point `instrument()`
+  receives a bare function reference — both can carry a `.name`. Its own `m(...)`
+  element picking still works via `source()`; only instance-level tracking is
+  affected.
+
+`childIds` is rebuilt in current render order on every flush (not creation
+order — ADR-103's own flagged follow-up), and `markInspectorHidden` (§14)
+excludes a component and its whole subtree from `recordOf`/`componentsSnapshot`/
+`resolveDomComponent` (filtered at read time, since hiding can be toggled
+independently of when a component was instrumented).
+
+## Known Phase 1/2 limitations
+
+- Function-*declaration* closures are permanently untracked at the instance
+  level (see `kind: "function"` above); their source-level picking still
+  works.
+- Route-resolver tracking is runtime-only pending a transform change (see
+  `kind: "route-resolver"` above).
+- `mode: "full"` is scaffolding — identical to `"components"` today; attrs,
+  state and diagnostics (§17 `full` definition) arrive with safe serialization
+  (0020).
 - `inspectSource` and per-node vnode ids in `getSnapshot` are placeholders for
   later phases.

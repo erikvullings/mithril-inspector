@@ -15,7 +15,9 @@ beforeEach(() => {
   document.body.replaceChildren(root)
 })
 
-const setup = (events?: RuntimeEvent[]) => {
+type Mode = "source" | "components" | "full"
+
+const setup = (opts: { events?: RuntimeEvent[]; mode?: Mode } = {}) => {
   const sources = createSourceRegistry()
   sources.registerModule(MODULE, {
     file: "/project/src/App.ts",
@@ -26,7 +28,8 @@ const setup = (events?: RuntimeEvent[]) => {
     },
   })
   const registry = createComponentRegistry(sources, {
-    ...(events ? { emit: (e: RuntimeEvent) => events.push(e) } : {}),
+    ...(opts.events ? { emit: (e: RuntimeEvent) => opts.events!.push(e) } : {}),
+    ...(opts.mode ? { getMode: () => opts.mode! } : {}),
   })
   return { sources, registry }
 }
@@ -56,6 +59,21 @@ describe("createComponentRegistry", () => {
     // Id is stable across a redraw.
     m.render(root, m(App))
     expect(registry.idOf(usage.state as object)).toBe(id)
+  })
+
+  it("reports kind: anonymous for an inline object component with no resolvable name (§2.4)", () => {
+    const { registry } = setup()
+    // No qualifiedId (mirrors §6.5 inline `m({ view: ... })` usage where the
+    // transform found no variable/export name), no `.displayName` override.
+    const Inline = registry.instrument("", { view: () => m("div.inline") } as Component)
+    const usage = m(Inline)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.kind).toBe("anonymous")
+    expect(record?.displayName).toBe("Anonymous")
   })
 
   it("invokes every application hook with `this === state` and preserves return values", () => {
@@ -215,6 +233,44 @@ describe("createComponentRegistry", () => {
     expect(registry.recordOf(appId)?.childIds).toContain(rowId)
   })
 
+  it("rebuilds childIds in render order on every flush, not creation order (ADR-103 follow-up)", () => {
+    const { registry } = setup()
+    const Item: Component<{ label: string }> = { view: (vnode) => m("li", vnode.attrs.label) }
+    const InstrumentedItem = registry.instrument(`${MODULE}:s2`, Item)
+    const List: Component<{ order: string[] }> = {
+      view: (vnode) =>
+        m(
+          "ul",
+          vnode.attrs.order.map((label) => m(InstrumentedItem, { key: label, label })),
+        ),
+    }
+    const InstrumentedList = registry.instrument(`${MODULE}:s1`, List)
+
+    // Creation order a, b, c.
+    const listUsage = m(InstrumentedList, { order: ["a", "b", "c"] })
+    m.render(root, listUsage)
+    registry.flush()
+    const listId = idOf(registry, listUsage.state as object)
+    const itemNodes = () => Array.from(root.querySelectorAll("li")).map((el) => el.textContent)
+    expect(itemNodes()).toEqual(["a", "b", "c"])
+
+    const idByLabel = new Map<string, ComponentId>()
+    for (const li of Array.from(root.querySelectorAll("li"))) {
+      const id = registry.resolveDomComponent(li)
+      idByLabel.set(li.textContent ?? "", id!)
+    }
+    const creationOrderIds = registry.recordOf(listId)?.childIds
+    expect(creationOrderIds).toEqual([idByLabel.get("a"), idByLabel.get("b"), idByLabel.get("c")])
+
+    // Re-render with the same keyed items in a different (interleaved) order —
+    // no new allocations, same state objects, only the render position moves.
+    m.render(root, m(InstrumentedList, { order: ["c", "a", "b"] }))
+    registry.flush()
+    expect(itemNodes()).toEqual(["c", "a", "b"])
+    const renderOrderIds = registry.recordOf(listId)?.childIds
+    expect(renderOrderIds).toEqual([idByLabel.get("c"), idByLabel.get("a"), idByLabel.get("b")])
+  })
+
   it("distinguishes multiple roots mounting the same component object (§3.1)", () => {
     const { registry } = setup()
     const App = registry.instrument(`${MODULE}:s1`, { view: () => m("div.app") } as Component)
@@ -311,9 +367,63 @@ describe("createComponentRegistry", () => {
     expect(registry.serializerOf(def)).toBe(serializer)
   })
 
+  it("excludes a hidden component and its subtree from recordOf/componentsSnapshot (§14)", () => {
+    const { registry } = setup()
+    const Row: Component = { view: () => m("span.row", "row") }
+    const InstrumentedRow = registry.instrument(`${MODULE}:s2`, Row)
+    const rowUsage = m(InstrumentedRow)
+    const hiddenDef: Component = { view: () => m("div.hidden-wrapper", rowUsage) }
+    registry.markHidden(hiddenDef)
+    const Hidden = registry.instrument(`${MODULE}:s1`, hiddenDef)
+    const hiddenUsage = m(Hidden)
+    // App (not hidden) owns Hidden (hidden), which owns Row (not hidden
+    // itself, but inside a hidden subtree).
+    const App: Component = { view: () => m("div.app", hiddenUsage) }
+    const InstrumentedApp = registry.instrument("", App)
+    const appUsage = m(InstrumentedApp)
+    m.render(root, appUsage)
+    registry.flush()
+
+    const appId = idOf(registry, appUsage.state as object)
+    const hiddenId = idOf(registry, hiddenUsage.state as object)
+    const rowId = idOf(registry, rowUsage.state as object)
+
+    expect(registry.recordOf(appId)).not.toBeUndefined()
+    // The hidden instance itself, and anything transitively owned by it
+    // (Row), are excluded from records — even though their ids still exist
+    // internally (tracking stays uniform; only the read boundary filters).
+    expect(registry.recordOf(hiddenId)).toBeUndefined()
+    expect(registry.recordOf(rowId)).toBeUndefined()
+
+    const snapshot = registry.componentsSnapshot()
+    expect(snapshot.has(appId)).toBe(true)
+    expect(snapshot.has(hiddenId)).toBe(false)
+    expect(snapshot.has(rowId)).toBe(false)
+  })
+
+  it("resolveDomComponent skips a hidden owner, resolving to the nearest visible ancestor (§14)", () => {
+    const { registry } = setup()
+    const Row: Component = { view: () => m("span.row", "row") }
+    const InstrumentedRow = registry.instrument(`${MODULE}:s2`, Row)
+    const hiddenDef: Component = { view: () => m("div.hidden-wrapper", m(InstrumentedRow)) }
+    registry.markHidden(hiddenDef)
+    const Hidden = registry.instrument(`${MODULE}:s1`, hiddenDef)
+    const App: Component = { view: () => m("div.app", m(Hidden)) }
+    const InstrumentedApp = registry.instrument("", App)
+    const appUsage = m(InstrumentedApp)
+    m.render(root, appUsage)
+    registry.flush()
+
+    const appId = idOf(registry, appUsage.state as object)
+    const rowNode = root.querySelector("span.row")!
+    // Row's own nearest owner is Hidden, which is excluded — resolution must
+    // continue outward to App instead of returning null.
+    expect(registry.resolveDomComponent(rowNode)).toBe(appId)
+  })
+
   it("emits batched components-added and components-removed events on flush", () => {
     const events: RuntimeEvent[] = []
-    const { registry } = setup(events)
+    const { registry } = setup({ events })
     const App = registry.instrument(`${MODULE}:s1`, { view: () => m("div") } as Component)
     m.render(root, m(App))
     registry.flush()
@@ -334,5 +444,334 @@ describe("createComponentRegistry", () => {
     expect(view).toHaveBeenCalledTimes(1)
     m.render(root, m(App))
     expect(view).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("mode gating (§17, task 0017)", () => {
+  it("keeps object and closure components tracked in mode: source (regression guard for the shipped v0.1.0-alpha.1)", () => {
+    const { registry } = setup({ mode: "source" })
+    const ObjApp = registry.instrument(`${MODULE}:s1`, { view: () => m("div.obj") } as Component)
+    const usage = m(ObjApp)
+    m.render(root, usage)
+    registry.flush()
+    expect(idOf(registry, usage.state as object)).toBeDefined()
+    expect(registry.recordOf(idOf(registry, usage.state as object))?.kind).toBe("object")
+
+    const Closure = registry.instrument(`${MODULE}:s2`, () => ({ view: () => m("div.closure") }))
+    const closureUsage = m(Closure as unknown as Component)
+    m.render(root, [usage, closureUsage])
+    registry.flush()
+    expect(idOf(registry, closureUsage.state as object)).toBeDefined()
+  })
+
+  it("defaults to mode: source when no getMode option is given", () => {
+    const { registry } = setup()
+    const App = registry.instrument(`${MODULE}:s1`, { view: () => m("div") } as Component)
+    const usage = m(App)
+    m.render(root, usage)
+    expect(idOf(registry, usage.state as object)).toBeDefined()
+  })
+})
+
+describe("class components (ADR-103 prototype facade, task 0017)", () => {
+  it("is inert in mode: source — the class is left completely unwrapped", () => {
+    const { registry } = setup({ mode: "source" })
+    class Widget implements Component {
+      view() {
+        return m("div.widget")
+      }
+    }
+    // Registered for its side effect only, exactly as the transform's
+    // discarded-return declaration-form registration call would (the return
+    // is never used at real `m(Widget)` call sites for a declaration).
+    registry.instrument(`${MODULE}:s1`, Widget)
+    const usage = m(Widget)
+    m.render(root, usage)
+    expect(registry.idOf(usage.state as object)).toBeUndefined()
+  })
+
+  it("tracks a class component in mode: components, preserving instanceof/constructor and stable id", () => {
+    const { registry } = setup({ mode: "components" })
+    class Widget implements Component {
+      calls: string[] = []
+      view() {
+        this.calls.push("view")
+        return m("div.widget")
+      }
+    }
+    registry.instrument(`${MODULE}:s1`, Widget)
+    const usage = m(Widget)
+    m.render(root, usage)
+    registry.flush()
+
+    const state = usage.state as Widget
+    expect(state).toBeInstanceOf(Widget)
+    expect(state.constructor).toBe(Widget)
+    expect(state.calls).toEqual(["view"])
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.kind).toBe("class")
+    expect(record?.mounted).toBe(true)
+
+    // Stable across a redraw — same prototype facade, same identity.
+    m.render(root, m(Widget))
+    expect(registry.idOf(usage.state as object)).toBe(id)
+  })
+
+  it("works identically for a const-bound class expression, not just a declaration", () => {
+    const { registry } = setup({ mode: "components" })
+    const Widget = class implements Component {
+      view() {
+        return m("div.expr")
+      }
+    }
+    registry.instrument(`${MODULE}:s1`, Widget)
+    const usage = m(Widget)
+    m.render(root, usage)
+    registry.flush()
+    expect(idOf(registry, usage.state as object)).toBeDefined()
+    expect(registry.recordOf(idOf(registry, usage.state as object))?.kind).toBe("class")
+  })
+
+  it("invokes every application hook with the class instance as `this` and preserves return values", () => {
+    const { registry } = setup({ mode: "components" })
+    const calls: Record<string, unknown[]> = {
+      oninit: [],
+      oncreate: [],
+      onbeforeupdate: [],
+      onupdate: [],
+      onbeforeremove: [],
+      onremove: [],
+    }
+    class Widget implements Component {
+      oninit(this: unknown) {
+        calls.oninit!.push(this)
+      }
+      oncreate(this: unknown) {
+        calls.oncreate!.push(this)
+      }
+      onbeforeupdate(this: unknown) {
+        calls.onbeforeupdate!.push(this)
+        return undefined
+      }
+      onupdate(this: unknown) {
+        calls.onupdate!.push(this)
+      }
+      onbeforeremove(this: unknown) {
+        calls.onbeforeremove!.push(this)
+        return undefined
+      }
+      onremove(this: unknown) {
+        calls.onremove!.push(this)
+      }
+      view() {
+        return m("div")
+      }
+    }
+    registry.instrument(`${MODULE}:s1`, Widget)
+    const usage = m(Widget)
+    m.render(root, usage)
+    const state = usage.state as object
+    expect(calls.oninit).toEqual([state])
+    expect(calls.oncreate).toEqual([state])
+    // oninit already allocated the registry's own record (ADR-105 timing).
+    const id = idOf(registry, state)
+
+    m.render(root, m(Widget))
+    expect(calls.onbeforeupdate).toEqual([state])
+    expect(calls.onupdate).toEqual([state])
+    expect(registry.recordOf(id)?.updateCount).toBe(1)
+
+    m.render(root, [])
+    expect(calls.onbeforeremove).toEqual([state])
+    expect(calls.onremove).toEqual([state])
+    // The registry's own mapping is cleaned in onremove, same as object/closure.
+    expect(registry.isMapped(id)).toBe(false)
+  })
+
+  it("links parent/child for nested class components", () => {
+    const { registry } = setup({ mode: "components" })
+    class Row implements Component {
+      view() {
+        return m("span.row")
+      }
+    }
+    class App implements Component {
+      view() {
+        return m("div.app", m(Row))
+      }
+    }
+    registry.instrument(`${MODULE}:s2`, Row)
+    registry.instrument(`${MODULE}:s1`, App)
+    const appUsage = m(App)
+    m.render(root, appUsage)
+    registry.flush()
+
+    const appId = idOf(registry, appUsage.state as object)
+    const rowNode = root.querySelector("span.row")!
+    const rowId = registry.resolveDomComponent(rowNode)
+    expect(rowId).not.toBeNull()
+    expect(registry.recordOf(rowId!)?.parentId).toBe(appId)
+    expect(registry.recordOf(appId)?.childIds).toContain(rowId)
+  })
+})
+
+// Confirmed against mithril/api/router.js: `RouterRoot.view()` calls
+// `currentResolver.render(vnode)` directly (a plain method call, `this` =
+// the resolver) whenever a route table entry has `render` and no `view` —
+// there are no other lifecycle hooks on a resolver, and it has no
+// `vnode.state` of its own (Mithril never `new`s or factory-calls it).
+interface RouteResolverDef {
+  render: (this: unknown, vnode: unknown) => unknown
+}
+
+describe("route-resolvers (task 0017, runtime-only per {render} shape)", () => {
+  it("is inert (unwrapped, untracked) in mode: source", () => {
+    const { registry } = setup({ mode: "source" })
+    const resolverDef: RouteResolverDef = { render: () => m("div.page") }
+    const resolver = registry.instrument(`${MODULE}:s1`, resolverDef)
+    expect(resolver).toBe(resolverDef)
+  })
+
+  it("tracks a route-resolver as a root instance with kind: route-resolver, in mode: components", () => {
+    const { registry } = setup({ mode: "components" })
+    const resolverDef: RouteResolverDef = { render: () => m("div.page", "hello") }
+    const resolver = registry.instrument(`${MODULE}:s1`, resolverDef)
+    expect(resolver).not.toBe(resolverDef)
+
+    // Simulate RouterRoot.view(): `return currentResolver.render(vnode)`,
+    // then Mithril mounts whatever render() returns.
+    const output = resolver.render({ attrs: {} })
+    m.render(root, output as ReturnType<typeof m>)
+    registry.flush()
+
+    const id = idOf(registry, resolver as object)
+    const record = registry.recordOf(id)
+    expect(record?.kind).toBe("route-resolver")
+    expect(record?.parentId).toBeNull()
+    expect(record?.mounted).toBe(true)
+    expect(registry.rangeOf(id).first).toBe(root.querySelector("div.page"))
+  })
+
+  it("attributes a nested tracked component's parentId to the resolver (realistic m.route() usage)", () => {
+    const { registry } = setup({ mode: "components" })
+    const Page = registry.instrument(`${MODULE}:s2`, { view: () => m("section.page", "content") } as Component)
+    const resolverDef: RouteResolverDef = { render: () => m(Page) }
+    const resolver = registry.instrument(`${MODULE}:s1`, resolverDef)
+
+    const output = resolver.render({ attrs: {} }) as ReturnType<typeof m>
+    m.render(root, output as ReturnType<typeof m>)
+    registry.flush()
+
+    const resolverId = idOf(registry, resolver as object)
+    const pageId = idOf(registry, (output as unknown as { state: object }).state)
+    expect(registry.recordOf(pageId)?.parentId).toBe(resolverId)
+    expect(registry.recordOf(resolverId)?.childIds).toContain(pageId)
+  })
+
+  it("persists across repeated render() calls — a resolver has no unmount signal", () => {
+    const { registry } = setup({ mode: "components" })
+    const resolverDef: RouteResolverDef = { render: () => m("div.page", "v1") }
+    const resolver = registry.instrument(`${MODULE}:s1`, resolverDef)
+    m.render(root, resolver.render({ attrs: {} }) as ReturnType<typeof m>)
+    registry.flush()
+    const id = idOf(registry, resolver as object)
+
+    // The route changes away and back — the same resolver object gets
+    // called again; the same instance id stays mounted throughout.
+    m.render(root, resolver.render({ attrs: {} }) as ReturnType<typeof m>)
+    registry.flush()
+    expect(registry.idOf(resolver as object)).toBe(id)
+    expect(registry.recordOf(id)?.mounted).toBe(true)
+  })
+})
+
+describe("function-declaration closures — a known, permanent limitation (task 0017)", () => {
+  it("wrapping a bare function reference is inert once Mithril calls the original, unrebound binding", () => {
+    const { registry } = setup()
+    function Widget() {
+      return { view: () => m("div.widget") }
+    }
+    // `instrument()` is still called (the transform emits a registration
+    // statement even for declarations) but its return is discarded — real
+    // `m(Widget)` usage always resolves through the ORIGINAL, untouched
+    // `Widget` binding, since a `function` declaration can't be rebound the
+    // way `const Widget = () => {...}` can (§9.2, runtime README "Known
+    // Phase 1 limitations"). No heuristic distinguishes the two forms from
+    // a bare function reference alone (both can carry a `.name`), so this
+    // can't be detected and worked around at the runtime layer.
+    registry.instrument(`${MODULE}:s1`, Widget)
+    const usage = m(Widget as unknown as Component)
+    m.render(root, usage)
+    registry.flush()
+
+    // No instance is ever tracked: the runtime has no reference to whatever
+    // `instrument()` returned, and there is no way to intercept calls to a
+    // bare function reference without either global-`m` interception
+    // (forbidden, ADR-005) or a transform-side call-site rewrite (out of
+    // this task's runtime-only scope).
+    expect(registry.idOf(usage.state as object)).toBeUndefined()
+  })
+
+  it("instrument()'s return, if actually bound at the call site, does track — the gap is call-site binding, not the wrapping mechanism", () => {
+    const { registry } = setup()
+    function Widget() {
+      return { view: () => m("div.widget") }
+    }
+    const Wrapped = registry.instrument(`${MODULE}:s1`, Widget)
+    // Using the wrapped reference (as a `const X = <expr>` binding could)
+    // tracks correctly, confirming the limitation above is specifically
+    // about declaration-form bindings the transform can't rebind.
+    const usage = m(Wrapped as unknown as Component)
+    m.render(root, usage)
+    expect(registry.idOf(usage.state as object)).toBeDefined()
+  })
+})
+
+describe("keyed reorder identity (task 0017)", () => {
+  it("keeps each item's ComponentId attached to its own state object across an interleaved move + insert + remove, not screen position", () => {
+    const { registry } = setup()
+    const Item: Component<{ label: string }> = { view: (vnode) => m("li", vnode.attrs.label) }
+    const InstrumentedItem = registry.instrument(`${MODULE}:s2`, Item)
+    const List: Component<{ order: string[] }> = {
+      view: (vnode) =>
+        m(
+          "ul",
+          vnode.attrs.order.map((label) => m(InstrumentedItem, { key: label, label })),
+        ),
+    }
+    const InstrumentedList = registry.instrument(`${MODULE}:s1`, List)
+
+    m.render(root, m(InstrumentedList, { order: ["a", "b", "c", "d"] }))
+    registry.flush()
+    const idByLabel = new Map<string, ComponentId>()
+    for (const li of Array.from(root.querySelectorAll("li"))) {
+      idByLabel.set(li.textContent ?? "", registry.resolveDomComponent(li)!)
+    }
+    expect([...idByLabel.keys()]).toEqual(["a", "b", "c", "d"])
+
+    // One redraw that simultaneously: removes "b", inserts new item "e"
+    // between "a" and "c", and moves "d" to the front — not a simple
+    // pairwise swap.
+    m.render(root, m(InstrumentedList, { order: ["d", "a", "e", "c"] }))
+    registry.flush()
+
+    const idByLabelAfter = new Map<string, ComponentId>()
+    for (const li of Array.from(root.querySelectorAll("li"))) {
+      idByLabelAfter.set(li.textContent ?? "", registry.resolveDomComponent(li)!)
+    }
+    expect([...idByLabelAfter.keys()]).toEqual(["d", "a", "e", "c"])
+
+    // Surviving items kept their id — identity follows the state object
+    // (Mithril's own keyed-diff carryover), not the DOM/render position.
+    expect(idByLabelAfter.get("a")).toBe(idByLabel.get("a"))
+    expect(idByLabelAfter.get("c")).toBe(idByLabel.get("c"))
+    expect(idByLabelAfter.get("d")).toBe(idByLabel.get("d"))
+    // The new item got a fresh id, distinct from every surviving one.
+    expect(idByLabelAfter.get("e")).not.toBe(undefined)
+    expect([...idByLabel.values()]).not.toContain(idByLabelAfter.get("e"))
+    // The removed item's id is no longer live.
+    expect(registry.isMapped(idByLabel.get("b")!)).toBe(false)
   })
 })

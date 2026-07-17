@@ -111,3 +111,57 @@ jsdom):
   by ADR-105's `onremove` wrapper (task 0006); tree ordering remains task 0017.
 - Verified on Mithril 2.3.8 only; the `vnode.state` carryover contract
   should be re-checked when bumping the supported Mithril range.
+
+## Production implementation (task 0017)
+
+The runtime (`packages/runtime/src/components.ts`) carries this spike's
+mechanism forward with one correction and two extensions, plus resolves the
+open follow-ups above.
+
+- **Class components: mutation, not reassignment.** The spike's write-up
+  above says "wrapping must happen at build time" and ADR-105 calls the class
+  mechanism "a prototype facade... applied to... a prototype facade" without
+  pinning down *how*. The production implementation tried reassigning
+  `Klass.prototype` to a fresh `Object.create(originalPrototype)` facade
+  first (matching the object/closure `Object.create(app)` pattern one level
+  up) — this **fails**: a `class` constructor's `.prototype` property is
+  non-writable in strict mode (unlike a plain `function`), so the assignment
+  throws. The actual mechanism: snapshot the original `view`/hooks into a
+  plain object, build the same composed wrapper `composeHooks` already
+  produces for object/closure (delegating to that snapshot, not to the live
+  prototype — avoiding self-recursion), and copy its own properties directly
+  onto the *existing* prototype object as own-property overwrites. This still
+  needs no `vnode.state` carrier changes and preserves `instanceof`/
+  `.constructor` (only specific methods are overwritten, not the prototype
+  chain itself), but it is more invasive than the object/closure path: it
+  mutates an object the application's own code still holds a reference to,
+  rather than returning an untouched-original-plus-new-facade pair. This is
+  unavoidable for a declaration-form binding the transform can't rebind.
+- **`childIds` render order resolved.** The flush-time rendered-tree walk
+  (ADR-101's `visitForOwnership`) now threads the current parent through its
+  recursion and rebuilds each visited parent's `childIds` fresh on every
+  flush, replacing the creation-order array this ADR flagged. Parent*id*
+  linkage stays lexical (per this ADR's existing decision); only the
+  *ordering* of `childIds` changed, from creation order to current render
+  order.
+- **Route-resolvers added as a same-pattern extension.** An `m.route()` table
+  entry shaped `{ render, onmatch? }` has no `vnode.state` of its own — Mithril
+  calls `resolver.render(vnode)` as a plain method (confirmed against
+  `mithril/api/router.js`), so the wrapped resolver object itself (`this` at
+  call time) is the identity carrier, allocated lazily as a root instance
+  (parentId `null`) since nothing lexically owns it. This is runtime-only:
+  the transform doesn't detect `{render}` shapes in a real route table (§6.5
+  scope), so it activates via `instrument()`/`inspectComponent()` directly,
+  not automatically for an app's actual routes yet.
+- **Hidden-subtree exclusion (§14) filters at the read boundary**, not at
+  wrap time — `markInspectorHidden` can be called before or after
+  `instrument()` ran for the same definition, so wrap-time gating can't
+  reliably see it. Instances stay uniformly tracked; `recordOf`,
+  `componentsSnapshot` and `resolveDomComponent` skip a hidden instance and
+  everything transitively owned by it.
+- **Mode gating (§17).** Object/closure tracking predates the mode gate — it
+  was pulled forward into the default `"source"` mode for the 0.1.0-alpha.1
+  release (task 0016) and stays unconditional so that release doesn't
+  regress. `mode: "components"`/`"full"` gate only the *new* kinds this task
+  adds (class, route-resolver), which had no earlier shipped behavior to
+  preserve.

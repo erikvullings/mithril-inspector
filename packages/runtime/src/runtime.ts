@@ -163,6 +163,7 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
     emit: notify,
     ...(options.now ? { now: options.now } : {}),
     onActivity: () => scheduleFlush(),
+    getMode: () => mode,
   })
 
   let flushScheduled = false

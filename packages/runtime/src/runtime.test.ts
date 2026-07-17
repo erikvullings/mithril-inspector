@@ -227,4 +227,31 @@ describe("InspectorRuntime end-to-end", () => {
     await Promise.resolve()
     expect(auto.resolveDomSource(root.querySelector("div.auto")!)?.line).toBe(4)
   })
+
+  it("wires getMode through to the component registry (task 0017 mode gating)", () => {
+    class Widget implements Component {
+      view() {
+        return m("div.widget")
+      }
+    }
+    // Default mode ("source"): class components stay inert end-to-end
+    // through the runtime's own `component()` entry point, not just the
+    // registry in isolation.
+    runtime.component(`${MODULE}:s1`, Widget)
+    const inertUsage = m(Widget)
+    m.render(root, inertUsage)
+    expect(runtime.components.idOf(inertUsage.state as object)).toBeUndefined()
+
+    const componentsMode = createRuntime({ schedule: () => {}, mode: "components" })
+    componentsMode.registerSourceModule(MODULE, registration)
+    class OtherWidget implements Component {
+      view() {
+        return m("div.other")
+      }
+    }
+    componentsMode.component(`${MODULE}:s1`, OtherWidget)
+    const activeUsage = m(OtherWidget)
+    m.render(root, activeUsage)
+    expect(componentsMode.components.idOf(activeUsage.state as object)).toBeDefined()
+  })
 })

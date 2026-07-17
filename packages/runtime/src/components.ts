@@ -18,6 +18,16 @@ interface AppComponent {
 
 type ComponentKind = ComponentRecord["kind"]
 
+/**
+ * Local mirror of `runtime.ts`'s `InspectorMode` (not imported, to avoid a
+ * circular dependency — `runtime.ts` imports `createComponentRegistry` from
+ * here). §17: `source` ships element/source mapping only; `components`/`full`
+ * activate the heavier instance-tracking kinds this task adds (class,
+ * route-resolver). Object/closure tracking predates the mode gate (task 0016
+ * pulled it forward for the shipped alpha) and stays active in every mode.
+ */
+type RegistryMode = "source" | "components" | "full"
+
 /** Per-definition metadata captured once at instrument time. */
 interface DefMeta {
   readonly qualifiedId: string
@@ -92,6 +102,8 @@ export interface ComponentRegistryOptions {
   readonly now?: () => number
   /** Called when a component renders, so the runtime can schedule a flush. */
   readonly onActivity?: () => void
+  /** Live mode accessor (§17); default always reports `"source"`. */
+  readonly getMode?: () => RegistryMode
 }
 
 function isComponentTag(tag: unknown): boolean {
@@ -103,7 +115,28 @@ function isObjectComponent(def: unknown): def is AppComponent {
   return def !== null && typeof def === "object" && typeof (def as { view?: unknown }).view === "function"
 }
 
-function isClassComponent(def: unknown): boolean {
+/** A class whose prototype carries `view` (§6.5 class form). */
+interface ComponentClass {
+  prototype: AppComponent
+}
+
+/**
+ * A Mithril `RouteResolver` (`m.route()` table entry shaped like
+ * `{ render, onmatch? }` instead of `{ view }`). Confirmed against
+ * `mithril/api/router.js`: `RouterRoot.view()` calls `currentResolver.render(vnode)`
+ * directly — no other lifecycle hooks apply to the resolver itself.
+ */
+interface RouteResolver {
+  render: (this: unknown, vnode: unknown) => unknown
+}
+
+function isRouteResolver(def: unknown): def is RouteResolver {
+  if (def === null || typeof def !== "object") return false
+  const candidate = def as { render?: unknown; view?: unknown }
+  return typeof candidate.render === "function" && typeof candidate.view !== "function"
+}
+
+function isClassComponent(def: unknown): def is ComponentClass {
   if (typeof def !== "function") return false
   const proto = (def as { prototype?: { view?: unknown } }).prototype
   return proto != null && typeof proto.view === "function"
@@ -116,6 +149,7 @@ export function createComponentRegistry(
   const emit = options.emit ?? (() => {})
   const now = options.now ?? Date.now
   const onActivity = options.onActivity ?? (() => {})
+  const getMode = options.getMode ?? (() => "source")
   let nextInstance = 0
 
   // vnode.state is the one object Mithril carries across redraws, so it is the
@@ -165,7 +199,6 @@ export function createComponentRegistry(
     byState.set(state, record)
     byId.set(record.id, record)
     if (owner === undefined) roots.add(record)
-    else owner.childIds.push(record.id)
     addedThisBatch.push(record)
     return record
   }
@@ -278,6 +311,78 @@ export function createComponentRegistry(
     return wrapped
   }
 
+  /**
+   * Class components (ADR-103 "prototype facade"): a class constructor's own
+   * `.prototype` property is non-writable (verified: `class Klass {}` throws
+   * on `Klass.prototype = x` in strict mode, unlike a plain `function`), so
+   * — unlike the object/closure path — the wrap can't be a fresh
+   * `Object.create` reference swapped in. Instead, snapshot the original
+   * `view`/hooks into a plain object first (so the wrapped functions close
+   * over the *originals*, not the live prototype), build the same composed
+   * wrapper `composeHooks` uses for object/closure, and copy its own
+   * properties directly onto the existing prototype object. Mutating the one
+   * prototype object every instance already shares is the only mechanism
+   * available for a declaration-form binding that can't be rebound.
+   */
+  const instrumentClassPrototype = (proto: AppComponent, meta: DefMeta): void => {
+    const original: AppComponent = {
+      view: proto.view,
+      ...(proto.oninit ? { oninit: proto.oninit } : {}),
+      ...(proto.oncreate ? { oncreate: proto.oncreate } : {}),
+      ...(proto.onbeforeupdate ? { onbeforeupdate: proto.onbeforeupdate } : {}),
+      ...(proto.onupdate ? { onupdate: proto.onupdate } : {}),
+      ...(proto.onbeforeremove ? { onbeforeremove: proto.onbeforeremove } : {}),
+      ...(proto.onremove ? { onremove: proto.onremove } : {}),
+    }
+    // `composeHooks` always defines all six wrapped hooks as own properties
+    // (never `undefined`) — see its body — so the non-null assertions below
+    // just recover that guarantee past `AppComponent`'s optional typing.
+    const wrapped = composeHooks(original, meta)
+    proto.view = wrapped.view
+    proto.oninit = wrapped.oninit!
+    proto.oncreate = wrapped.oncreate!
+    proto.onbeforeupdate = wrapped.onbeforeupdate!
+    proto.onupdate = wrapped.onupdate!
+    proto.onbeforeremove = wrapped.onbeforeremove!
+    proto.onremove = wrapped.onremove!
+  }
+
+  /**
+   * Route-resolvers (`m.route()` table entries shaped `{ render }`): a
+   * resolver is an inline object expression, always rebindable at its
+   * definition site (unlike a class/function *declaration*), so — like
+   * object components — the wrap can be a fresh `Object.create` facade
+   * returned as a new reference. It differs from a component's `view` in two
+   * ways: Mithril calls `resolver.render(vnode)` as a plain method (no
+   * `oninit`/`oncreate`/etc. — confirmed against `mithril/api/router.js`),
+   * and there is no `vnode.state` of its own to key identity on, since
+   * Mithril never constructs or factory-calls the resolver — `this` at call
+   * time (the resolver object) is the only stable per-instance carrier.
+   * Allocated lazily as a *root* (no lexical owner ever tags it) so it plugs
+   * into the existing root flush-walk with no other changes. A resolver also
+   * has no unmount signal (it simply stops being called when the route
+   * changes) — once allocated it stays `mounted: true` for the app's
+   * lifetime.
+   */
+  const composeRouteResolver = (def: RouteResolver, meta: DefMeta): RouteResolver => {
+    const wrapped: RouteResolver = Object.create(def)
+    wrapped.render = function (this: unknown, vnode: unknown) {
+      onActivity()
+      const state = this as object
+      const record = byState.get(state) ?? allocate(state, vnode as object, meta)
+      scopeStack.push(record)
+      try {
+        const result = def.render.call(this, vnode)
+        record.latestVnode = result as Rendered
+        recordOwnedVnodes(record, result)
+        return result
+      } finally {
+        scopeStack.pop()
+      }
+    }
+    return wrapped
+  }
+
   // A component's view creates child component vnodes within its own scope; the
   // stack lets `recordOwnedVnodes` attribute them to the right lexical parent.
   const scopeStack: InstanceRecord[] = []
@@ -293,11 +398,14 @@ export function createComponentRegistry(
 
   // Walk a mounted root's rendered tree once, registering every top-level node of
   // each component's range outermost → innermost so the innermost owner wins.
+  // Also rebuilds `childIds` in current render order (ADR-103 follow-up, task
+  // 0017) — cleared and repopulated fresh at each visited parent every flush,
+  // rather than accumulated once at allocation time.
   const visitForOwnership = (root: InstanceRecord): void => {
-    const visit = (value: unknown): void => {
+    const visit = (value: unknown, parent: InstanceRecord): void => {
       if (value === null || typeof value !== "object") return
       if (Array.isArray(value)) {
-        for (const child of value) visit(child)
+        for (const child of value) visit(child, parent)
         return
       }
       const vnode = value as Rendered
@@ -307,15 +415,24 @@ export function createComponentRegistry(
         if (record !== undefined) {
           record.latestVnode = vnode
           eachRangeNode(domRangeOf(vnode), (node) => registerRange(node, record.id))
+          // The walk's own root vnode self-matches here (it is a component,
+          // and `parent` starts out as `root` itself) — only record a
+          // parent/child link for an actual descendant, not the root's own
+          // (already-cleared) `childIds`.
+          if (record !== parent) parent.childIds.push(record.id)
+          record.childIds.length = 0
+          visit(vnode.instance, record)
+        } else {
+          visit(vnode.instance, parent)
         }
-        visit(vnode.instance)
         return
       }
       if (typeof vnode.tag === "string" && vnode.tag !== "#" && vnode.tag !== "<") {
-        visit(vnode.children)
+        visit(vnode.children, parent)
       }
     }
-    visit(root.latestVnode)
+    root.childIds.length = 0
+    visit(root.latestVnode, root)
   }
 
   const resolveDisplayName = (record: InstanceRecord): string => {
@@ -330,15 +447,35 @@ export function createComponentRegistry(
     return "Anonymous"
   }
 
+  // §14: a hidden definition excludes its instance *and* subtree from
+  // records. Filtered at the read boundary (not at instrument/allocate time)
+  // since `markInspectorHidden` can be called before or after `instrument()`
+  // ran for the same def — tracking itself stays uniform for every instance.
+  const isVisible = (record: InstanceRecord): boolean => {
+    let current: InstanceRecord | undefined = record
+    while (current !== undefined) {
+      if (hidden.has(current.meta.def)) return false
+      current = current.parentId === null ? undefined : byId.get(current.parentId)
+    }
+    return true
+  }
+
   const toRecord = (record: InstanceRecord): ComponentRecord => {
     const source = record.meta.qualifiedId === "" ? null : sources.resolveSource(record.meta.qualifiedId)
     const range = record.latestVnode === null ? null : domRangeOf(record.latestVnode)
+    const displayName = resolveDisplayName(record)
+    // "anonymous" is a read-time refinement of the structural "object" kind
+    // (§2.4 "anonymous or unknown component"): an inline literal with no
+    // discoverable name at all. Kind stays structural at allocate time since
+    // display-name resolution depends on source-registry state that may not
+    // be populated yet when `instrument()` runs.
+    const kind = record.meta.kind === "object" && displayName === "Anonymous" ? "anonymous" : record.meta.kind
     return {
       id: record.id,
       parentId: record.parentId,
-      displayName: resolveDisplayName(record),
+      displayName,
       source,
-      kind: record.meta.kind,
+      kind,
       attrs: record.latestVnode?.attrs ?? null,
       state: record.latestVnode?.state ?? null,
       mounted: record.mounted,
@@ -366,6 +503,26 @@ export function createComponentRegistry(
         }
         return wrapped as T
       }
+      // Class components (task 0017, ADR-103 "prototype facade"): a class
+      // *declaration*'s binding can't be rebound by the transform (unlike
+      // `const X = <expr>`), so interception has to mutate the prototype the
+      // class already has, not return a different reference — this works
+      // identically whether `def` came from a declaration or a
+      // `const X = class {}` expression. Only active outside `mode: "source"`
+      // (§17; object/closure tracking predates the mode gate and stays
+      // unconditional — see the runtime README's mode table).
+      if (isClassComponent(def) && getMode() !== "source") {
+        instrumentClassPrototype(def.prototype, { qualifiedId, def: def as object, kind: "class" })
+        return def as T
+      }
+      // Route-resolvers (task 0017): runtime-only detection reachable via
+      // this method / the public `inspectComponent()` API — the transform
+      // doesn't yet find `{render, onmatch}` table entries in real
+      // `m.route()` config (§6.5 only detects `view`-shaped components), so
+      // real end-to-end tracking needs a follow-up transform change.
+      if (isRouteResolver(def) && getMode() !== "source") {
+        return composeRouteResolver(def, { qualifiedId, def: def as object, kind: "route-resolver" }) as T
+      }
       return def
     },
     idOf(state) {
@@ -373,7 +530,7 @@ export function createComponentRegistry(
     },
     recordOf(id) {
       const record = byId.get(id)
-      return record === undefined ? undefined : toRecord(record)
+      return record === undefined || !isVisible(record) ? undefined : toRecord(record)
     },
     isMapped(id) {
       return byId.has(id)
@@ -407,7 +564,13 @@ export function createComponentRegistry(
     resolveDomComponent(node) {
       for (let current: Node | null = node; current !== null; current = current.parentNode) {
         const owners = byNode.get(current)?.owners
-        if (owners !== undefined && owners.length > 0) return owners[owners.length - 1] ?? null
+        if (owners === undefined) continue
+        for (let i = owners.length - 1; i >= 0; i--) {
+          const id = owners[i]
+          if (id === undefined) continue
+          const record = byId.get(id)
+          if (record !== undefined && isVisible(record)) return id
+        }
       }
       return null
     },
@@ -428,7 +591,9 @@ export function createComponentRegistry(
     },
     componentsSnapshot() {
       const snapshot = new Map<ComponentId, ComponentRecord>()
-      for (const record of byId.values()) snapshot.set(record.id, toRecord(record))
+      for (const record of byId.values()) {
+        if (isVisible(record)) snapshot.set(record.id, toRecord(record))
+      }
       return snapshot
     },
   }

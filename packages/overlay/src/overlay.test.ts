@@ -193,3 +193,73 @@ describe("mountInspectorOverlay — picker wiring (§8.4–8.7)", () => {
     second?.dispose()
   })
 })
+
+describe("mountInspectorOverlay — modal <dialog> detection (§8.2 known limitation)", () => {
+  let originalQuerySelector: typeof document.querySelector
+
+  afterEach(() => {
+    if (originalQuerySelector) document.querySelector = originalQuerySelector
+  })
+
+  it("records a diagnostic when a native dialog becomes modal (jsdom has no real :modal, so querySelector is stubbed)", async () => {
+    const dialog = document.createElement("dialog")
+    document.body.appendChild(dialog)
+
+    handle = mountInspectorOverlay({}, { hook: fakeHook() })
+    expect(handle!.controller.diagnostics.list()).toHaveLength(0)
+
+    originalQuerySelector = document.querySelector.bind(document)
+    document.querySelector = ((selector: string) => (selector === ":modal" ? dialog : originalQuerySelector(selector))) as typeof document.querySelector
+
+    dialog.setAttribute("open", "")
+    // MutationObserver callbacks land in a microtask after the current task.
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+
+    const diagnostics = handle!.controller.diagnostics.list()
+    expect(diagnostics).toHaveLength(1)
+    expect(diagnostics[0]?.feature).toBe("modal-dialog")
+    expect(diagnostics[0]?.message).toContain("top-layer")
+  })
+
+  it("does not re-record while the dialog stays modal, but does after it closes and reopens", async () => {
+    const dialog = document.createElement("dialog")
+    document.body.appendChild(dialog)
+
+    handle = mountInspectorOverlay({}, { hook: fakeHook() })
+    originalQuerySelector = document.querySelector.bind(document)
+    let modal = false
+    document.querySelector = ((selector: string) => (selector === ":modal" ? (modal ? dialog : null) : originalQuerySelector(selector))) as typeof document.querySelector
+
+    modal = true
+    dialog.setAttribute("open", "")
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    dialog.setAttribute("open", "open") // still modal, re-set to trigger another mutation
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    expect(handle!.controller.diagnostics.list()).toHaveLength(1)
+
+    modal = false
+    dialog.removeAttribute("open")
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    modal = true
+    dialog.setAttribute("open", "")
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    expect(handle!.controller.diagnostics.list()).toHaveLength(2)
+  })
+
+  it("dispose() disconnects the observer", async () => {
+    const dialog = document.createElement("dialog")
+    document.body.appendChild(dialog)
+
+    handle = mountInspectorOverlay({}, { hook: fakeHook() })
+    originalQuerySelector = document.querySelector.bind(document)
+    document.querySelector = ((selector: string) => (selector === ":modal" ? dialog : originalQuerySelector(selector))) as typeof document.querySelector
+
+    const controller = handle!.controller
+    handle!.dispose()
+    handle = null
+
+    dialog.setAttribute("open", "")
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    expect(controller.diagnostics.list()).toHaveLength(0)
+  })
+})

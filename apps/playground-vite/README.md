@@ -85,6 +85,18 @@ grep -r "__MITHRIL_INSPECTOR__\|__miRegisterModule\|__miSource\|mountInspectorOv
 # no matches
 ```
 
+## Known limitation: the `/dialog` route
+
+Opening the native `<dialog>` on this route via `showModal()` blocks the
+inspector overlay entirely — the browser promotes the dialog into the "top
+layer," which paints above the overlay regardless of z-index and makes the
+rest of the page inert to both pointer and keyboard input while it's open.
+Closing the dialog restores the overlay. This is a known Phase-1 limitation
+(not a bug); see `@mithril-inspector/overlay`'s README for the full
+explanation. The overlay detects it via the `:modal` CSS pseudo-class and
+records a `"modal-dialog"` diagnostic, visible in the Settings panel once the
+dialog closes.
+
 ## HMR
 
 Edit any page/component's text while `pnpm dev` is running. Mithril has no

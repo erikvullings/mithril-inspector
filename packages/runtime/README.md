@@ -107,4 +107,3 @@ import {
   not yet gate behaviour differently.
 - `inspectSource` and per-node vnode ids in `getSnapshot` are placeholders for
   later phases.
-```

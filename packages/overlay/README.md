@@ -94,3 +94,21 @@ CSS, which conflicts with the shadow-root / no-global-styles constraint (§8.1,
 - Real-browser integration (playground, Chromium/Firefox/Safari) is exercised by
   the Vite playground (0014) and browser tests (0015); this package is unit- and
   jsdom-tested in isolation.
+- **A native `<dialog>` opened with `showModal()` blocks the overlay entirely.**
+  `showModal()` promotes the dialog into the browser's top layer, which paints
+  above the shadow-root host regardless of z-index, and makes the rest of the
+  document inert — pointer *and* keyboard events aimed at the overlay never
+  arrive while the dialog is open (confirmed empirically: a bare capture-phase
+  `keydown` listener on `document` receives zero events, even though
+  `document.activeElement` correctly sits inside the dialog). There is no
+  supported way to intercept or work around this from outside the dialog's own
+  subtree — a real fix would mean promoting the overlay itself into the top
+  layer (Popover API), which only helps interacting with the overlay (not
+  picking elements hidden behind the dialog anyway) and is out of scope for
+  Phase 1. Instead, `mountInspectorOverlay` watches for `:modal` via a
+  `MutationObserver` on the `open` attribute and records a `"modal-dialog"`
+  diagnostic (visible in the Settings panel once the dialog closes, and via
+  `console.warn` in `debug` mode) so the silence is explained rather than
+  silently swallowed. Ordinary custom "modal" UIs built from a plain
+  `position: fixed` div are unaffected — the overlay's host already always wins
+  normal z-index stacking (`z-index: 2147483000`, last child of `document.body`).

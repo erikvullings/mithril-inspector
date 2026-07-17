@@ -112,6 +112,35 @@ export function mountInspectorOverlay(
   doc.addEventListener("scroll", onScrollOrResize, true)
   win?.addEventListener("resize", onScrollOrResize)
 
+  // --- Modal <dialog> detection (known Phase-1 limitation, §8.2) ---------
+  // `showModal()` promotes a <dialog> into the browser's top layer, which
+  // paints above the shadow-root host regardless of z-index and makes the
+  // rest of the document inert — pointer and keyboard events aimed at the
+  // overlay never arrive while one is open, so there is nothing the overlay
+  // itself can intercept to react on click/keydown. `:modal` is the one
+  // reliable, spec-defined signal, so it's polled passively via a
+  // MutationObserver on the `open` attribute instead.
+  const MutationObserverImpl = (globalThis as unknown as { MutationObserver?: typeof MutationObserver })
+    .MutationObserver
+  let modalOpen = false
+  const checkModalState = (): void => {
+    const isModal = doc.querySelector(":modal") !== null
+    if (isModal === modalOpen) return
+    modalOpen = isModal
+    if (isModal) {
+      controller.diagnostics.record(
+        "modal-dialog",
+        new Error(
+          "A native <dialog> is open in modal state (showModal()). The browser's top-layer/inert " +
+            "semantics block pointer and keyboard events from reaching the inspector until it closes " +
+            "— known Phase-1 limitation, not a bug.",
+        ),
+      )
+    }
+  }
+  const modalObserver = MutationObserverImpl ? new MutationObserverImpl(checkModalState) : null
+  modalObserver?.observe(doc.documentElement, { subtree: true, attributes: true, attributeFilter: ["open"] })
+
   let disposed = false
   return {
     controller,
@@ -128,6 +157,7 @@ export function mountInspectorOverlay(
       doc.removeEventListener("keyup", onKeyUp, true)
       doc.removeEventListener("scroll", onScrollOrResize, true)
       win?.removeEventListener("resize", onScrollOrResize)
+      modalObserver?.disconnect()
       m.mount(mountPoint, null)
       host.remove()
     },

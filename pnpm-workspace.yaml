@@ -1,4 +1,9 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "tests/browser"
   - "tests/fixtures/spikes/*"
+
+# Puppeteer's postinstall script downloads its bundled Chromium (tests/browser, task 0015).
+onlyBuiltDependencies:
+  - puppeteer

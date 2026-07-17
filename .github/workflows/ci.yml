@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }}, ${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # §19.3 compatibility matrix: active Node.js LTS versions.
+        node: ["lts/-1", "lts/*"]
+        # §19.3: Chromium runs today; Firefox once @mithril-inspector/browser-tests
+        # supports it; Safari is best-effort for the in-page overlay only and has
+        # no CI runner. Only "chromium" is wired up (task 0015) — the others are
+        # placeholders so the matrix already reflects the target support surface.
+        browser: [chromium]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      # Real Vite dev servers + real headless Chromium (task 0015, §19.2/§25.6):
+      # gates every milestone, so it runs in the same job as the rest of CI.
+      - run: pnpm test:browser

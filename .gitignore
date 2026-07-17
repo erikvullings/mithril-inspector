@@ -5,3 +5,4 @@ coverage/
 .DS_Store
 .exec-tmp-*/
 .build-test-*/
+.browser-fixture-*/

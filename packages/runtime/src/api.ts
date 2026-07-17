@@ -35,6 +35,13 @@ export function setInspectorDisplayName(def: object, name: string): void {
   getRuntime().setInspectorDisplayName(def, name)
 }
 
+/**
+ * Alias of {@link setInspectorDisplayName}. REQUIREMENTS.md spells the same
+ * explicit-name API `defineInspectorName` in §9.2 and `setInspectorDisplayName`
+ * in §14 — both names are supported and behave identically.
+ */
+export const defineInspectorName = setInspectorDisplayName
+
 /** Hide a component definition from the inspector's component tree (§14). */
 export function markInspectorHidden(def: object): void {
   getRuntime().markInspectorHidden(def)

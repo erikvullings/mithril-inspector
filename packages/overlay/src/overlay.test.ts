@@ -143,6 +143,28 @@ describe("mountInspectorOverlay — picker wiring (§8.4–8.7)", () => {
     expect(rect!.style.width).toBe("40px")
   })
 
+  it("marks an inferred component name in the hover badge (§2.4, task 0018)", () => {
+    const app = document.createElement("article")
+    app.getBoundingClientRect = () =>
+      ({ left: 4, top: 8, width: 40, height: 20, right: 44, bottom: 28, x: 4, y: 8, toJSON: () => ({}) }) as DOMRect
+    document.body.appendChild(app)
+
+    const hook = fakeHook({
+      componentRecord: (id) => ({ id, displayName: "Page", displayNameInferred: true }) as ComponentRecord,
+    })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.startPicker()
+    originalEfp = document.elementsFromPoint
+    document.elementsFromPoint = () => [app]
+    handle!.controller.handlePointerMove(10, 10)
+    render()
+
+    const badge = handle!.shadowRoot.querySelector(".mi-hb-component")
+    expect(badge?.textContent).toContain("Page")
+    expect(badge?.textContent).toContain("Inferred")
+    expect(badge?.querySelector(".mi-precision-inferred")).not.toBeNull()
+  })
+
   it("suppresses the application click handler on select (§8.7, browser criterion #9)", () => {
     const button = document.createElement("button")
     const appClick = vi.fn()

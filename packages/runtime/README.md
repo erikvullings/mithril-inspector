@@ -94,11 +94,34 @@ For application patterns the transform cannot reach:
 import {
   inspectComponent,        // instrument a component explicitly (functional)
   setInspectorDisplayName, // override a component's display name (functional)
+  defineInspectorName,     // alias of setInspectorDisplayName — §9.2's spelling
   markInspectorHidden,     // hide a component from the tree
   setInspectorSerializer,  // attach an attrs/state redaction serializer
   inspectSource,           // reserved; returns the vnode unchanged in Phase 1
 } from "@mithril-inspector/runtime"
 ```
+
+## Display name resolution (§9.2, task 0018)
+
+`ComponentRecord.displayName` resolves strictly in this order, stopping at the
+first tier that produces a name:
+
+1. an explicit inspector name (`setInspectorDisplayName`/`defineInspectorName`, §14);
+2. `component.displayName`;
+3. the variable/export name the transform discovered for the declaration (§6.5,
+   carried in `SourceLocation.displayName`);
+4. the class name;
+5. the function name;
+6. a filename-derived name (the component's source file's basename, extension
+   stripped — e.g. `src/Page.tsx` → `"Page"`);
+7. `"Anonymous"`.
+
+`ComponentRecord.displayNameInferred` is `true` for tiers 6–7 and `false`
+otherwise, so the overlay (0012) can mark a guessed name as inferred (§2.4)
+instead of presenting it as authoritative. Resolution reads live from the
+source registry on every call (never cached on the instance record), so a
+renamed declaration takes effect immediately after HMR re-registers its
+module (ADR-106) — no re-instrumentation needed.
 
 ## Modes (§17, task 0017)
 

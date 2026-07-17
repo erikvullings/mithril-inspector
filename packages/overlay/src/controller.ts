@@ -24,10 +24,20 @@ import {
 
 export type OverlayTab = "inspector" | "components" | "settings"
 
+/**
+ * A resolved component display name plus whether it's a §9.2 fallback tier
+ * (filename-derived or `"Anonymous"`) rather than an explicit or declared
+ * name. The UI must distinguish the two (§2.4).
+ */
+export interface ComponentNameInfo {
+  readonly name: string
+  readonly inferred: boolean
+}
+
 /** The badge shown while hovering an instrumented element (§8.5). */
 export interface HoverInfo {
   readonly element: string
-  readonly componentName: string | null
+  readonly componentName: ComponentNameInfo | null
   readonly mapping: MappingInfo
 }
 
@@ -42,7 +52,7 @@ export interface OverlayViewState {
   readonly hoverRects: readonly HighlightRect[]
   readonly selection: SelectionSnapshot
   /** Display name of the selection's nearest component, or `null`. */
-  readonly selectedComponentName: string | null
+  readonly selectedComponentName: ComponentNameInfo | null
   readonly frozenRects: readonly HighlightRect[]
   readonly diagnostics: readonly Diagnostic[]
 }
@@ -144,8 +154,12 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       { source: null, componentId: null },
     )
 
-  const componentNameOf = (componentId: ComponentId | null): string | null =>
-    componentId === null ? null : hook?.componentRecord(componentId)?.displayName ?? null
+  const componentNameOf = (componentId: ComponentId | null): ComponentNameInfo | null => {
+    if (componentId === null) return null
+    const record = hook?.componentRecord(componentId)
+    if (record === undefined) return null
+    return { name: record.displayName, inferred: record.displayNameInferred === true }
+  }
 
   const selection = createSelectionModel((node) => resolveNode(node))
   const picker: PickerMachine = createPickerMachine()

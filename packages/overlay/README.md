@@ -56,6 +56,11 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
 - **Mapping precision (§2.4):** the UI distinguishes an *exact* element source
   from an *inferred* fallback (component view → declaration → module) with a
   colored badge.
+- **Display names (§9.2, §2.4, task 0018):** the hover badge and the details
+  panel's "Component" row show the same colored "Inferred" badge next to a
+  component name resolved via the §9.2 fallback tiers (filename-derived or
+  `"Anonymous"`), so a guessed name is never mistaken for an explicit or
+  declared one.
 - **Accessibility (§18):** semantic controls, ARIA roles (`dialog`, `tablist`,
   `tab`, `status`), visible focus indicators, WCAG AA contrast, reduced-motion
   support, a visible picker-active banner, and light/dark theming that follows

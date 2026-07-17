@@ -84,6 +84,12 @@ export interface ComponentRecord {
   id: ComponentId
   parentId: ComponentId | null
   displayName: string
+  /**
+   * Whether `displayName` came from a heuristic fallback (filename-derived or
+   * `"Anonymous"`, §9.2 tiers 6-7) rather than an explicit or declared name
+   * (tiers 1-5). The UI must distinguish exact from inferred names (§2.4).
+   */
+  displayNameInferred: boolean
   source: SourceLocation | null
   kind: "object" | "closure" | "class" | "function" | "route-resolver" | "anonymous"
   attrs: unknown
@@ -100,6 +106,7 @@ export interface ComponentPatch {
   id: ComponentId
   parentId?: ComponentId | null
   displayName?: string
+  displayNameInferred?: boolean
   source?: SourceLocation | null
   kind?: ComponentRecord["kind"]
   attrs?: unknown

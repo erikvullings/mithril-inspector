@@ -39,6 +39,7 @@ export function getInspectorHook(): InspectorRuntime {
 }
 
 export {
+  defineInspectorName,
   inspectComponent,
   inspectSource,
   markInspectorHidden,

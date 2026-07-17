@@ -74,6 +74,7 @@ describe("createComponentRegistry", () => {
     const record = registry.recordOf(id)
     expect(record?.kind).toBe("anonymous")
     expect(record?.displayName).toBe("Anonymous")
+    expect(record?.displayNameInferred).toBe(true)
   })
 
   it("invokes every application hook with `this === state` and preserves return values", () => {
@@ -773,5 +774,157 @@ describe("keyed reorder identity (task 0017)", () => {
     expect([...idByLabel.values()]).not.toContain(idByLabelAfter.get("e"))
     // The removed item's id is no longer live.
     expect(registry.isMapped(idByLabel.get("b")!)).toBe(false)
+  })
+})
+
+describe("display name resolution (§9.2, task 0018)", () => {
+  it("tier 1: an explicit inspector name wins over component.displayName and the transform-discovered name", () => {
+    const { registry } = setup()
+    const def = { view: () => m("div"), displayName: "FromApp" } as Component & { displayName: string }
+    registry.setDisplayName(def, "FromOverride")
+    // s1's transform-discovered name is "App" (setup()); def.displayName is "FromApp".
+    const App = registry.instrument(`${MODULE}:s1`, def)
+    const usage = m(App)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.displayName).toBe("FromOverride")
+    expect(record?.displayNameInferred).toBe(false)
+  })
+
+  it('tier 2: component.displayName ("UserCard.displayName = ...") wins over the transform-discovered name', () => {
+    const { registry } = setup()
+    const def = { view: () => m("div"), displayName: "UserCard" } as Component & { displayName: string }
+    // s1's transform-discovered name is "App" (setup()) — displayName must win.
+    const App = registry.instrument(`${MODULE}:s1`, def)
+    const usage = m(App)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.displayName).toBe("UserCard")
+    expect(record?.displayNameInferred).toBe(false)
+  })
+
+  it("tier 3: the transform-discovered variable/export name wins over the definition's own function name", () => {
+    const { registry } = setup()
+    function Something(): { view: () => unknown } {
+      return { view: () => m("div") }
+    }
+    // s1's transform-discovered name is "App" (setup()), distinct from "Something".
+    const Wrapped = registry.instrument(`${MODULE}:s1`, Something)
+    const usage = m(Wrapped as unknown as Component)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.displayName).toBe("App")
+    expect(record?.displayNameInferred).toBe(false)
+  })
+
+  it("tier 4: the class name wins over both a resolvable filename and Anonymous", () => {
+    const { sources, registry } = setup({ mode: "components" })
+    const OTHER_MODULE: ModuleId = "m:src/container.ts"
+    sources.registerModule(OTHER_MODULE, {
+      file: "/project/src/container.ts",
+      relativeFile: "src/container.ts",
+      sources: { s1: { line: 1, column: 1, kind: "component-declaration" } }, // no displayName
+    })
+    class Widget implements Component {
+      view() {
+        return m("div.widget")
+      }
+    }
+    registry.instrument(`${OTHER_MODULE}:s1`, Widget)
+    const usage = m(Widget)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.displayName).toBe("Widget") // not "container" (filename)
+    expect(record?.displayNameInferred).toBe(false)
+    expect(record?.kind).toBe("class")
+  })
+
+  it("tier 5: the function name wins over both a resolvable filename and Anonymous", () => {
+    const { sources, registry } = setup()
+    const FACTORY_MODULE: ModuleId = "m:src/factory.ts"
+    sources.registerModule(FACTORY_MODULE, {
+      file: "/project/src/factory.ts",
+      relativeFile: "src/factory.ts",
+      sources: { s1: { line: 1, column: 1, kind: "component-declaration" } }, // no displayName
+    })
+    function Counter() {
+      let count = 0
+      return { view: () => m("div", count) }
+    }
+    const Wrapped = registry.instrument(`${FACTORY_MODULE}:s1`, Counter)
+    const usage = m(Wrapped as unknown as Component)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.displayName).toBe("Counter") // not "factory" (filename)
+    expect(record?.displayNameInferred).toBe(false)
+  })
+
+  it("tier 6: falls back to a filename-derived name for an anonymous component backed by a real source location", () => {
+    const { sources, registry } = setup()
+    const PAGE_MODULE: ModuleId = "m:src/Page.tsx"
+    sources.registerModule(PAGE_MODULE, {
+      file: "/project/src/Page.tsx",
+      relativeFile: "src/Page.tsx",
+      // Mirrors an anonymous default-export component (§6.5): the transform
+      // still registers a real declaration source, just with no displayName.
+      sources: { s1: { line: 1, column: 1, kind: "component-declaration" } },
+    })
+    const Anon = registry.instrument(`${PAGE_MODULE}:s1`, { view: () => m("div") } as Component)
+    const usage = m(Anon)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.displayName).toBe("Page")
+    expect(record?.displayNameInferred).toBe(true)
+    // A filename-derived name is not "unresolvable" (§2.4), so this no longer
+    // downgrades to kind: anonymous the way a truly nameless component does.
+    expect(record?.kind).toBe("object")
+  })
+
+  // Tier 7 (Anonymous, when nothing else resolves) is covered above by
+  // "reports kind: anonymous for an inline object component with no
+  // resolvable name (§2.4)".
+
+  it("survives HMR module replacement: a re-registered source table's renamed declaration takes effect live", () => {
+    const { sources, registry } = setup()
+    const App = registry.instrument(`${MODULE}:s1`, { view: () => m("div") } as Component)
+    const usage = m(App)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    expect(registry.displayNameOf(id)).toBe("App")
+
+    // Simulate HMR: the module re-executes and re-registers its source table
+    // wholesale under the same stable module id (ADR-106), with a renamed
+    // declaration — the already-mounted instance never re-runs `instrument()`.
+    sources.registerModule(MODULE, {
+      file: "/project/src/App.ts",
+      relativeFile: "src/App.ts",
+      sources: {
+        s1: { line: 3, column: 1, kind: "component-declaration", displayName: "AppRenamed" },
+        s2: { line: 8, column: 1, kind: "component-declaration", displayName: "Row" },
+      },
+    })
+
+    expect(registry.displayNameOf(id)).toBe("AppRenamed")
+    expect(registry.recordOf(id)?.displayName).toBe("AppRenamed")
   })
 })

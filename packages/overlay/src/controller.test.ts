@@ -132,10 +132,27 @@ describe("overlay controller — hover (§8.5)", () => {
 
     const state = controller.getState()
     expect(state.hover?.element).toBe("article.user-card")
-    expect(state.hover?.componentName).toBe("UserCard")
+    expect(state.hover?.componentName).toEqual({ name: "UserCard", inferred: false })
     expect(state.hover?.mapping.precision).toBe("exact")
     expect(state.hover?.mapping.fileLine).toBe("src/UserCard.ts:17:5")
     expect(state.hoverRects).toEqual([{ left: 10, top: 20, width: 100, height: 40 }])
+  })
+
+  it("marks a filename-derived/Anonymous component name as inferred (§2.4, task 0018)", () => {
+    const el = document.createElement("article")
+    el.className = "user-card"
+    stubRect(el, { left: 10, top: 20, width: 100, height: 40 })
+    document.body.appendChild(el)
+
+    const hook = fakeHook({
+      componentRecord: (id) => ({ id, displayName: "UserCard", displayNameInferred: true }) as ComponentRecord,
+    })
+    const { controller, setHits } = setup({ hook })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(5, 5)
+
+    expect(controller.getState().hover?.componentName).toEqual({ name: "UserCard", inferred: true })
   })
 
   it("ignores the overlay host and its descendants (§8.2)", () => {

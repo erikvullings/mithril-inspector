@@ -106,6 +106,14 @@ export interface ComponentRegistryOptions {
   readonly getMode?: () => RegistryMode
 }
 
+/** Basename without its extension, e.g. `"src/UserCard.tsx"` → `"UserCard"` (§9.2 tier 6). */
+function filenameDerivedName(file: string): string | null {
+  const base = file.split(/[\\/]/).pop()
+  if (base === undefined || base.length === 0) return null
+  const stem = base.replace(/\.[^./]+$/, "")
+  return stem.length > 0 ? stem : null
+}
+
 function isComponentTag(tag: unknown): boolean {
   if (typeof tag === "function") return true
   return tag !== null && typeof tag === "object" && typeof (tag as { view?: unknown }).view === "function"
@@ -435,16 +443,27 @@ export function createComponentRegistry(
     visit(root.latestVnode, root)
   }
 
-  const resolveDisplayName = (record: InstanceRecord): string => {
+  interface DisplayNameResult {
+    readonly name: string
+    /** True for the §9.2 fallback tiers (filename-derived, `"Anonymous"`) rather than an explicit or declared name. */
+    readonly inferred: boolean
+  }
+
+  const resolveDisplayName = (record: InstanceRecord): DisplayNameResult => {
     const override = displayNameOverrides.get(record.meta.def)
-    if (override !== undefined && override.length > 0) return override
+    if (override !== undefined && override.length > 0) return { name: override, inferred: false }
     const declared = (record.meta.def as { displayName?: unknown }).displayName
-    if (typeof declared === "string" && declared.length > 0) return declared
+    if (typeof declared === "string" && declared.length > 0) return { name: declared, inferred: false }
     const source = record.meta.qualifiedId === "" ? null : sources.resolveSource(record.meta.qualifiedId)
-    if (source?.displayName !== undefined && source.displayName.length > 0) return source.displayName
+    if (source?.displayName !== undefined && source.displayName.length > 0) {
+      return { name: source.displayName, inferred: false }
+    }
     const named = (record.meta.def as { name?: unknown }).name
-    if (typeof named === "string" && named.length > 0) return named
-    return "Anonymous"
+    if (typeof named === "string" && named.length > 0) return { name: named, inferred: false }
+    const file = source?.relativeFile || source?.absoluteFile
+    const filename = file === undefined || file === "" ? null : filenameDerivedName(file)
+    if (filename !== null) return { name: filename, inferred: true }
+    return { name: "Anonymous", inferred: true }
   }
 
   // §14: a hidden definition excludes its instance *and* subtree from
@@ -463,17 +482,20 @@ export function createComponentRegistry(
   const toRecord = (record: InstanceRecord): ComponentRecord => {
     const source = record.meta.qualifiedId === "" ? null : sources.resolveSource(record.meta.qualifiedId)
     const range = record.latestVnode === null ? null : domRangeOf(record.latestVnode)
-    const displayName = resolveDisplayName(record)
+    const { name: displayName, inferred: displayNameInferred } = resolveDisplayName(record)
     // "anonymous" is a read-time refinement of the structural "object" kind
     // (§2.4 "anonymous or unknown component"): an inline literal with no
-    // discoverable name at all. Kind stays structural at allocate time since
-    // display-name resolution depends on source-registry state that may not
-    // be populated yet when `instrument()` runs.
+    // discoverable name at all — a filename-derived fallback no longer
+    // counts (§9.2 tier 6 is still *some* resolved name). Kind stays
+    // structural at allocate time since display-name resolution depends on
+    // source-registry state that may not be populated yet when
+    // `instrument()` runs.
     const kind = record.meta.kind === "object" && displayName === "Anonymous" ? "anonymous" : record.meta.kind
     return {
       id: record.id,
       parentId: record.parentId,
       displayName,
+      displayNameInferred,
       source,
       kind,
       attrs: record.latestVnode?.attrs ?? null,
@@ -545,7 +567,7 @@ export function createComponentRegistry(
     },
     displayNameOf(id) {
       const record = byId.get(id)
-      return record === undefined ? "Anonymous" : resolveDisplayName(record)
+      return record === undefined ? "Anonymous" : resolveDisplayName(record).name
     },
     flush() {
       generation += 1

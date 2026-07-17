@@ -190,6 +190,7 @@ describe("InspectorRuntime end-to-end", () => {
       id: "c:9001",
       parentId: null,
       displayName: "Manual",
+      displayNameInferred: false,
       source: null,
       kind: "object",
       attrs: null,

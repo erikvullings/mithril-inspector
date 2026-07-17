@@ -27,6 +27,15 @@ function precisionBadge(mapping: MappingInfo): Vnode {
   return m(`span.mi-badge-precision.mi-precision-${mapping.precision}`, PRECISION_LABEL[mapping.precision])
 }
 
+/** Marks a component display name resolved via a §9.2 fallback tier (§2.4). */
+function inferredNameBadge(): Vnode {
+  return m(
+    "span.mi-badge-precision.mi-precision-inferred",
+    { title: "Inferred from the filename or a generic fallback — not an explicit or declared name" },
+    "Inferred",
+  )
+}
+
 function highlightLayer(state: OverlayViewState): Vnode {
   const rects: Vnode[] = []
   for (const rect of state.hoverRects) rects.push(m("div.mi-rect", { style: rectStyle(rect) }))
@@ -41,7 +50,12 @@ function hoverBadge(state: OverlayViewState): Children {
   const style = `left:${anchor.left}px;top:${anchor.top + anchor.height + 6}px;`
   const { hover } = state
   return m("div.mi-hover-badge", { style, "aria-hidden": "true" }, [
-    hover.componentName ? m("div.mi-hb-component", hover.componentName) : null,
+    hover.componentName
+      ? m("div.mi-hb-component", [
+          hover.componentName.name,
+          hover.componentName.inferred ? [" ", inferredNameBadge()] : null,
+        ])
+      : null,
     m("div.mi-hb-element", hover.element),
     hover.mapping.fileLine ? m("div.mi-hb-source", hover.mapping.fileLine) : null,
   ])
@@ -128,7 +142,12 @@ function inspectorPanel(controller: OverlayController, state: OverlayViewState):
   return m("div", [
     selection.stale ? staleNotice(controller) : null,
     m("div.mi-section-title", "Selected"),
-    detailRow("Component", componentName ?? m("span.mi-muted", "—")),
+    detailRow(
+      "Component",
+      componentName
+        ? [componentName.name, componentName.inferred ? [" ", inferredNameBadge()] : null]
+        : m("span.mi-muted", "—"),
+    ),
     detailRow("Element", m("span.mi-mono", describeSelected(state))),
     detailRow("Source", mapping.fileLine ? m("span.mi-mono", mapping.fileLine) : m("span.mi-muted", "unknown")),
     detailRow("Mapping", [precisionBadge(mapping), m("span", { style: "margin-left:6px;" }, mapping.label)]),
@@ -153,7 +172,7 @@ function inspectorPanel(controller: OverlayController, state: OverlayViewState):
     m(
       "p.mi-muted",
       componentName
-        ? `Nearest component: ${componentName}. Full ancestry arrives with the component tree.`
+        ? `Nearest component: ${componentName.name}. Full ancestry arrives with the component tree.`
         : "No owning component resolved for this element.",
     ),
   ])

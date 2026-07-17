@@ -4,6 +4,7 @@ import type { ModuleId } from "@mithril-inspector/protocol"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
+  defineInspectorName,
   inspectComponent,
   inspectSource,
   markInspectorHidden,
@@ -51,6 +52,19 @@ describe("public runtime API (§14)", () => {
     m.render(root, usage)
     const id = getInspectorHook().components.idOf(usage.state as object)!
     expect(getInspectorHook().componentRecord(id)?.displayName).toBe("Renamed")
+  })
+
+  it("defineInspectorName is an alias of setInspectorDisplayName (§9.2 spelling)", () => {
+    expect(defineInspectorName).toBe(setInspectorDisplayName)
+
+    const def = { view: () => m("div") } as Component
+    defineInspectorName(def, "UserCard")
+    const Instrumented = getInspectorHook().component(`${MODULE}:s1`, def)
+    const usage = m(Instrumented)
+    m.render(root, usage)
+    const id = getInspectorHook().components.idOf(usage.state as object)!
+    expect(getInspectorHook().componentRecord(id)?.displayName).toBe("UserCard")
+    expect(getInspectorHook().componentRecord(id)?.displayNameInferred).toBe(false)
   })
 
   it("markInspectorHidden flags a definition", () => {

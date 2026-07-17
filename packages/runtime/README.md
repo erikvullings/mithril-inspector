@@ -53,8 +53,30 @@ hook.resolveDomComponent(node)  // nearest ComponentId owning a DOM node, or nul
 hook.sourceOfVnode(vnode)       // source stamped on a specific vnode, or null
 hook.excludeHost(overlayHost)   // keep the overlay host out of tracking (§8.2)
 hook.setMode("source")          // "source" | "components" | "full" (scaffolding)
+hook.invalidateModule("m:…")    // drop a module's stale sources on HMR (ADR-106)
+hook.getRedactionConfig()       // resolved { keys, replacement } policy (§15)
 hook.getSnapshot()              // { components, vnodes, modules, domAssociations }
 ```
+
+## Configuration (`createRuntime`)
+
+An adapter bootstrap creates the singleton with `createRuntime(options)` before
+any module registers. Beyond `mode`/`debug`, two options are wired from the
+adapter:
+
+```ts
+createRuntime({
+  mode: "source",
+  exposeDomAttributes: true,           // §13: add a compact, path-free
+                                       // data-mi="m:<hash>:s2" attr to element
+                                       // vnodes (off by default)
+  redact: { keys: ["password"], replacement: "[redacted]" }, // §15 policy
+})
+```
+
+`invalidateModule` is the pre-HMR step: the adapter's `handleHotUpdate` calls it
+so the module's stale source table is dropped, and the re-executed module's own
+`registerModule` restores a fresh one (ADR-106).
 
 Associations are batched on a microtask after each render pass (§9.4); call
 `hook.flush()` to force one synchronously. All node/vnode/state keys are held

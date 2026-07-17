@@ -1,6 +1,6 @@
 # 0013 Vite plugin
 
-Status: open
+Status: done
 Priority: high
 Owner: unassigned
 Agent: claude-opus
@@ -25,3 +25,22 @@ REQUIREMENTS.md §4, §11: `@mithril-inspector/vite` combines transform, runtime
 
 ## Agent Notes
 - 2026-07-15: task created from REQUIREMENTS.md conversion; no work started.
+- 2026-07-17 claude-opus: Implemented `@mithril-inspector/vite` via TDD, one module per concern (§5: integrate layers, never duplicate transform/editor logic):
+  - `options.ts` — public `MithrilInspectorOptions` (full §11.1 surface + `mode`, §17/§24, + an optional `redact` policy §15), `resolveInspectorOptions(options, env?)` applying dev-first defaults (`enabled = NODE_ENV !== "production"`, §2.1), and four derived builders: `toRuntimeBootstrapConfig` (mode/debug/exposeDomAttributes/redact only — never component data, §15), `toOverlayOptionsInput` (ui/picker → overlay), `toServerOptions` (root/projectRoots/editor/pathMappings, explicit `root` wins over the Vite root), `toTransformOptions` (points the injected import at `virtual:mithril-inspector/runtime`). `DEFAULT_REDACT_KEYS` is the §15 list.
+  - `ids.ts` — the two public virtual specifiers and their `\0`-prefixed resolved ids.
+  - `virtual-modules.ts` — `resolveVirtualId`, `runtimeModuleCode` (re-exports `registerModule`/`source`/`component` from the runtime and installs a configured runtime on the global hook once, plus the HMR `import.meta.hot.on` handler), `overlayModuleCode` (imports the runtime module first, then mounts the shadow-root overlay on DOM-ready, mount failures swallowed §16), `loadVirtualModule`.
+  - `module-filter.ts` — `shouldAttemptTransform`: skips `\0` virtual modules, `node_modules`, and the inspector's own packages (which import Mithril themselves and must not be instrumented recursively).
+  - `html.ts` — `overlayBootstrapTags({ dev, base })` + `devVirtualUrl`. **In dev** injects a `<script type="module" src="/@id/__x00__…">` (see the dev-server finding below); **in a forced production build** injects an inline `import "virtual:…"` so Rollup bundles it. Never edits the app entry file (§2.2).
+  - `hmr.ts` — `HMR_INVALIDATE_EVENT` (`mithril-inspector:invalidate`), `normalizeFile`, and a file→moduleId registry so `handleHotUpdate` knows which module to invalidate (ADR-106).
+  - `diagnostics.ts` — a tiny read-only diagnostics endpoint registered only in `debug` mode (§16), returns config status only, never app data (§15).
+  - `plugin.ts` — `mithrilInspector(options?, env?)` returns a two-plugin array (§11.1): `mithril-inspector:pre` (`enforce: "pre"`, §11.3 — resolveId/load/transform/handleHotUpdate) and `mithril-inspector:serve` (transformIndexHtml/configureServer). Both carry an `apply` gate that disables them on `vite build` unless `includeInProduction` (§2.1).
+- Cross-package additions required to wire the layers (each small, ADR/AC-motivated, each with its own runtime test in `config.test.ts`):
+  - runtime `InspectorRuntime.invalidateModule(moduleId)` — surfaces the source-registry step ADR-106 says `handleHotUpdate` calls (was on the internal registry but not the hook).
+  - runtime `RuntimeOptions.exposeDomAttributes` — implements §13: `source()` stamps a compact, path-free `data-mi="m:<hash>:sN"` on element vnodes only (fragment `[`/text `#`/trusted `<` skipped), off by default; the normal path still uses the WeakMap (§6.2).
+  - runtime `RuntimeOptions.redact` + `getRedactionConfig()` — accepts/stores the §15 policy the adapter wires in (Phase-3 consumers read it; default `{ keys: [], replacement: "[redacted]" }`).
+- JSX/plugin-order (§11.3): the transform handles JSX at the AST level (§6.6, JSXElement/JSXFragment), so `enforce: "pre"` (seeing original TS/JSX before esbuild lowers it) is sufficient — no separate post-transform plugin is needed. Documented in `packages/vite/README.md` and the plugin JSDoc.
+- Finding (verified, not assumed): Vite does **not** rewrite a bare `import "virtual:…"` inside a transformIndexHtml-*injected* inline module script in dev — the browser would receive an unresolvable bare specifier and 404. A first draft used that form; the `dev-server.test.ts` integration test caught it. Fixed by injecting the `/@id/__x00__…` served URL in dev instead. The build path (only reachable with `includeInProduction`) keeps the inline-import form so Rollup can bundle it.
+- Signature note: the public API is `mithrilInspector(options?)` (§11.1); a second optional `env` param (default `process.env`) is a non-breaking test seam so the `NODE_ENV` dev-default (§2.1) is deterministic in tests.
+- Privacy (§15): endpoint receives only `{file,line,column}` (enforced in `@mithril-inspector/server`); the runtime bootstrap config carries redaction *policy*, never component data; nothing logs app data.
+- Verified: 58 tests across 9 files in `packages/vite` (`options` 11, `virtual-modules` 9, `plugin` 16, `html` 4, `module-filter` 4, `hmr` 5, `index` 4, `build-exclusion` 1 real `vite build`, `dev-server` 4 real `createServer` — §20.1.12 build-clean + §11.2 pipeline), plus 9 new runtime tests in `config.test.ts` (68 runtime total). `pnpm -r typecheck` clean; full workspace `pnpm -r test` green (all 15 projects, zero failures). The real `vite build` test confirms production output contains no `virtual:mithril-inspector`, `__miRegisterModule`, `__miSource`, `mountInspectorOverlay`, `__mithril-inspector` or `open-in-editor` (§20.1.12).
+- Known follow-ups (not gaps against this task's ACs): `source.{elements,components,attributes,textExpressions}` and `componentTree.{captureAttrs,captureState}` are normalized and accepted but not yet consumed by the Phase-1 transform/runtime (the transform instruments all element/component markers; attrs/state capture is Phase 3). The live browser round-trip (real file edit → HMR → re-registration → picker resolves new line) is validated by tasks 0014/0015, as ADR-106 anticipated.

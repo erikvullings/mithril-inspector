@@ -1,0 +1,166 @@
+import { describe, expect, it } from "vitest"
+
+import {
+  DEFAULT_REDACT_KEYS,
+  resolveInspectorOptions,
+  toOverlayOptionsInput,
+  toRuntimeBootstrapConfig,
+  toServerOptions,
+  toTransformOptions,
+} from "./options.js"
+
+describe("resolveInspectorOptions", () => {
+  it("applies development-first defaults (§2.1, §11.1, §17)", () => {
+    const resolved = resolveInspectorOptions({}, { NODE_ENV: "development" })
+    expect(resolved.enabled).toBe(true)
+    expect(resolved.includeInProduction).toBe(false)
+    expect(resolved.mode).toBe("source")
+    expect(resolved.debug).toBe(false)
+    expect(resolved.ui).toEqual({
+      enabled: true,
+      position: "bottom-right",
+      defaultOpen: false,
+      theme: "system",
+    })
+    expect(resolved.picker).toEqual({
+      enabled: true,
+      toggleShortcut: "Alt+Shift+M",
+      holdShortcut: "Alt+Shift",
+      openOnClick: true,
+      continuous: false,
+    })
+    expect(resolved.componentTree).toEqual({ enabled: false, captureAttrs: false, captureState: false })
+    expect(resolved.source).toEqual({
+      elements: true,
+      components: true,
+      attributes: false,
+      textExpressions: false,
+      exposeDomAttributes: false,
+    })
+    expect(resolved.mithrilImports).toEqual(["mithril"])
+    expect(resolved.hyperscriptIdentifiers).toEqual(["m"])
+    expect(resolved.projectRoots).toEqual([])
+    expect(resolved.pathMappings).toEqual([])
+  })
+
+  it("defaults `enabled` off in production (§2.1)", () => {
+    expect(resolveInspectorOptions({}, { NODE_ENV: "production" }).enabled).toBe(false)
+  })
+
+  it("lets an explicit `enabled` override NODE_ENV", () => {
+    expect(resolveInspectorOptions({ enabled: true }, { NODE_ENV: "production" }).enabled).toBe(true)
+    expect(resolveInspectorOptions({ enabled: false }, { NODE_ENV: "development" }).enabled).toBe(false)
+  })
+
+  it("wires the default §15 redaction keys and replacement", () => {
+    const resolved = resolveInspectorOptions({}, { NODE_ENV: "development" })
+    expect(resolved.redact.keys).toEqual(DEFAULT_REDACT_KEYS)
+    expect(resolved.redact.keys).toContain("password")
+    expect(resolved.redact.keys).toContain("token")
+    expect(resolved.redact.replacement).toBe("[redacted]")
+  })
+
+  it("honours a custom redaction policy", () => {
+    const resolved = resolveInspectorOptions(
+      { redact: { keys: ["ssn"], replacement: "***" } },
+      { NODE_ENV: "development" },
+    )
+    expect(resolved.redact).toEqual({ keys: ["ssn"], replacement: "***" })
+  })
+
+  it("merges user overrides across every option block", () => {
+    const resolved = resolveInspectorOptions(
+      {
+        includeInProduction: true,
+        mode: "full",
+        debug: true,
+        editor: "cursor",
+        projectRoots: ["/repo/pkg-a"],
+        pathMappings: [{ from: "/workspace", to: "/Users/dev/app" }],
+        include: [/\.ts$/],
+        exclude: ["**/vendor/**"],
+        ui: { position: "top-left", theme: "dark", defaultOpen: true, zIndex: 42 },
+        picker: { continuous: true, openOnClick: false, toggleShortcut: "Alt+I" },
+        componentTree: { enabled: true, captureAttrs: true, captureState: true },
+        source: { exposeDomAttributes: true, attributes: true, textExpressions: true },
+        mithrilImports: ["mithril", "@app/m"],
+        hyperscriptIdentifiers: ["m", "h"],
+      },
+      { NODE_ENV: "production" },
+    )
+    expect(resolved.includeInProduction).toBe(true)
+    expect(resolved.mode).toBe("full")
+    expect(resolved.debug).toBe(true)
+    expect(resolved.editor).toBe("cursor")
+    expect(resolved.projectRoots).toEqual(["/repo/pkg-a"])
+    expect(resolved.pathMappings).toEqual([{ from: "/workspace", to: "/Users/dev/app" }])
+    expect(resolved.ui).toEqual({ enabled: true, position: "top-left", theme: "dark", defaultOpen: true, zIndex: 42 })
+    expect(resolved.picker.continuous).toBe(true)
+    expect(resolved.picker.openOnClick).toBe(false)
+    expect(resolved.picker.toggleShortcut).toBe("Alt+I")
+    expect(resolved.componentTree).toEqual({ enabled: true, captureAttrs: true, captureState: true })
+    expect(resolved.source.exposeDomAttributes).toBe(true)
+    expect(resolved.mithrilImports).toEqual(["mithril", "@app/m"])
+    expect(resolved.hyperscriptIdentifiers).toEqual(["m", "h"])
+  })
+})
+
+describe("derived configuration builders", () => {
+  it("toRuntimeBootstrapConfig carries only mode/debug/exposeDomAttributes/redact (§15 privacy)", () => {
+    const resolved = resolveInspectorOptions(
+      { mode: "components", debug: true, source: { exposeDomAttributes: true } },
+      { NODE_ENV: "development" },
+    )
+    expect(toRuntimeBootstrapConfig(resolved)).toEqual({
+      mode: "components",
+      debug: true,
+      exposeDomAttributes: true,
+      redact: { keys: DEFAULT_REDACT_KEYS, replacement: "[redacted]" },
+    })
+  })
+
+  it("toOverlayOptionsInput maps the ui/picker blocks", () => {
+    const resolved = resolveInspectorOptions(
+      { ui: { enabled: false, position: "top-right", zIndex: 10 }, picker: { continuous: true } },
+      { NODE_ENV: "development" },
+    )
+    const overlay = toOverlayOptionsInput(resolved)
+    expect(overlay.enabled).toBe(false)
+    expect(overlay.position).toBe("top-right")
+    expect(overlay.zIndex).toBe(10)
+    expect(overlay.picker?.continuous).toBe(true)
+    expect(overlay.picker?.toggleShortcut).toBe("Alt+Shift+M")
+  })
+
+  it("toServerOptions binds the endpoint to the resolved root and passes editor/mappings (§10.2)", () => {
+    const resolved = resolveInspectorOptions(
+      { editor: "code", projectRoots: ["/repo/b"], pathMappings: [{ from: "/a", to: "/b" }] },
+      { NODE_ENV: "development" },
+    )
+    expect(toServerOptions(resolved, "/repo/root")).toEqual({
+      root: "/repo/root",
+      projectRoots: ["/repo/b"],
+      editor: "code",
+      pathMappings: [{ from: "/a", to: "/b" }],
+    })
+  })
+
+  it("toServerOptions prefers an explicit `root` option over the Vite root", () => {
+    const resolved = resolveInspectorOptions({ root: "/custom" }, { NODE_ENV: "development" })
+    expect(toServerOptions(resolved, "/vite/root").root).toBe("/custom")
+  })
+
+  it("toTransformOptions targets the virtual runtime module and forwards filters (§11.2)", () => {
+    const resolved = resolveInspectorOptions(
+      { include: [/\.ts$/], exclude: ["**/x/**"], mithrilImports: ["mithril"], hyperscriptIdentifiers: ["m", "h"] },
+      { NODE_ENV: "development" },
+    )
+    const opts = toTransformOptions(resolved, "/repo/root")
+    expect(opts.root).toBe("/repo/root")
+    expect(opts.runtimeModule).toBe("virtual:mithril-inspector/runtime")
+    expect(opts.sourcemap).toBe(true)
+    expect(opts.include).toEqual([/\.ts$/])
+    expect(opts.exclude).toEqual(["**/x/**"])
+    expect(opts.hyperscriptIdentifiers).toEqual(["m", "h"])
+  })
+})

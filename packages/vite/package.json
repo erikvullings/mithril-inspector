@@ -14,5 +14,23 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
+  },
+  "dependencies": {
+    "@mithril-inspector/overlay": "workspace:*",
+    "@mithril-inspector/protocol": "workspace:*",
+    "@mithril-inspector/runtime": "workspace:*",
+    "@mithril-inspector/server": "workspace:*",
+    "@mithril-inspector/transform": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/connect": "^3.4.38",
+    "@types/mithril": "^2.2.8",
+    "@types/node": "^24.0.14",
+    "mithril": "^2.3.8",
+    "vite": "^7.3.6",
+    "vitest": "^3.2.4"
   }
 }

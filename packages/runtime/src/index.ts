@@ -47,8 +47,8 @@ export {
 } from "./api.js"
 export type { InspectComponentOptions } from "./api.js"
 
-export { createRuntime, getRuntime, RUNTIME_VERSION } from "./runtime.js"
-export type { InspectorMode, InspectorRuntime, RuntimeOptions } from "./runtime.js"
+export { createRuntime, DEFAULT_REDACTION_REPLACEMENT, getRuntime, RUNTIME_VERSION } from "./runtime.js"
+export type { InspectorMode, InspectorRuntime, RedactionConfig, RuntimeOptions } from "./runtime.js"
 
 export { createSourceRegistry } from "./source-registry.js"
 export type {

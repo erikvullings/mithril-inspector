@@ -5,6 +5,7 @@ import type {
   InspectorListener,
   InspectorSnapshot,
   MithrilInspectorHook,
+  ModuleId,
   ModuleRecord,
   RuntimeEvent,
   SourceLocation,
@@ -27,12 +28,34 @@ export const RUNTIME_VERSION = "0.0.0"
 /** Performance/feature modes (§17). Phase 1 ships `"source"`. */
 export type InspectorMode = "source" | "components" | "full"
 
+/**
+ * Resolved attrs/state redaction policy (§15). Key patterns are plain,
+ * JSON-serializable strings (so an adapter can inject them into a runtime
+ * bootstrap); matching is a Phase-3 attrs/state concern and is compiled from
+ * these when component data views are built.
+ */
+export interface RedactionConfig {
+  readonly keys: readonly string[]
+  readonly replacement: string
+}
+
+/** The §15 default replacement token used when none is configured. */
+export const DEFAULT_REDACTION_REPLACEMENT = "[redacted]"
+
 export interface RuntimeOptions {
   readonly mode?: InspectorMode
   readonly debug?: boolean
   /** Schedule a batched flush (default `queueMicrotask`); overridable in tests. */
   readonly schedule?: (flush: () => void) => void
   readonly now?: () => number
+  /**
+   * Expose a compact, path-free `data-mi="<qualifiedId>"` attribute on element
+   * vnodes (§13). Off by default; the normal association path uses a WeakMap and
+   * never touches enumerable attrs (§6.2).
+   */
+  readonly exposeDomAttributes?: boolean
+  /** Attrs/state redaction policy wired from the adapter (§15). */
+  readonly redact?: RedactionConfig
 }
 
 /**
@@ -49,6 +72,12 @@ export interface InspectorRuntime extends MithrilInspectorHook {
   component<T>(qualifiedId: string, def: T): T
   /** Install a module's source table from the transform payload (`__miRegisterModule`). */
   registerSourceModule(moduleId: `m:${string}`, registration: ModuleRegistrationInput): void
+  /**
+   * Drop a module's source table without a replacement (the pre-HMR step the
+   * adapter's `handleHotUpdate` calls before the replacement module re-registers,
+   * §11.2, ADR-106). A no-op for an unknown module.
+   */
+  invalidateModule(moduleId: ModuleId): void
 
   // --- Resolution API (the overlay/picker).
   /** The nearest source location for a DOM node, or `null` (§16). */
@@ -69,6 +98,8 @@ export interface InspectorRuntime extends MithrilInspectorHook {
   // --- Configuration.
   setMode(mode: InspectorMode): void
   getMode(): InspectorMode
+  /** The resolved attrs/state redaction policy (§15); Phase-3 consumers read this. */
+  getRedactionConfig(): RedactionConfig
   /** Exclude an overlay host element (and its subtree) from tracking (§8.2). */
   excludeHost(host: Node): void
   /** Whether an inspector feature is still enabled (§16). */
@@ -83,9 +114,27 @@ export interface InspectorRuntime extends MithrilInspectorHook {
   readonly components: ComponentRegistry
 }
 
+/** Mithril's non-element vnode tags: fragment, text, trusted HTML (§7.6). */
+const NON_ELEMENT_TAGS = new Set(["[", "#", "<"])
+
 export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
   const schedule = options.schedule ?? ((flush: () => void) => queueMicrotask(flush))
   let mode: InspectorMode = options.mode ?? "source"
+  const exposeDomAttributes = options.exposeDomAttributes ?? false
+  const redaction: RedactionConfig = options.redact ?? { keys: [], replacement: DEFAULT_REDACTION_REPLACEMENT }
+
+  // §13: stamp a compact, path-free `data-mi` attribute on element vnodes only.
+  const exposeDomAttribute = (qualifiedId: string, vnode: unknown): void => {
+    if (vnode === null || typeof vnode !== "object") return
+    const candidate = vnode as { tag?: unknown; attrs?: Record<string, unknown> | null }
+    if (typeof candidate.tag !== "string" || NON_ELEMENT_TAGS.has(candidate.tag)) return
+    const attrs = candidate.attrs
+    if (attrs === null || attrs === undefined || typeof attrs !== "object") {
+      candidate.attrs = { "data-mi": qualifiedId }
+    } else {
+      attrs["data-mi"] = qualifiedId
+    }
+  }
 
   const subscribers = new Set<InspectorListener>()
   const excludedHosts = new Set<Node>()
@@ -154,6 +203,7 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
       return boundary.guard(
         "source",
         () => {
+          if (exposeDomAttributes) exposeDomAttribute(qualifiedId, vnode)
           const tagged = domAssoc.tag(qualifiedId, vnode)
           scheduleFlush()
           return tagged
@@ -169,6 +219,15 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
         "registry",
         () => {
           sources.registerModule(moduleId, registration)
+        },
+        undefined,
+      )
+    },
+    invalidateModule(moduleId) {
+      boundary.guard(
+        "registry",
+        () => {
+          sources.invalidateModule(moduleId)
         },
         undefined,
       )
@@ -213,6 +272,9 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
     },
     getMode() {
       return mode
+    },
+    getRedactionConfig() {
+      return redaction
     },
     excludeHost(host) {
       excludedHosts.add(host)

@@ -182,3 +182,9 @@ independently of when a component was instrumented).
   (0020).
 - `inspectSource` and per-node vnode ids in `getSnapshot` are placeholders for
   later phases.
+- `mode: "components"`'s §17 "<20% median redraw overhead" target is
+  **unconfirmed at scale**: an ad hoc spot-check (task 0017 Agent Notes)
+  measured ~12% overhead on a small synthetic tree (64 components) but ~30%
+  on a larger one (~4096 components) — not yet profiled to find the actual
+  cost driver. Worth a real profiling pass before 0019/0022 add more
+  per-flush work on top of this layer.

@@ -186,6 +186,166 @@ export interface MithrilInspectorHook {
 }
 
 // ============================================================================
+// Safe serializer preview tree (§7.4, §15, task 0020)
+// ============================================================================
+
+/**
+ * One step from a preview tree's root value to a nested node. Used to request
+ * lazy expansion — evaluating a deferred getter, paging a truncated
+ * container, or expanding past a `max-depth` stub — without re-walking the
+ * whole tree from scratch.
+ */
+export type PreviewPathSegment =
+  | { readonly kind: "prop"; readonly key: string }
+  | { readonly kind: "index"; readonly index: number }
+  | { readonly kind: "map-key"; readonly index: number }
+  | { readonly kind: "map-value"; readonly index: number }
+
+export type PreviewPath = readonly PreviewPathSegment[]
+
+export interface PreviewEntry {
+  readonly key: string
+  readonly node: PreviewNode
+}
+
+export interface PreviewMapEntry {
+  readonly key: PreviewNode
+  readonly value: PreviewNode
+}
+
+export type PreviewPrimitiveType = "string" | "number" | "boolean" | "null" | "undefined"
+
+export interface PreviewPrimitiveNode {
+  readonly kind: "primitive"
+  readonly type: PreviewPrimitiveType
+  readonly value: string | number | boolean | null
+}
+
+export interface PreviewBigIntNode {
+  readonly kind: "bigint"
+  readonly value: string
+}
+
+export interface PreviewSymbolNode {
+  readonly kind: "symbol"
+  readonly description: string | null
+}
+
+export interface PreviewFunctionNode {
+  readonly kind: "function"
+  readonly name: string
+}
+
+export interface PreviewDomNodeNode {
+  readonly kind: "dom-node"
+  readonly nodeType: number
+  readonly tagName: string | null
+}
+
+export interface PreviewErrorNode {
+  readonly kind: "error"
+  readonly name: string
+  readonly message: string
+}
+
+export interface PreviewPromiseNode {
+  readonly kind: "promise"
+}
+
+export interface PreviewArrayNode {
+  readonly kind: "array"
+  readonly length: number
+  readonly items: PreviewNode[]
+  readonly offset: number
+  readonly truncated: boolean
+  readonly path: PreviewPath
+}
+
+export interface PreviewObjectNode {
+  readonly kind: "object"
+  readonly className: string
+  readonly size: number
+  readonly entries: PreviewEntry[]
+  readonly offset: number
+  readonly truncated: boolean
+  readonly path: PreviewPath
+}
+
+export interface PreviewMapNode {
+  readonly kind: "map"
+  readonly size: number
+  readonly entries: PreviewMapEntry[]
+  readonly offset: number
+  readonly truncated: boolean
+  readonly path: PreviewPath
+}
+
+export interface PreviewSetNode {
+  readonly kind: "set"
+  readonly size: number
+  readonly items: PreviewNode[]
+  readonly offset: number
+  readonly truncated: boolean
+  readonly path: PreviewPath
+}
+
+export interface PreviewTypedArrayNode {
+  readonly kind: "typed-array"
+  readonly typeName: string
+  readonly length: number
+  readonly items: PreviewNode[]
+  readonly offset: number
+  readonly truncated: boolean
+  readonly path: PreviewPath
+}
+
+/**
+ * An accessor property whose getter has not been invoked (§7.4: "getter
+ * values evaluated only after explicit user action"). The UI shows a `(...)`
+ * affordance and calls the runtime's `expand` with `path` to evaluate it.
+ */
+export interface PreviewGetterNode {
+  readonly kind: "getter"
+  readonly path: PreviewPath
+}
+
+/** A back-reference to an ancestor already on the current traversal path. */
+export interface PreviewCircularNode {
+  readonly kind: "circular"
+  readonly path: PreviewPath
+}
+
+/** A value whose key matched a redaction pattern (§15); never inspected. */
+export interface PreviewRedactedNode {
+  readonly kind: "redacted"
+  readonly replacement: string
+}
+
+/** A container past the initial max-depth budget; expand `path` to reveal it. */
+export interface PreviewMaxDepthNode {
+  readonly kind: "max-depth"
+  readonly path: PreviewPath
+}
+
+export type PreviewNode =
+  | PreviewPrimitiveNode
+  | PreviewBigIntNode
+  | PreviewSymbolNode
+  | PreviewFunctionNode
+  | PreviewDomNodeNode
+  | PreviewErrorNode
+  | PreviewPromiseNode
+  | PreviewArrayNode
+  | PreviewObjectNode
+  | PreviewMapNode
+  | PreviewSetNode
+  | PreviewTypedArrayNode
+  | PreviewGetterNode
+  | PreviewCircularNode
+  | PreviewRedactedNode
+  | PreviewMaxDepthNode
+
+// ============================================================================
 // Editor Request/Response (§10.1)
 // ============================================================================
 

@@ -1,6 +1,6 @@
 import m from "mithril"
 import type { Component } from "mithril"
-import type { ModuleId, RuntimeEvent } from "@mithril-inspector/protocol"
+import type { ModuleId, PreviewPath, RuntimeEvent } from "@mithril-inspector/protocol"
 import { makeComponentId, PROTOCOL_VERSION } from "@mithril-inspector/protocol"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
@@ -289,5 +289,143 @@ describe("InspectorRuntime end-to-end", () => {
     const id = runtime.components.idOf(usage.state as object)!
     expect(runtime.componentViewSource(id)?.kind).toBe("component-view")
     expect(runtime.componentViewSource(id)?.line).toBe(4)
+  })
+
+  describe("attrs/state preview (task 0020, §7.4, §15)", () => {
+    it("serializes an instance's live attrs and state through the safe serializer", () => {
+      interface AppAttrs {
+        label: string
+      }
+      interface AppState {
+        count: number
+      }
+      const App = runtime.component(
+        `${MODULE}:s1`,
+        {
+          oninit(vnode) {
+            vnode.state.count = 0
+          },
+          view: () => m("div"),
+        } as Component<AppAttrs, AppState>,
+      )
+      const usage = m(App, { label: "hi" })
+      m.render(root, usage)
+      runtime.flush()
+      const id = runtime.components.idOf(usage.state as object)!
+
+      expect(runtime.attrsPreview(id)).toEqual({
+        kind: "object",
+        className: "Object",
+        size: 1,
+        entries: [{ key: "label", node: { kind: "primitive", type: "string", value: "hi" } }],
+        offset: 0,
+        truncated: false,
+        path: [],
+      })
+      expect(runtime.statePreview(id)).toEqual({
+        kind: "object",
+        className: "Object",
+        size: 1,
+        entries: [{ key: "count", node: { kind: "primitive", type: "number", value: 0 } }],
+        offset: 0,
+        truncated: false,
+        path: [],
+      })
+    })
+
+    it("redacts attrs by the runtime's configured redaction policy", () => {
+      interface SecretAttrs {
+        secretValue: string
+        label: string
+      }
+      const redacting = createRuntime({ schedule: () => {}, redact: { keys: ["secret"], replacement: "HIDDEN" } })
+      redacting.registerSourceModule(MODULE, registration)
+      const App = redacting.component(`${MODULE}:s1`, { view: () => m("div") } as Component<SecretAttrs>)
+      const usage = m(App, { secretValue: "shh", label: "visible" })
+      m.render(root, usage)
+      redacting.flush()
+      const id = redacting.components.idOf(usage.state as object)!
+
+      const preview = redacting.attrsPreview(id) as { entries: Array<{ key: string; node: unknown }> }
+      expect(preview.entries).toEqual([
+        { key: "secretValue", node: { kind: "redacted", replacement: "HIDDEN" } },
+        { key: "label", node: { kind: "primitive", type: "string", value: "visible" } },
+      ])
+    })
+
+    it("applies a per-component setInspectorSerializer hook before the safe serializer (§14)", () => {
+      // "ssn" is deliberately outside the §15 default pattern list, so this
+      // exercises the custom hook's own masking taking effect — not the
+      // separate (and always-on, see the redaction describe block) default
+      // key-pattern safety net.
+      interface SsnAttrs {
+        ssn: string
+        label: string
+      }
+      const def = { view: () => m("div") } as Component<SsnAttrs>
+      runtime.setInspectorSerializer(def, {
+        attrs: (attrs) => ({ ...(attrs as SsnAttrs), ssn: "***-**-6789" }),
+      })
+      const Instrumented = runtime.component(`${MODULE}:s1`, def)
+      const usage = m(Instrumented, { ssn: "123-45-6789", label: "hi" })
+      m.render(root, usage)
+      runtime.flush()
+      const id = runtime.components.idOf(usage.state as object)!
+
+      const preview = runtime.attrsPreview(id) as { entries: Array<{ key: string; node: unknown }> }
+      const ssn = preview.entries.find((e) => e.key === "ssn")
+      expect(ssn?.node).toEqual({ kind: "primitive", type: "string", value: "***-**-6789" })
+    })
+
+    it("falls back to the raw value when a custom serializer hook throws (§16)", () => {
+      interface LabelAttrs {
+        label: string
+      }
+      const def = { view: () => m("div") } as Component<LabelAttrs>
+      runtime.setInspectorSerializer(def, {
+        attrs: () => {
+          throw new Error("bad hook")
+        },
+      })
+      const Instrumented = runtime.component(`${MODULE}:s1`, def)
+      const usage = m(Instrumented, { label: "hi" })
+      m.render(root, usage)
+      runtime.flush()
+      const id = runtime.components.idOf(usage.state as object)!
+
+      expect(runtime.attrsPreview(id)).toEqual({
+        kind: "object",
+        className: "Object",
+        size: 1,
+        entries: [{ key: "label", node: { kind: "primitive", type: "string", value: "hi" } }],
+        offset: 0,
+        truncated: false,
+        path: [],
+      })
+    })
+
+    it("expandPreview evaluates a deferred getter for a component's attrs", () => {
+      const App = runtime.component(`${MODULE}:s1`, { view: () => m("div") } as Component)
+      const attrs: Record<string, unknown> = { label: "hi" }
+      Object.defineProperty(attrs, "computed", { enumerable: true, get: () => 99 })
+      const usage = m(App, attrs)
+      m.render(root, usage)
+      runtime.flush()
+      const id = runtime.components.idOf(usage.state as object)!
+
+      const preview = runtime.attrsPreview(id) as { entries: Array<{ key: string; node: { kind: string; path: PreviewPath } }> }
+      const computed = preview.entries.find((e) => e.key === "computed")!
+      expect(computed.node.kind).toBe("getter")
+
+      const expanded = runtime.expandPreview(id, "attrs", computed.node.path)
+      expect(expanded).toEqual({ kind: "primitive", type: "number", value: 99 })
+    })
+
+    it("returns null for attrsPreview/statePreview/expandPreview on an unknown id", () => {
+      const unknown = makeComponentId(999_999)
+      expect(runtime.attrsPreview(unknown)).toBeNull()
+      expect(runtime.statePreview(unknown)).toBeNull()
+      expect(runtime.expandPreview(unknown, "attrs", [])).toBeNull()
+    })
   })
 })

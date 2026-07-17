@@ -67,3 +67,11 @@ export type { ComponentRegistry, ComponentRegistryOptions } from "./components.j
 
 export { domRangeOf } from "./dom-range.js"
 export type { DomRange } from "./dom-range.js"
+
+export {
+  createSerializer,
+  DEFAULT_MAX_DEPTH,
+  DEFAULT_MAX_ENTRIES,
+  DEFAULT_REDACTION_KEYS,
+} from "./serializer.js"
+export type { ComponentDataSerializer, ExpandOptions, Serializer, SerializerOptions } from "./serializer.js"

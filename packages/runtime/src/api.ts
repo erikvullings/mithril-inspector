@@ -1,4 +1,5 @@
 import { getRuntime } from "./runtime.js"
+import type { ComponentDataSerializer } from "./serializer.js"
 
 /** Options for the explicit {@link inspectComponent} API (§14). */
 export interface InspectComponentOptions {
@@ -48,6 +49,6 @@ export function markInspectorHidden(def: object): void {
 }
 
 /** Attach an attrs/state redaction serializer to a component (§14, §15). */
-export function setInspectorSerializer(def: object, serializer: unknown): void {
+export function setInspectorSerializer(def: object, serializer: ComponentDataSerializer): void {
   getRuntime().setInspectorSerializer(def, serializer)
 }

@@ -367,6 +367,12 @@ describe("createComponentRegistry", () => {
     expect(registry.displayNameOf(id)).toBe("Custom")
     expect(registry.isHidden(def)).toBe(true)
     expect(registry.serializerOf(def)).toBe(serializer)
+    expect(registry.defOf(id)).toBe(def)
+  })
+
+  it("defOf returns undefined for an unknown id (task 0020)", () => {
+    const { registry } = setup()
+    expect(registry.defOf(makeComponentId(999_999))).toBeUndefined()
   })
 
   it("excludes a hidden component and its subtree from recordOf/componentsSnapshot (§14)", () => {

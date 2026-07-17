@@ -221,6 +221,66 @@ Both are exposed on `InspectorRuntime` as `componentAncestry`/
 *rendered element*'s own exact mapping (`resolveDomSource` on the component's
 `domRange.first`) as the third and generally most-precise §9.3 open target.
 
+## Safe serializer and redaction (§7.4, §15, task 0020)
+
+`ComponentRecord.attrs`/`.state` are raw, read-only references (§7.3) — never
+display them directly. `InspectorRuntime` exposes a lazy, privacy-aware
+preview instead:
+
+```ts
+hook.attrsPreview(id)   // PreviewNode | null — the instance's attrs
+hook.statePreview(id)   // PreviewNode | null — the instance's state
+hook.expandPreview(id, "attrs", path, { offset? }) // evaluate a getter, page
+                                                    // a truncated container, or
+                                                    // expand past a max-depth stub
+```
+
+A `PreviewNode` (`@mithril-inspector/protocol`) is a serializable, discriminated
+tree — never the live object — safe to hand to the overlay: `primitive`,
+`bigint`, `symbol`, `function`, `dom-node`, `error`, `promise`, `array`,
+`object`, `map`, `set`, `typed-array`, `getter` (a deferred accessor — the UI
+shows a `(...)` affordance and calls `expandPreview` with its `path` to
+evaluate it, wrapped in try/catch so a throwing getter never breaks the
+preview), `circular` (a back-reference to an ancestor already on the current
+path), `redacted`, and `max-depth` (a container past the initial depth budget).
+Containers carry `offset`/`truncated` so a large collection pages through
+`maxEntries` at a time instead of serializing everything eagerly. Proxies need
+no special handling: every property read (not just declared getters) is
+wrapped in try/catch, so a throwing trap surfaces as an inline `error` node
+instead of propagating (§16).
+
+`createSerializer` (`./serializer.ts`) is the underlying pure builder, usable
+standalone:
+
+```ts
+const serializer = createSerializer({
+  maxDepth: 2,        // default DEFAULT_MAX_DEPTH
+  maxEntries: 50,      // default DEFAULT_MAX_ENTRIES
+  redactKeys: [...],   // default DEFAULT_REDACTION_KEYS when omitted/empty
+  replacement: "[redacted]",
+})
+serializer.serialize(value)
+serializer.expand(root, path, { offset })
+```
+
+Redaction (§15) matches a property key (or a `Map`'s own string key) case-
+insensitively against a substring pattern list — the same semantics as the requirements doc's
+unanchored `/password/i` example. `DEFAULT_REDACTION_KEYS` (password, passwd,
+secret, token, authorization, cookie, apiKey, accessToken, refreshToken) is
+always the effective list unless `RuntimeOptions.redact.keys` (or
+`SerializerOptions.redactKeys`) is non-empty, in which case it *replaces* the
+defaults (matching the adapter's own already-shipped replace semantics, task
+0013) — an intentionally non-bypassable safety net: even a custom
+`setInspectorSerializer` hook's output still passes through key-pattern
+redaction, and `expandPreview` refuses to walk through a redacted key (no
+getter-triggered back door). A redacted key's getter is never invoked, and
+its value is never read at all.
+
+`setInspectorSerializer(def, { attrs?, state? })` (§14) runs before the safe
+serializer: its return value becomes the input to `attrsPreview`/
+`statePreview` for instances of that definition. A throwing hook falls back
+to the raw value rather than breaking the preview (§16).
+
 ## Known Phase 1/2 limitations
 
 - Function-*declaration* closures are permanently untracked at the instance
@@ -228,9 +288,10 @@ Both are exposed on `InspectorRuntime` as `componentAncestry`/
   works.
 - Route-resolver tracking is runtime-only pending a transform change (see
   `kind: "route-resolver"` above).
-- `mode: "full"` is scaffolding — identical to `"components"` today; attrs,
-  state and diagnostics (§17 `full` definition) arrive with safe serialization
-  (0020).
+- `mode: "full"` is scaffolding — identical to `"components"` today; a
+  dedicated diagnostics view (§17 `full` definition) is still pending. Safe
+  attrs/state serialization itself (task 0020, see above) does not depend on
+  `mode` — `attrsPreview`/`statePreview` work for any tracked instance.
 - `inspectSource` and per-node vnode ids in `getSnapshot` are placeholders for
   later phases.
 - `mode: "components"`'s §17 "<20% median redraw overhead" target is

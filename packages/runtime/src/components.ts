@@ -9,6 +9,7 @@ import { makeComponentId } from "@mithril-inspector/protocol"
 
 import { domRangeOf, eachRangeNode } from "./dom-range.js"
 import type { RenderedVnode } from "./dom-range.js"
+import type { ComponentDataSerializer } from "./serializer.js"
 import type { SourceRegistry } from "./source-registry.js"
 
 /** The narrow view of a Mithril POJO/closure component the runtime instruments. */
@@ -108,10 +109,12 @@ export interface ComponentRegistry {
   markHidden(def: object): void
   /** Whether a definition is hidden (§14). */
   isHidden(def: object): boolean
-  /** Attach a redaction serializer to a definition (§14; stored for Phase 3). */
-  setSerializer(def: object, serializer: unknown): void
+  /** Attach a redaction serializer to a definition (§14, §20 safe serializer). */
+  setSerializer(def: object, serializer: ComponentDataSerializer): void
   /** The serializer attached to a definition, if any. */
-  serializerOf(def: object): unknown
+  serializerOf(def: object): ComponentDataSerializer | undefined
+  /** The original application definition backing a mounted instance, or `undefined` once unmapped. */
+  defOf(id: ComponentId): object | undefined
   /** A fresh strong snapshot of every live component record (for `getSnapshot`). */
   componentsSnapshot(): Map<ComponentId, ComponentRecord>
 }
@@ -197,7 +200,7 @@ export function createComponentRegistry(
   // Per-definition overrides (§14), keyed on the application definition object.
   const displayNameOverrides = new WeakMap<object, string>()
   const hidden = new WeakSet<object>()
-  const serializers = new WeakMap<object, unknown>()
+  const serializers = new WeakMap<object, ComponentDataSerializer>()
 
   // node → component ownership, rebuilt each flush; innermost owner wins.
   interface NodeEntry {
@@ -658,6 +661,9 @@ export function createComponentRegistry(
     },
     serializerOf(def) {
       return serializers.get(def)
+    },
+    defOf(id) {
+      return byId.get(id)?.meta.def
     },
     componentsSnapshot() {
       const snapshot = new Map<ComponentId, ComponentRecord>()

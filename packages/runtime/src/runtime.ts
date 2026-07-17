@@ -7,6 +7,8 @@ import type {
   MithrilInspectorHook,
   ModuleId,
   ModuleRecord,
+  PreviewNode,
+  PreviewPath,
   RuntimeEvent,
   SourceLocation,
   VNodeId,
@@ -20,6 +22,8 @@ import { createDomAssociationRegistry } from "./dom-association.js"
 import type { DomAssociationRegistry } from "./dom-association.js"
 import { createErrorBoundary } from "./errors.js"
 import type { ErrorBoundary } from "./errors.js"
+import { createSerializer } from "./serializer.js"
+import type { ComponentDataSerializer, ExpandOptions, Serializer } from "./serializer.js"
 import { createSourceRegistry } from "./source-registry.js"
 import type { ModuleRegistrationInput, SourceRegistry } from "./source-registry.js"
 
@@ -92,6 +96,20 @@ export interface InspectorRuntime extends MithrilInspectorHook {
   componentAncestry(id: ComponentId): ComponentRecord[]
   /** The component's `component-view` source location (§9.3), or `null`. */
   componentViewSource(id: ComponentId): SourceLocation | null
+  /**
+   * The lazy, redacted preview tree for an instance's attrs (§7.4, §15): the
+   * per-component `setInspectorSerializer` hook (§14) runs first if one is
+   * attached, then the result is safely serialized. `null` once unmapped.
+   */
+  attrsPreview(id: ComponentId): PreviewNode | null
+  /** The lazy, redacted preview tree for an instance's state (§7.4, §15); see {@link attrsPreview}. */
+  statePreview(id: ComponentId): PreviewNode | null
+  /**
+   * Evaluate a deferred getter, page a truncated container, or expand past a
+   * `max-depth` stub for a path previously returned by {@link attrsPreview} or
+   * {@link statePreview} (§7.4).
+   */
+  expandPreview(id: ComponentId, target: "attrs" | "state", path: PreviewPath, options?: ExpandOptions): PreviewNode | null
 
   // --- Batching / lifecycle.
   /** Run the batched association + event flush now (also used in tests). */
@@ -112,7 +130,7 @@ export interface InspectorRuntime extends MithrilInspectorHook {
   // --- Public §14 helpers (also re-exported as free functions from the package).
   setInspectorDisplayName(def: object, name: string): void
   markInspectorHidden(def: object): void
-  setInspectorSerializer(def: object, serializer: unknown): void
+  setInspectorSerializer(def: object, serializer: ComponentDataSerializer): void
 
   // --- Internals exposed for the public-API module.
   readonly components: ComponentRegistry
@@ -169,6 +187,32 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
     onActivity: () => scheduleFlush(),
     getMode: () => mode,
   })
+  const serializer: Serializer = createSerializer({
+    redactKeys: redaction.keys,
+    replacement: redaction.replacement,
+  })
+
+  // §14: run a component's custom attrs()/state() hook before the safe
+  // serializer sees the value; a throwing hook falls back to the raw value
+  // rather than breaking the preview (§16).
+  const applyCustomSerializer = (fn: ((value: unknown) => unknown) | undefined, value: unknown): unknown => {
+    if (fn === undefined) return value
+    try {
+      return fn(value)
+    } catch {
+      return value
+    }
+  }
+
+  const rawPreviewInput = (id: ComponentId, target: "attrs" | "state"): { value: unknown } | null => {
+    const record = components.recordOf(id)
+    if (record === undefined) return null
+    const def = components.defOf(id)
+    const custom = def === undefined ? undefined : components.serializerOf(def)
+    const raw = target === "attrs" ? record.attrs : record.state
+    const hook = target === "attrs" ? custom?.attrs : custom?.state
+    return { value: applyCustomSerializer(hook, raw) }
+  }
 
   let flushScheduled = false
   const scheduleFlush = (): void => {
@@ -260,6 +304,36 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
     },
     componentViewSource(id) {
       return boundary.guard("component", () => components.viewSourceOf(id), null)
+    },
+    attrsPreview(id) {
+      return boundary.guard(
+        "serializer",
+        () => {
+          const input = rawPreviewInput(id, "attrs")
+          return input === null ? null : serializer.serialize(input.value)
+        },
+        null,
+      )
+    },
+    statePreview(id) {
+      return boundary.guard(
+        "serializer",
+        () => {
+          const input = rawPreviewInput(id, "state")
+          return input === null ? null : serializer.serialize(input.value)
+        },
+        null,
+      )
+    },
+    expandPreview(id, target, path, expandOptions) {
+      return boundary.guard(
+        "serializer",
+        () => {
+          const input = rawPreviewInput(id, target)
+          return input === null ? null : serializer.expand(input.value, path, expandOptions)
+        },
+        null,
+      )
     },
 
     // --- Batching -----------------------------------------------------------

@@ -1,0 +1,25 @@
+{
+  "name": "@mithril-inspector/playground-vite",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "mithril": "^2.3.8"
+  },
+  "devDependencies": {
+    "@mithril-inspector/overlay": "workspace:*",
+    "@mithril-inspector/protocol": "workspace:*",
+    "@mithril-inspector/runtime": "workspace:*",
+    "@mithril-inspector/server": "workspace:*",
+    "@mithril-inspector/transform": "workspace:*",
+    "@mithril-inspector/vite": "workspace:*",
+    "@types/mithril": "^2.2.8",
+    "vite": "^7.3.6"
+  }
+}

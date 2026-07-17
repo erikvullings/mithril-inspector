@@ -18,6 +18,37 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.13.3)(jsdom@29.1.1)
 
+  apps/playground-vite:
+    dependencies:
+      mithril:
+        specifier: ^2.3.8
+        version: 2.3.8
+    devDependencies:
+      '@mithril-inspector/overlay':
+        specifier: workspace:*
+        version: link:../../packages/overlay
+      '@mithril-inspector/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@mithril-inspector/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      '@mithril-inspector/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      '@mithril-inspector/transform':
+        specifier: workspace:*
+        version: link:../../packages/transform
+      '@mithril-inspector/vite':
+        specifier: workspace:*
+        version: link:../../packages/vite
+      '@types/mithril':
+        specifier: ^2.2.8
+        version: 2.2.8
+      vite:
+        specifier: ^7.3.6
+        version: 7.3.6(@types/node@24.13.3)
+
   packages/esbuild: {}
 
   packages/overlay:

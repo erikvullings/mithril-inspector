@@ -27,11 +27,32 @@ function fakeHook(overrides: Partial<OverlayHook> = {}): FakeHook {
     resolveDomSource: () => elementSource,
     resolveDomComponent: () => "c:1" as ComponentId,
     componentRecord: (id) => ({ id, displayName: "UserCard" }) as ComponentRecord,
+    componentAncestry: () => [],
+    componentViewSource: () => null,
     sourceOfVnode: () => null,
     excludeHost: (host) => {
       excluded.push(host)
     },
     flush: () => {},
+    ...overrides,
+  }
+}
+
+function componentRecord(overrides: Partial<ComponentRecord> & { id: ComponentId }): ComponentRecord {
+  return {
+    parentId: null,
+    displayName: "Comp",
+    displayNameInferred: false,
+    source: null,
+    kind: "object",
+    attrs: null,
+    state: null,
+    mounted: true,
+    createdAt: 0,
+    updatedAt: 0,
+    updateCount: 0,
+    domRange: null,
+    childIds: [],
     ...overrides,
   }
 }
@@ -335,5 +356,218 @@ describe("overlay controller — resilience (§16)", () => {
     setHits([el])
     expect(() => controller.handlePointerMove(1, 1)).not.toThrow()
     expect(controller.getState().hover?.mapping.precision).toBe("none")
+  })
+})
+
+describe("overlay controller — ancestry panel & reveal component (§9.1, §9.3, task 0019)", () => {
+  it("is empty when nothing is selected", () => {
+    const { controller } = setup()
+    expect(controller.getState().ancestry).toEqual([])
+    expect(controller.getState().selectedComponentChoices).toEqual([])
+    expect(controller.getState().focusedAncestorId).toBeNull()
+  })
+
+  it("derives the ancestry list from the selection's owning component, root-first with resolved names (§9.1)", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+
+    const appRecord = componentRecord({ id: "c:1" as ComponentId, displayName: "App" })
+    const userCardRecord = componentRecord({
+      id: "c:2" as ComponentId,
+      displayName: "UserCard",
+      displayNameInferred: true,
+      mounted: false,
+    })
+    const hook = fakeHook({
+      resolveDomComponent: () => "c:2" as ComponentId,
+      componentRecord: (id) => (id === "c:2" ? userCardRecord : appRecord),
+      componentAncestry: () => [appRecord, userCardRecord],
+    })
+    const { controller, setHits } = setup({ hook, options: { picker: { openOnClick: false } } })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+
+    const { ancestry } = controller.getState()
+    expect(ancestry.map((a) => ({ id: a.id, name: a.name, mounted: a.mounted }))).toEqual([
+      { id: "c:1", name: { name: "App", inferred: false }, mounted: true },
+      { id: "c:2", name: { name: "UserCard", inferred: true }, mounted: false },
+    ])
+  })
+
+  it("orders selectedComponentChoices element-first, then view, then declaration — only the ones that resolve (§9.3, §2.4)", () => {
+    const clickTarget = document.createElement("article")
+    stubRect(clickTarget, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(clickTarget)
+    const rangeNode = document.createElement("span")
+    document.body.appendChild(rangeNode)
+
+    const elementLoc: SourceLocation = { ...elementSource, line: 100, column: 1 }
+    const viewLoc: SourceLocation = { ...elementSource, kind: "component-view", line: 200, column: 2 }
+    const declLoc: SourceLocation = { ...elementSource, kind: "component-declaration", line: 300, column: 3 }
+    const record = componentRecord({
+      id: "c:5" as ComponentId,
+      domRange: { first: rangeNode, last: rangeNode },
+      source: declLoc,
+    })
+    const hook = fakeHook({
+      resolveDomComponent: () => "c:5" as ComponentId,
+      componentRecord: () => record,
+      componentAncestry: () => [record],
+      resolveDomSource: (node) => (node === rangeNode ? elementLoc : null),
+      componentViewSource: () => viewLoc,
+    })
+    const { controller, setHits } = setup({ hook, options: { picker: { openOnClick: false } } })
+    controller.startPicker()
+    setHits([clickTarget])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+
+    const choices = controller.getState().selectedComponentChoices
+    expect(choices.map((c) => c.kind)).toEqual(["element", "view", "declaration"])
+    expect(choices.map((c) => c.location.line)).toEqual([100, 200, 300])
+    expect(choices.every((c) => c.mapping.location !== null)).toBe(true)
+  })
+
+  it("omits choices that don't resolve (only the declaration exists)", () => {
+    const clickTarget = document.createElement("article")
+    stubRect(clickTarget, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(clickTarget)
+
+    const declLoc: SourceLocation = { ...elementSource, kind: "component-declaration", line: 300 }
+    const record = componentRecord({ id: "c:6" as ComponentId, domRange: null, source: declLoc })
+    const hook = fakeHook({
+      resolveDomComponent: () => "c:6" as ComponentId,
+      componentRecord: () => record,
+      componentAncestry: () => [record],
+      resolveDomSource: () => null,
+      componentViewSource: () => null,
+    })
+    const { controller, setHits } = setup({ hook, options: { picker: { openOnClick: false } } })
+    controller.startPicker()
+    setHits([clickTarget])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+
+    const choices = controller.getState().selectedComponentChoices
+    expect(choices.map((c) => c.kind)).toEqual(["declaration"])
+  })
+
+  it("focusAncestor highlights the ancestor's own DOM range (possibly multi-node) and records it as focused", () => {
+    const a = document.createElement("p")
+    const b = document.createElement("p")
+    document.body.append(a, b)
+    stubRect(a, { left: 1, top: 1, width: 2, height: 2 })
+    stubRect(b, { left: 3, top: 3, width: 4, height: 4 })
+
+    const record = componentRecord({ id: "c:9" as ComponentId, domRange: { first: a, last: b } })
+    const hook = fakeHook({ componentRecord: () => record })
+    const { controller } = setup({ hook })
+
+    controller.focusAncestor("c:9" as ComponentId)
+    const state = controller.getState()
+    expect(state.focusedAncestorId).toBe("c:9")
+    expect(state.frozenRects).toEqual([
+      { left: 1, top: 1, width: 2, height: 2 },
+      { left: 3, top: 3, width: 4, height: 4 },
+    ])
+  })
+
+  it("degrades to the selection's own highlight when the focused ancestor has no live DOM range", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const { controller, setHits } = setup({ options: { picker: { openOnClick: false } } })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+    expect(controller.getState().frozenRects).toEqual([{ left: 0, top: 0, width: 10, height: 10 }])
+
+    // The default fake hook's componentRecord has no domRange at all.
+    controller.focusAncestor("c:1" as ComponentId)
+    expect(controller.getState().focusedAncestorId).toBe("c:1")
+    expect(controller.getState().frozenRects).toEqual([{ left: 0, top: 0, width: 10, height: 10 }])
+  })
+
+  it("revealComponent opens the most-precise choice by default", () => {
+    const rangeNode = document.createElement("span")
+    document.body.appendChild(rangeNode)
+    const elementLoc: SourceLocation = { ...elementSource, line: 10 }
+    const declLoc: SourceLocation = { ...elementSource, kind: "component-declaration", line: 20 }
+    const record = componentRecord({
+      id: "c:7" as ComponentId,
+      domRange: { first: rangeNode, last: rangeNode },
+      source: declLoc,
+    })
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const hook = fakeHook({
+      componentRecord: () => record,
+      resolveDomSource: (node) => (node === rangeNode ? elementLoc : null),
+    })
+    const { controller } = setup({ hook, openInEditor })
+
+    controller.revealComponent("c:7" as ComponentId)
+    expect(openInEditor).toHaveBeenCalledWith({ file: elementLoc.relativeFile, line: 10, column: elementLoc.column })
+  })
+
+  it("revealComponent opens a specific requested kind, not just the default", () => {
+    const rangeNode = document.createElement("span")
+    document.body.appendChild(rangeNode)
+    const elementLoc: SourceLocation = { ...elementSource, line: 10 }
+    const declLoc: SourceLocation = { ...elementSource, kind: "component-declaration", line: 20 }
+    const record = componentRecord({
+      id: "c:7" as ComponentId,
+      domRange: { first: rangeNode, last: rangeNode },
+      source: declLoc,
+    })
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const hook = fakeHook({
+      componentRecord: () => record,
+      resolveDomSource: (node) => (node === rangeNode ? elementLoc : null),
+    })
+    const { controller } = setup({ hook, openInEditor })
+
+    controller.revealComponent("c:7" as ComponentId, "declaration")
+    expect(openInEditor).toHaveBeenCalledWith({ file: declLoc.relativeFile, line: 20, column: declLoc.column })
+  })
+
+  it("records a diagnostic and does not open the editor when the component has no source location", () => {
+    const record = componentRecord({ id: "c:8" as ComponentId })
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const hook = fakeHook({
+      componentRecord: () => record,
+      resolveDomSource: () => null,
+      componentViewSource: () => null,
+    })
+    const { controller } = setup({ hook, openInEditor })
+
+    controller.revealComponent("c:8" as ComponentId)
+    expect(openInEditor).not.toHaveBeenCalled()
+    expect(controller.getState().diagnostics.length).toBeGreaterThan(0)
+  })
+
+  it("resets the focused ancestor when a new element is selected", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const { controller, setHits } = setup({ options: { picker: { openOnClick: false } } })
+    controller.focusAncestor("c:1" as ComponentId)
+    expect(controller.getState().focusedAncestorId).toBe("c:1")
+
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+    expect(controller.getState().focusedAncestorId).toBeNull()
+  })
+
+  it("resets the focused ancestor on clearSelection", () => {
+    const { controller } = setup()
+    controller.focusAncestor("c:1" as ComponentId)
+    controller.clearSelection()
+    expect(controller.getState().focusedAncestorId).toBeNull()
   })
 })

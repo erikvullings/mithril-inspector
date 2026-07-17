@@ -25,6 +25,8 @@ function fakeHook(): OverlayHook {
     resolveDomSource: () => source,
     resolveDomComponent: () => null,
     componentRecord: () => undefined,
+    componentAncestry: () => [],
+    componentViewSource: () => null,
     sourceOfVnode: () => null,
     excludeHost: () => {},
     flush: () => {},

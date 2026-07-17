@@ -187,8 +187,27 @@ export function overlayCss(): string {
 .mi-precision-none { background: var(--mi-border); color: var(--mi-fg); }
 
 .mi-ancestry { list-style: none; padding: 0; margin: 0; }
-.mi-ancestry li { padding: 2px 0; font-family: var(--mi-mono); }
+.mi-ancestry li { padding: 4px 0; font-family: var(--mi-mono); }
 .mi-ancestry .mi-depth { color: var(--mi-muted); }
+.mi-ancestry-focused { background: var(--mi-surface); border-radius: 6px; }
+.mi-ancestry-name {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--mi-fg);
+  font: inherit;
+  font-family: var(--mi-mono);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+.mi-ancestry-name:hover { text-decoration-color: currentColor; }
+.mi-ancestry-actions { margin: 4px 0 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+.mi-btn-small { padding: 3px 8px; font-size: 11px; font-weight: 600; }
+.mi-reveal-choices { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; font-family: var(--mi-font); }
 
 .mi-stale {
   border: 1px solid var(--mi-inferred);

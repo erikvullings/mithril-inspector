@@ -39,11 +39,11 @@ pnpm test:browser # from the repo root, or `pnpm test` inside this package
 - `src/*.test.ts` — one file per §19.2 assertion (plus HMR): tab appears,
   picker activates, hover/click resolve the correct component and source
   (including the fragment-root and multiple-mount-root fixtures), the editor
-  endpoint receives the exact file/line, component ancestry (nearest-only —
-  full multi-level ancestry is `it.todo`, pending task 0019), keyed-reorder
-  redraws update the DOM/source mapping, removed nodes report "no longer
-  mounted", overlay interactions suppress the app's own click handler, and a
-  real production build contains no inspector runtime.
+  endpoint receives the exact file/line, the full multi-level component
+  ancestry chain plus per-ancestor highlight/reveal-component (task 0019),
+  keyed-reorder redraws update the DOM/source mapping, removed nodes report
+  "no longer mounted", overlay interactions suppress the app's own click
+  handler, and a real production build contains no inspector runtime.
 
 ## Notes
 

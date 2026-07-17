@@ -56,3 +56,5 @@ REQUIREMENTS.md §20.1 lists 15 MVP acceptance criteria; §21 Phase 1 ends with 
   **Verified:** `pnpm -r build && pnpm -r test` green (all packages, spikes and `tests/browser`, no regressions from the version bump or doc changes); `pnpm -r typecheck` clean. Did not re-run individual new test files since no new test files were added this session (only the pre-existing uncommitted overlay tests, already verified above); the full-suite run above is the complete, current count.
 
   **Repository state (§25.8):** runnable — `pnpm install && pnpm build && pnpm test && pnpm typecheck && pnpm test:browser` all succeed from a clean install.
+
+- 2026-07-17 claude-sonnet: the gap recorded above in criterion 10 ("only the nearest component is shown, no multi-level chain") is now closed by task 0019 — the overlay's "Component ancestry" section shows the full root-first chain, and `tests/browser/src/selection.test.ts`'s `it.todo("full multi-level ancestry chain is reported (blocked on 0019)")` is now a real, passing test. See TASKS/0019-ancestry-panel.md for details.

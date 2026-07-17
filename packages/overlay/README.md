@@ -61,6 +61,19 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   component name resolved via the §9.2 fallback tiers (filename-derived or
   `"Anonymous"`), so a guessed name is never mistaken for an explicit or
   declared one.
+- **Ancestry panel & reveal component (§8.3, §9.1, §9.3, task 0019):** the
+  "Component ancestry" section lists the full root-first chain (`App` →
+  `UserList` → `UserCard`) for the selected element's owning component, each
+  with its own resolved (and exact-vs-inferred marked) display name. Clicking
+  an ancestor's name (`focusAncestor`) highlights its own rendered DOM range
+  — every top-level sibling node for a fragment-root component, not just the
+  first — without changing what's selected. Each ancestor and the "Selected"
+  section's own **Reveal component** button open a component's source via
+  `revealComponent`, defaulting to the most-precise of up to three §9.3
+  locations (rendered element → component view → component declaration); an
+  "Open: …" button group is shown only when more than one actually resolved
+  (§2.4 degrade), and a component inside a hidden (`markInspectorHidden`)
+  ancestor's subtree is excluded from the chain rather than leaving a gap.
 - **Accessibility (§18):** semantic controls, ARIA roles (`dialog`, `tablist`,
   `tab`, `status`), visible focus indicators, WCAG AA contrast, reduced-motion
   support, a visible picker-active banner, and light/dark theming that follows
@@ -92,9 +105,10 @@ CSS, which conflicts with the shadow-root / no-global-styles constraint (§8.1,
 
 ## Known Phase 1 limitations
 
-- The Components tab and the "Component ancestry" section show a single nearest
-  component only; the full expandable tree and multi-level ancestry arrive in
-  later tasks (0019, 0022).
+- The Components tab is still a placeholder; the full expandable component
+  tree arrives with task 0022. (The "Component ancestry" section itself now
+  shows the full multi-level chain, not just the nearest component — task
+  0019.)
 - Highlight margins/padding visualization is deferred (§8.6, "later release").
 - Real-browser integration (playground, Chromium/Firefox/Safari) is exercised by
   the Vite playground (0014) and browser tests (0015); this package is unit- and

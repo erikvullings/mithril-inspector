@@ -1,9 +1,9 @@
-import type { ComponentId, EditorRequest, SourceLocation } from "@mithril-inspector/protocol"
+import type { ComponentId, ComponentRecord, EditorRequest, SourceLocation } from "@mithril-inspector/protocol"
 
 import { createDiagnostics, type Diagnostic, type DiagnosticsLog } from "./diagnostics.js"
 import { describeElement, eligibleElementAt, isWithinHost } from "./element-info.js"
 import { createEditorClient, type OpenInEditor } from "./editor.js"
-import { rectOfElement, type HighlightRect } from "./highlight.js"
+import { rectOfElement, rectsOfDomRange, type HighlightRect } from "./highlight.js"
 import type { OverlayHook } from "./hook.js"
 import { describeMapping, type MappingInfo } from "./mapping.js"
 import type { OverlayOptions } from "./options.js"
@@ -41,6 +41,31 @@ export interface HoverInfo {
   readonly mapping: MappingInfo
 }
 
+/** The three §9.3 open targets for a component, most-precise first. */
+export type SourceChoiceKind = "element" | "view" | "declaration"
+
+const SOURCE_CHOICE_LABELS: Record<SourceChoiceKind, string> = {
+  element: "Rendered element",
+  view: "Component view",
+  declaration: "Component declaration",
+}
+
+/** One of a component's (up to three) openable source locations (§9.3). */
+export interface SourceChoice {
+  readonly kind: SourceChoiceKind
+  readonly label: string
+  readonly location: SourceLocation
+  readonly mapping: MappingInfo
+}
+
+/** One entry in the ancestry list (§8.3, §9.1) — an ancestor or the selection's own component. */
+export interface AncestryEntry {
+  readonly id: ComponentId
+  readonly name: ComponentNameInfo
+  readonly mounted: boolean
+  readonly choices: readonly SourceChoice[]
+}
+
 /** Everything the Mithril views render from — a pull-based snapshot. */
 export interface OverlayViewState {
   readonly picker: PickerState
@@ -53,6 +78,12 @@ export interface OverlayViewState {
   readonly selection: SelectionSnapshot
   /** Display name of the selection's nearest component, or `null`. */
   readonly selectedComponentName: ComponentNameInfo | null
+  /** Root-first ancestry chain for the selection's owning component, including itself (§8.3, §9.1). */
+  readonly ancestry: readonly AncestryEntry[]
+  /** Reveal-component choices for the selection's own nearest component (§9.3); `[]` when nothing is selected or resolved. */
+  readonly selectedComponentChoices: readonly SourceChoice[]
+  /** The ancestry entry currently focused via `focusAncestor` (§9.3), or `null`. */
+  readonly focusedAncestorId: ComponentId | null
   readonly frozenRects: readonly HighlightRect[]
   readonly diagnostics: readonly Diagnostic[]
 }
@@ -105,6 +136,11 @@ export interface OverlayController {
   openLocationInEditor(location: SourceLocation): void
   clearSelection(): void
   promoteStaleSelection(): void
+
+  /** Highlight an ancestry entry's own DOM range and mark it focused (§9.3). */
+  focusAncestor(id: ComponentId): void
+  /** Open a component's source — the most-precise available choice, or a specific `kind` (§9.3). */
+  revealComponent(id: ComponentId, kind?: SourceChoiceKind): void
 }
 
 interface Shortcuts {
@@ -161,6 +197,42 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     return { name: record.displayName, inferred: record.displayNameInferred === true }
   }
 
+  // §9.3's three open targets for a component, most-precise first: the
+  // rendered element's own exact mapping, then the component-view marker,
+  // then the component-declaration location already on the record. Only the
+  // ones that actually resolve are returned.
+  const computeChoices = (record: ComponentRecord): SourceChoice[] => {
+    const choices: SourceChoice[] = []
+    const rangeFirst = record.domRange?.first ?? null
+    const elementLocation = rangeFirst !== null ? hook?.resolveDomSource(rangeFirst) ?? null : null
+    if (elementLocation !== null) {
+      choices.push({
+        kind: "element",
+        label: SOURCE_CHOICE_LABELS.element,
+        location: elementLocation,
+        mapping: describeMapping(elementLocation),
+      })
+    }
+    const viewLocation = hook?.componentViewSource(record.id) ?? null
+    if (viewLocation !== null) {
+      choices.push({
+        kind: "view",
+        label: SOURCE_CHOICE_LABELS.view,
+        location: viewLocation,
+        mapping: describeMapping(viewLocation),
+      })
+    }
+    if (record.source !== null) {
+      choices.push({
+        kind: "declaration",
+        label: SOURCE_CHOICE_LABELS.declaration,
+        location: record.source,
+        mapping: describeMapping(record.source),
+      })
+    }
+    return choices
+  }
+
   const selection = createSelectionModel((node) => resolveNode(node))
   const picker: PickerMachine = createPickerMachine()
 
@@ -215,6 +287,9 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   let hover: HoverInfo | null = null
   let hoverRects: readonly HighlightRect[] = []
   let frozenRects: readonly HighlightRect[] = []
+  // The ancestry entry currently highlighted via `focusAncestor` (§9.3); reset
+  // whenever the underlying selection changes so a stale ancestor never lingers.
+  let focusedAncestorId: ComponentId | null = null
 
   const persist = (): void => {
     saveOverlayState({ collapsed, offset }, storage)
@@ -227,6 +302,13 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   }
 
   const recomputeFrozen = (): void => {
+    if (focusedAncestorId !== null) {
+      const range = hook?.componentRecord(focusedAncestorId)?.domRange
+      if (range !== null && range !== undefined && range.first !== null && range.first.isConnected) {
+        frozenRects = rectsOfDomRange(range)
+        return
+      }
+    }
     const node = selection.snapshot().node
     frozenRects = node !== null && node.isConnected ? [rectOfElement(node)] : []
   }
@@ -237,6 +319,14 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
 
     getState() {
       const snapshot = selection.snapshot()
+      const ancestryRecords = snapshot.componentId !== null ? hook?.componentAncestry(snapshot.componentId) ?? [] : []
+      const ancestry: AncestryEntry[] = ancestryRecords.map((record) => ({
+        id: record.id,
+        name: { name: record.displayName, inferred: record.displayNameInferred === true },
+        mounted: record.mounted,
+        choices: computeChoices(record),
+      }))
+      const selectedComponentChoices = ancestry.length > 0 ? ancestry[ancestry.length - 1]!.choices : []
       return {
         picker: picker.getState(),
         picking: picker.isPicking(),
@@ -247,6 +337,9 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         hoverRects,
         selection: snapshot,
         selectedComponentName: componentNameOf(snapshot.componentId),
+        ancestry,
+        selectedComponentChoices,
+        focusedAncestorId,
         frozenRects,
         diagnostics: diagnostics.list(),
       }
@@ -347,6 +440,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
 
           const data = resolveNode(target)
           selection.select(target, data)
+          focusedAncestorId = null // a new selection starts with no ancestor focused
           frozenRects = [rectOfElement(target)]
           collapsed = false // show the details panel (§8.7)
           activeTab = "inspector"
@@ -439,15 +533,46 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
 
     clearSelection() {
       selection.clear()
+      focusedAncestorId = null
       frozenRects = []
       redraw()
     },
 
     promoteStaleSelection() {
+      focusedAncestorId = null
       if (selection.promoteToNearestAncestor()) {
         recomputeFrozen()
         redraw()
       }
+    },
+
+    focusAncestor(id) {
+      focusedAncestorId = id
+      recomputeFrozen()
+      redraw()
+    },
+
+    revealComponent(id, kind) {
+      diagnostics.guard(
+        "editor",
+        () => {
+          const record = hook?.componentRecord(id)
+          if (record === undefined) {
+            diagnostics.record("editor", new Error("Component is no longer available"))
+            redraw()
+            return
+          }
+          const choices = computeChoices(record)
+          const choice = (kind !== undefined ? choices.find((c) => c.kind === kind) : undefined) ?? choices[0]
+          if (choice === undefined) {
+            diagnostics.record("editor", new Error("No source location available for this component"))
+            redraw()
+            return
+          }
+          doOpenLocation(choice.location)
+        },
+        undefined,
+      )
     },
   }
 

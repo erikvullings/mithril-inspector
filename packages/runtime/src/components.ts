@@ -1,4 +1,10 @@
-import type { ComponentId, ComponentRecord, DomRange, RuntimeEvent } from "@mithril-inspector/protocol"
+import type {
+  ComponentId,
+  ComponentRecord,
+  DomRange,
+  RuntimeEvent,
+  SourceLocation,
+} from "@mithril-inspector/protocol"
 import { makeComponentId } from "@mithril-inspector/protocol"
 
 import { domRangeOf, eachRangeNode } from "./dom-range.js"
@@ -81,6 +87,21 @@ export interface ComponentRegistry {
   flush(): void
   /** The nearest (innermost) component instance owning `node`, or `null`. */
   resolveDomComponent(node: Node): ComponentId | null
+  /**
+   * The root-first ancestor chain for `id`, including the instance itself as
+   * the last entry (§9.1 example shape, §19.2.6). Consistent with
+   * `recordOf`'s hidden-subtree exclusion (§14): a component inside a hidden
+   * ancestor's subtree is itself not visible, so its chain is `[]` rather
+   * than a chain with a gap where the hidden ancestor would have been.
+   * Returns `[]` for an unknown id.
+   */
+  ancestryOf(id: ComponentId): ComponentRecord[]
+  /**
+   * The component's `component-view` source location (§9.3's "component
+   * view" open target), or `null` when none exists (inline component with no
+   * qualifiedId, no view marker registered, or the instance is hidden).
+   */
+  viewSourceOf(id: ComponentId): SourceLocation | null
   /** Override an instance's display name for a definition (§14). */
   setDisplayName(def: object, name: string): void
   /** Mark a definition hidden from the component tree (§14). */
@@ -595,6 +616,33 @@ export function createComponentRegistry(
         }
       }
       return null
+    },
+    ancestryOf(id) {
+      const self = byId.get(id)
+      // `isVisible` already walks the full ancestor chain checking every
+      // hidden flag (§14 subtree exclusion), so once `self` passes it, no
+      // ancestor found while walking `parentId` below can be hidden either.
+      if (self === undefined || !isVisible(self)) return []
+      const chain: ComponentRecord[] = [toRecord(self)]
+      let parentId = self.parentId
+      while (parentId !== null) {
+        const candidate = byId.get(parentId)
+        if (candidate === undefined) break
+        chain.push(toRecord(candidate))
+        parentId = candidate.parentId
+      }
+      return chain.reverse()
+    },
+    viewSourceOf(id) {
+      const record = byId.get(id)
+      if (record === undefined || !isVisible(record) || record.meta.qualifiedId === "") return null
+      const parsed = sources.parseQualified(record.meta.qualifiedId)
+      if (parsed === null) return null
+      const match = /^s(\d+)$/.exec(parsed.sourceId)
+      if (match === null) return null
+      const nextSourceId = `s${Number(match[1]) + 1}`
+      const location = sources.resolveSource(`${parsed.moduleId}:${nextSourceId}`)
+      return location !== null && location.kind === "component-view" ? location : null
     },
     setDisplayName(def, name) {
       displayNameOverrides.set(def, name)

@@ -15,6 +15,10 @@ export interface OverlayHook {
   resolveDomComponent(node: Node): ComponentId | null
   /** A fresh component record for an instance id, or `undefined`. */
   componentRecord(id: ComponentId): ComponentRecord | undefined
+  /** Root-first ancestor chain for an instance, including itself (§9.1, §19.2.6, task 0019); `[]` if unknown. */
+  componentAncestry(id: ComponentId): ComponentRecord[]
+  /** The component's `component-view` source location (§9.3), or `null` when none exists. */
+  componentViewSource(id: ComponentId): SourceLocation | null
   /** Source stamped on a specific vnode, or `null`. */
   sourceOfVnode(vnode: object): SourceLocation | null
   /** Exclude the overlay host (and subtree) from tracking (§8.2). */

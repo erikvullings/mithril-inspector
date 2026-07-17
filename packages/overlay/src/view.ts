@@ -1,7 +1,8 @@
+import type { ComponentId } from "@mithril-inspector/protocol"
 import m from "mithril"
 import type { Children, Component, Vnode } from "mithril"
 
-import type { OverlayController, OverlayTab, OverlayViewState } from "./controller.js"
+import type { AncestryEntry, OverlayController, OverlayTab, OverlayViewState, SourceChoice } from "./controller.js"
 import { beginDrag, type DragPointerEvent } from "./drag.js"
 import type { HighlightRect } from "./highlight.js"
 import type { MappingInfo, MappingPrecision } from "./mapping.js"
@@ -33,6 +34,75 @@ function inferredNameBadge(): Vnode {
     "span.mi-badge-precision.mi-precision-inferred",
     { title: "Inferred from the filename or a generic fallback — not an explicit or declared name" },
     "Inferred",
+  )
+}
+
+/**
+ * "Reveal component" (§8.3 mockup, §9.3): opens the most-precise available
+ * source for a component. Disabled when nothing resolved at all (§2.4).
+ */
+function revealButton(controller: OverlayController, id: ComponentId, choices: readonly SourceChoice[]): Vnode {
+  return m(
+    "button.mi-btn",
+    {
+      type: "button",
+      disabled: choices.length === 0,
+      onclick: () => controller.revealComponent(id),
+    },
+    "Reveal component",
+  )
+}
+
+/**
+ * The §9.3 "Open: rendered element / component view / component
+ * declaration" choice — only rendered when more than one location actually
+ * resolved (§2.4 degrade); the default (`revealButton`) already covers the
+ * single/none cases.
+ */
+function revealChoiceGroup(controller: OverlayController, id: ComponentId, choices: readonly SourceChoice[]): Children {
+  if (choices.length <= 1) return null
+  return m("div.mi-reveal-choices", [
+    m("span.mi-muted", "Open: "),
+    choices.map((choice) =>
+      m(
+        "button.mi-btn.mi-btn-small",
+        { type: "button", key: choice.kind, onclick: () => controller.revealComponent(id, choice.kind) },
+        [choice.label, " ", precisionBadge(choice.mapping)],
+      ),
+    ),
+  ])
+}
+
+/** One row of the ancestry list (§8.3 example, §9.1); indentation shows depth. */
+function ancestryRow(controller: OverlayController, entry: AncestryEntry, depth: number, focused: boolean): Vnode {
+  return m(
+    "li",
+    { key: entry.id, class: focused ? "mi-ancestry-focused" : undefined },
+    m("div", { style: `padding-left:${depth * 14}px;` }, [
+      depth > 0 ? m("span.mi-depth", "└─ ") : null,
+      m(
+        "button.mi-ancestry-name",
+        { type: "button", onclick: () => controller.focusAncestor(entry.id) },
+        entry.name.name,
+      ),
+      entry.name.inferred ? [" ", inferredNameBadge()] : null,
+      !entry.mounted ? [" ", m("span.mi-muted", "(not mounted)")] : null,
+      m("div.mi-ancestry-actions", [
+        revealButton(controller, entry.id, entry.choices),
+        revealChoiceGroup(controller, entry.id, entry.choices),
+      ]),
+    ]),
+  )
+}
+
+/** The "Component ancestry" section (§8.3, §9.1) — resolved display names, root-first. */
+function ancestrySection(controller: OverlayController, state: OverlayViewState): Vnode {
+  if (state.ancestry.length === 0) {
+    return m("p.mi-muted", "No owning component resolved for this element.")
+  }
+  return m(
+    "ul.mi-ancestry",
+    state.ancestry.map((entry, depth) => ancestryRow(controller, entry, depth, entry.id === state.focusedAncestorId)),
   )
 }
 
@@ -161,20 +231,21 @@ function inspectorPanel(controller: OverlayController, state: OverlayViewState):
         },
         "Open in editor",
       ),
+      selection.componentId !== null
+        ? revealButton(controller, selection.componentId, state.selectedComponentChoices)
+        : null,
       m(
         "button.mi-btn",
         { type: "button", onclick: () => controller.clearSelection() },
         "Clear",
       ),
     ]),
+    selection.componentId !== null
+      ? revealChoiceGroup(controller, selection.componentId, state.selectedComponentChoices)
+      : null,
     m("hr.mi-hr"),
     m("div.mi-section-title", "Component ancestry"),
-    m(
-      "p.mi-muted",
-      componentName
-        ? `Nearest component: ${componentName.name}. Full ancestry arrives with the component tree.`
-        : "No owning component resolved for this element.",
-    ),
+    ancestrySection(controller, state),
   ])
 }
 

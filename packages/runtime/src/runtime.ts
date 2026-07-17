@@ -88,6 +88,10 @@ export interface InspectorRuntime extends MithrilInspectorHook {
   sourceOfVnode(vnode: object): SourceLocation | null
   /** A fresh {@link ComponentRecord} for an instance, or `undefined`. */
   componentRecord(id: ComponentId): ComponentRecord | undefined
+  /** Root-first ancestor chain for an instance, including itself (§9.1, §19.2.6); `[]` if unknown. */
+  componentAncestry(id: ComponentId): ComponentRecord[]
+  /** The component's `component-view` source location (§9.3), or `null`. */
+  componentViewSource(id: ComponentId): SourceLocation | null
 
   // --- Batching / lifecycle.
   /** Run the batched association + event flush now (also used in tests). */
@@ -250,6 +254,12 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
     },
     componentRecord(id) {
       return boundary.guard("component", () => components.recordOf(id), undefined)
+    },
+    componentAncestry(id) {
+      return boundary.guard("component", () => components.ancestryOf(id), [])
+    },
+    componentViewSource(id) {
+      return boundary.guard("component", () => components.viewSourceOf(id), null)
     },
 
     // --- Batching -----------------------------------------------------------

@@ -19,8 +19,16 @@ export interface StubEditorOption {
 
 export interface EditorStub {
   readonly editorOption: StubEditorOption
-  /** Poll for the stub's recorded invocation (§10 "mock the launcher, assert the request"); never a fixed sleep. */
-  waitForInvocation(timeoutMs?: number): Promise<EditorLocation>
+  /** Number of invocations recorded so far (sync) — a baseline for `waitForInvocation`'s `after`. */
+  invocationCount(): number
+  /**
+   * Poll for the stub's recorded invocation (§10 "mock the launcher, assert
+   * the request"); never a fixed sleep. When `after` is given, waits until
+   * more than `after` invocations exist (so a second, later action's
+   * invocation isn't mistaken for an earlier one already on disk) and
+   * returns the newest.
+   */
+  waitForInvocation(timeoutMs?: number, after?: number): Promise<EditorLocation>
 }
 
 /**
@@ -30,6 +38,12 @@ export interface EditorStub {
  */
 export function createEditorStub(tmpDir: string): EditorStub {
   const resultFile = join(tmpDir, "editor-invocations.jsonl")
+
+  const lines = (): string[] => {
+    if (!existsSync(resultFile)) return []
+    const content = readFileSync(resultFile, "utf8").trim()
+    return content.length === 0 ? [] : content.split("\n")
+  }
 
   return {
     editorOption: {
@@ -42,14 +56,14 @@ export function createEditorStub(tmpDir: string): EditorStub {
         String(location.column),
       ],
     },
-    async waitForInvocation(timeoutMs = 5_000) {
+    invocationCount() {
+      return lines().length
+    },
+    async waitForInvocation(timeoutMs = 5_000, after = 0) {
       const start = Date.now()
       while (Date.now() - start < timeoutMs) {
-        if (existsSync(resultFile)) {
-          const content = readFileSync(resultFile, "utf8").trim()
-          const lastLine = content.length === 0 ? undefined : content.split("\n").pop()
-          if (lastLine !== undefined) return JSON.parse(lastLine) as EditorLocation
-        }
+        const current = lines()
+        if (current.length > after) return JSON.parse(current[current.length - 1]!) as EditorLocation
         await new Promise((resolve) => setTimeout(resolve, 50))
       }
       throw new Error(`Editor stub recorded no invocation within ${timeoutMs}ms (${resultFile}).`)

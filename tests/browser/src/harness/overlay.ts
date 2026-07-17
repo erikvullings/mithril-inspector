@@ -94,6 +94,32 @@ export function shadowExists(page: Page, selector: string): Promise<boolean> {
   )
 }
 
+/** Trimmed `textContent` of every shadow-root element matching `selector`, in DOM order. */
+export function shadowTextAll(page: Page, selector: string): Promise<string[]> {
+  return page.evaluate(
+    (hostId, sel) => {
+      const host = document.getElementById(hostId)
+      return Array.from(host?.shadowRoot?.querySelectorAll(sel) ?? []).map((el) => el.textContent?.trim() ?? "")
+    },
+    HOST_ID,
+    selector,
+  )
+}
+
+/** Clicks the `index`-th shadow-root element matching `selector` (no native click target to hover/position). */
+export function shadowClick(page: Page, selector: string, index = 0): Promise<void> {
+  return page.evaluate(
+    (hostId, sel, i) => {
+      const host = document.getElementById(hostId)
+      const el = host?.shadowRoot?.querySelectorAll(sel)[i] as HTMLElement | undefined
+      el?.click()
+    },
+    HOST_ID,
+    selector,
+    index,
+  )
+}
+
 /** Waits until a selector matches (or stops matching, with `present: false`) inside the shadow root. */
 export function waitForShadowPresence(
   page: Page,

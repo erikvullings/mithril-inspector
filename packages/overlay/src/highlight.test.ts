@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest"
 import {
   boundingRect,
   createFrameScheduler,
+  nodesOfDomRange,
   rectOfElement,
+  rectsOfDomRange,
   rectsOfNodes,
   type HighlightRect,
   type RafHost,
@@ -71,6 +73,59 @@ describe("rectsOfNodes", () => {
 
   it("returns an empty array when there are no element nodes", () => {
     expect(rectsOfNodes([document.createTextNode("x")])).toEqual([])
+  })
+})
+
+describe("nodesOfDomRange (§8.6, §9.3 ancestor/component highlighting)", () => {
+  it("returns [] when first is null", () => {
+    expect(nodesOfDomRange({ first: null, last: null })).toEqual([])
+  })
+
+  it("returns a single node when first and last are the same node", () => {
+    const el = elementAt({ left: 0, top: 0, width: 1, height: 1 })
+    expect(nodesOfDomRange({ first: el, last: el })).toEqual([el])
+  })
+
+  it("returns a single node when last is null (no known end)", () => {
+    const el = elementAt({ left: 0, top: 0, width: 1, height: 1 })
+    expect(nodesOfDomRange({ first: el, last: null })).toEqual([el])
+  })
+
+  it("walks siblings from first to last inclusive (a fragment-root component's range)", () => {
+    const parent = document.createElement("div")
+    const a = elementAt({ left: 0, top: 0, width: 1, height: 1 })
+    const b = elementAt({ left: 0, top: 0, width: 1, height: 1 })
+    const c = elementAt({ left: 0, top: 0, width: 1, height: 1 })
+    const trailing = elementAt({ left: 0, top: 0, width: 1, height: 1 })
+    parent.append(a, b, c, trailing)
+    expect(nodesOfDomRange({ first: a, last: c })).toEqual([a, b, c])
+  })
+
+  it("stops gracefully if last is never reached by walking nextSibling (malformed range)", () => {
+    const parent = document.createElement("div")
+    const a = elementAt({ left: 0, top: 0, width: 1, height: 1 })
+    const b = elementAt({ left: 0, top: 0, width: 1, height: 1 })
+    parent.append(a, b)
+    const stray = elementAt({ left: 0, top: 0, width: 1, height: 1 }) // never appended
+    expect(nodesOfDomRange({ first: a, last: stray })).toEqual([a, b])
+  })
+})
+
+describe("rectsOfDomRange", () => {
+  it("produces one rect per element across the range, skipping text nodes", () => {
+    const parent = document.createElement("div")
+    const a = elementAt({ left: 1, top: 2, width: 3, height: 4 })
+    const text = document.createTextNode("x")
+    const b = elementAt({ left: 5, top: 6, width: 7, height: 8 })
+    parent.append(a, text, b)
+    expect(rectsOfDomRange({ first: a, last: b })).toEqual([
+      { left: 1, top: 2, width: 3, height: 4 },
+      { left: 5, top: 6, width: 7, height: 8 },
+    ])
+  })
+
+  it("returns [] for an empty range", () => {
+    expect(rectsOfDomRange({ first: null, last: null })).toEqual([])
   })
 })
 

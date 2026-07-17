@@ -1,6 +1,7 @@
 import m from "mithril"
 import type { Component, Vnode } from "mithril"
 import type { ComponentId, ModuleId, RuntimeEvent } from "@mithril-inspector/protocol"
+import { makeComponentId } from "@mithril-inspector/protocol"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createComponentRegistry } from "./components.js"
@@ -926,5 +927,198 @@ describe("display name resolution (§9.2, task 0018)", () => {
 
     expect(registry.displayNameOf(id)).toBe("AppRenamed")
     expect(registry.recordOf(id)?.displayName).toBe("AppRenamed")
+  })
+})
+
+describe("component ancestry (§9.1, §19.2.6, task 0019)", () => {
+  const ANCESTRY_MODULE: ModuleId = "m:src/Ancestry.ts"
+
+  const setupThreeLevels = () => {
+    const sources = createSourceRegistry()
+    sources.registerModule(ANCESTRY_MODULE, {
+      file: "/project/src/Ancestry.ts",
+      relativeFile: "src/Ancestry.ts",
+      sources: {
+        s1: { line: 1, column: 1, kind: "component-declaration", displayName: "App" },
+        s2: { line: 5, column: 1, kind: "component-declaration", displayName: "Middle" },
+        s3: { line: 9, column: 1, kind: "component-declaration", displayName: "Leaf" },
+      },
+    })
+    const registry = createComponentRegistry(sources)
+    return { sources, registry }
+  }
+
+  it("returns the full ancestry chain root-first, including the instance itself (§9.1 example shape)", () => {
+    const { registry } = setupThreeLevels()
+    const Leaf = registry.instrument(`${ANCESTRY_MODULE}:s3`, { view: () => m("span.leaf") } as Component)
+    const Middle = registry.instrument(`${ANCESTRY_MODULE}:s2`, {
+      view: () => m("div.middle", m(Leaf)),
+    } as Component)
+    const App = registry.instrument(`${ANCESTRY_MODULE}:s1`, {
+      view: () => m("div.app", m(Middle)),
+    } as Component)
+    m.render(root, m(App))
+    registry.flush()
+
+    const leafId = registry.resolveDomComponent(root.querySelector("span.leaf")!)!
+    const chain = registry.ancestryOf(leafId)
+    expect(chain.map((r) => r.displayName)).toEqual(["App", "Middle", "Leaf"])
+    expect(chain[chain.length - 1]!.id).toBe(leafId)
+  })
+
+  it("returns a single-entry chain for a root component with no ancestors", () => {
+    const { registry } = setupThreeLevels()
+    const App = registry.instrument(`${ANCESTRY_MODULE}:s1`, { view: () => m("div.app") } as Component)
+    const usage = m(App)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    expect(registry.ancestryOf(id).map((r) => r.displayName)).toEqual(["App"])
+  })
+
+  it("returns an empty chain for an unknown id", () => {
+    const { registry } = setupThreeLevels()
+    expect(registry.ancestryOf(makeComponentId(999_999))).toEqual([])
+  })
+
+  it("returns an empty chain for a component inside a hidden ancestor's subtree, not a chain with a gap (§14, consistent with recordOf's subtree exclusion)", () => {
+    const { registry } = setupThreeLevels()
+    const Leaf = registry.instrument(`${ANCESTRY_MODULE}:s3`, { view: () => m("span.leaf") } as Component)
+    const leafUsage = m(Leaf)
+    const middleDef: Component = { view: () => m("div.middle", leafUsage) }
+    registry.markHidden(middleDef)
+    const Middle = registry.instrument(`${ANCESTRY_MODULE}:s2`, middleDef)
+    const App = registry.instrument(`${ANCESTRY_MODULE}:s1`, {
+      view: () => m("div.app", m(Middle)),
+    } as Component)
+    m.render(root, m(App))
+    registry.flush()
+
+    // Leaf is inside Middle's hidden subtree, so it is itself not visible
+    // (§14) — `resolveDomComponent` already skips past both to App; fetching
+    // Leaf's own id directly via `idOf` (unfiltered) confirms `ancestryOf`
+    // degrades to `[]` rather than fabricating a chain with a gap.
+    expect(registry.resolveDomComponent(root.querySelector("span.leaf")!)).not.toBe(
+      idOf(registry, leafUsage.state as object),
+    )
+    const leafId = idOf(registry, leafUsage.state as object)
+    expect(registry.ancestryOf(leafId)).toEqual([])
+  })
+
+  it("returns an empty chain when the instance itself is hidden (§14)", () => {
+    const { registry } = setupThreeLevels()
+    const leafDef: Component = { view: () => m("span.leaf") }
+    const Leaf = registry.instrument(`${ANCESTRY_MODULE}:s3`, leafDef)
+    const leafUsage = m(Leaf)
+    registry.markHidden(leafDef)
+    const App = registry.instrument(`${ANCESTRY_MODULE}:s1`, {
+      view: () => m("div.app", leafUsage),
+    } as Component)
+    m.render(root, m(App))
+    registry.flush()
+
+    const leafId = idOf(registry, leafUsage.state as object)
+    expect(registry.ancestryOf(leafId)).toEqual([])
+  })
+})
+
+describe("component view source resolution (§9.3, task 0019)", () => {
+  const VIEW_MODULE: ModuleId = "m:src/ViewSource.ts"
+
+  it("resolves the component-view location for the marker immediately following the declaration", () => {
+    const sources = createSourceRegistry()
+    sources.registerModule(VIEW_MODULE, {
+      file: "/project/src/ViewSource.ts",
+      relativeFile: "src/ViewSource.ts",
+      sources: {
+        s1: { line: 3, column: 1, kind: "component-declaration", displayName: "Card" },
+        s2: { line: 4, column: 3, kind: "component-view" },
+      },
+    })
+    const registry = createComponentRegistry(sources)
+    const Card = registry.instrument(`${VIEW_MODULE}:s1`, { view: () => m("div.card") } as Component)
+    const usage = m(Card)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const view = registry.viewSourceOf(id)
+    expect(view?.kind).toBe("component-view")
+    expect(view?.line).toBe(4)
+    expect(view?.column).toBe(3)
+  })
+
+  it("returns null when no marker follows the declaration (e.g. the last source in the module)", () => {
+    const sources = createSourceRegistry()
+    sources.registerModule(VIEW_MODULE, {
+      file: "/project/src/ViewSource.ts",
+      relativeFile: "src/ViewSource.ts",
+      sources: {
+        s1: { line: 3, column: 1, kind: "component-declaration", displayName: "Card" },
+      },
+    })
+    const registry = createComponentRegistry(sources)
+    const Card = registry.instrument(`${VIEW_MODULE}:s1`, { view: () => m("div.card") } as Component)
+    const usage = m(Card)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    expect(registry.viewSourceOf(id)).toBeNull()
+  })
+
+  it("returns null when the following marker is not a component-view (e.g. an unrelated element marker)", () => {
+    const sources = createSourceRegistry()
+    sources.registerModule(VIEW_MODULE, {
+      file: "/project/src/ViewSource.ts",
+      relativeFile: "src/ViewSource.ts",
+      sources: {
+        s1: { line: 3, column: 1, kind: "component-declaration", displayName: "Card" },
+        s2: { line: 10, column: 1, kind: "element", tagName: "div" },
+      },
+    })
+    const registry = createComponentRegistry(sources)
+    const Card = registry.instrument(`${VIEW_MODULE}:s1`, { view: () => m("div.card") } as Component)
+    const usage = m(Card)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    expect(registry.viewSourceOf(id)).toBeNull()
+  })
+
+  it("returns null for an inline component with no qualifiedId", () => {
+    const sources = createSourceRegistry()
+    const registry = createComponentRegistry(sources)
+    const Inline = registry.instrument("", { view: () => m("div.inline") } as Component)
+    const usage = m(Inline)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    expect(registry.viewSourceOf(id)).toBeNull()
+  })
+
+  it("returns null for a hidden component (§14)", () => {
+    const sources = createSourceRegistry()
+    sources.registerModule(VIEW_MODULE, {
+      file: "/project/src/ViewSource.ts",
+      relativeFile: "src/ViewSource.ts",
+      sources: {
+        s1: { line: 3, column: 1, kind: "component-declaration", displayName: "Card" },
+        s2: { line: 4, column: 3, kind: "component-view" },
+      },
+    })
+    const registry = createComponentRegistry(sources)
+    const def: Component = { view: () => m("div.card") }
+    registry.markHidden(def)
+    const Card = registry.instrument(`${VIEW_MODULE}:s1`, def)
+    const usage = m(Card)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    expect(registry.viewSourceOf(id)).toBeNull()
   })
 })

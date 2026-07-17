@@ -193,6 +193,34 @@ excludes a component and its whole subtree from `recordOf`/`componentsSnapshot`/
 `resolveDomComponent` (filtered at read time, since hiding can be toggled
 independently of when a component was instrumented).
 
+## Ancestry and component-view source (task 0019)
+
+`ComponentRegistry.ancestryOf(id)` returns the root-first ancestor chain for a
+mounted instance, including the instance itself as the last entry (§9.1
+example shape). It's consistent with `recordOf`'s hidden-subtree exclusion
+(§14): a component inside a hidden ancestor's subtree is itself not visible
+(`isVisible` already walks the whole chain checking every hidden flag), so its
+ancestry is `[]` rather than a chain with a gap where the hidden ancestor
+would have been.
+
+`ComponentRegistry.viewSourceOf(id)` resolves a component's `component-view`
+source location (§9.3's "component view" open target, distinct from the
+`component-declaration` location already on `ComponentRecord.source`). The
+transform (§6.5's `addComponent`) always registers a component's
+`component-view` marker as the source id immediately following its
+`component-declaration` marker when the view has its own span; `viewSourceOf`
+derives that adjacent id from the instance's `qualifiedId` and returns the
+location only if its `kind` actually is `"component-view"` (self-verifying —
+degrades to `null` rather than guessing when no such marker exists, e.g. an
+inline component with no `qualifiedId`, or a declaration with no separately
+spanned view).
+
+Both are exposed on `InspectorRuntime` as `componentAncestry`/
+`componentViewSource` and consumed by the overlay's ancestry panel and
+"Reveal component" action (0019/0012), which additionally resolves the
+*rendered element*'s own exact mapping (`resolveDomSource` on the component's
+`domRange.first`) as the third and generally most-precise §9.3 open target.
+
 ## Known Phase 1/2 limitations
 
 - Function-*declaration* closures are permanently untracked at the instance

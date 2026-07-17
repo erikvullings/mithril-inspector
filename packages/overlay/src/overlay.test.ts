@@ -15,6 +15,30 @@ const source: SourceLocation = {
   kind: "element",
 }
 
+function componentRecord(overrides: Partial<ComponentRecord> & { id: ComponentId }): ComponentRecord {
+  return {
+    parentId: null,
+    displayName: "Comp",
+    displayNameInferred: false,
+    source: null,
+    kind: "object",
+    attrs: null,
+    state: null,
+    mounted: true,
+    createdAt: 0,
+    updatedAt: 0,
+    updateCount: 0,
+    domRange: null,
+    childIds: [],
+    ...overrides,
+  }
+}
+
+function stubRect(el: HTMLElement, rect: { left: number; top: number; width: number; height: number }): void {
+  el.getBoundingClientRect = () =>
+    ({ ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height, x: rect.left, y: rect.top, toJSON: () => ({}) }) as DOMRect
+}
+
 function fakeHook(over: Partial<OverlayHook> = {}): OverlayHook & { excluded: Node[] } {
   const excluded: Node[] = []
   return {
@@ -22,6 +46,8 @@ function fakeHook(over: Partial<OverlayHook> = {}): OverlayHook & { excluded: No
     resolveDomSource: () => source,
     resolveDomComponent: () => "c:1" as ComponentId,
     componentRecord: (id) => ({ id, displayName: "UserCard" }) as ComponentRecord,
+    componentAncestry: () => [],
+    componentViewSource: () => null,
     sourceOfVnode: () => null,
     excludeHost: (host) => excluded.push(host),
     flush: () => {},
@@ -213,6 +239,132 @@ describe("mountInspectorOverlay — picker wiring (§8.4–8.7)", () => {
     const second = mountInspectorOverlay({}, { hook: fakeHook() })
     expect(document.querySelectorAll(`#${HOST_ID}`).length).toBe(1)
     second?.dispose()
+  })
+})
+
+describe("mountInspectorOverlay — ancestry panel & reveal component (§8.3, §9.1, §9.3, task 0019)", () => {
+  it("renders the resolved ancestry chain, root-first, with inferred-name and not-mounted markers", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+
+    const appRecord = componentRecord({ id: "c:1" as ComponentId, displayName: "App" })
+    const cardRecord = componentRecord({
+      id: "c:2" as ComponentId,
+      displayName: "UserCard",
+      displayNameInferred: true,
+      mounted: false,
+    })
+    const hook = fakeHook({
+      resolveDomComponent: () => "c:2" as ComponentId,
+      componentRecord: (id) => (id === "c:1" ? appRecord : cardRecord),
+      componentAncestry: () => [appRecord, cardRecord],
+    })
+    handle = mountInspectorOverlay({ picker: { openOnClick: false } }, { hook })
+    handle!.controller.startPicker()
+    originalEfp = document.elementsFromPoint
+    document.elementsFromPoint = () => [el]
+    handle!.controller.handlePointerMove(1, 1)
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    render()
+
+    const items = handle!.shadowRoot.querySelectorAll(".mi-ancestry li")
+    expect(items.length).toBe(2)
+    expect(items[0]?.textContent).toContain("App")
+    expect(items[1]?.textContent).toContain("UserCard")
+    expect(items[1]?.textContent).toContain("Inferred")
+    expect(items[1]?.textContent).toContain("not mounted")
+  })
+
+  it("clicking an ancestor's name focuses it and highlights its own DOM range (§9.3)", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+
+    const ancestorNode = document.createElement("section")
+    stubRect(ancestorNode, { left: 5, top: 6, width: 7, height: 8 })
+    document.body.appendChild(ancestorNode)
+
+    const appRecord = componentRecord({
+      id: "c:1" as ComponentId,
+      displayName: "App",
+      domRange: { first: ancestorNode, last: ancestorNode },
+    })
+    const cardRecord = componentRecord({ id: "c:2" as ComponentId, displayName: "UserCard" })
+    const hook = fakeHook({
+      resolveDomComponent: () => "c:2" as ComponentId,
+      componentRecord: (id) => (id === "c:1" ? appRecord : cardRecord),
+      componentAncestry: () => [appRecord, cardRecord],
+    })
+    handle = mountInspectorOverlay({ picker: { openOnClick: false } }, { hook })
+    handle!.controller.startPicker()
+    originalEfp = document.elementsFromPoint
+    document.elementsFromPoint = () => [el]
+    handle!.controller.handlePointerMove(1, 1)
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    render()
+
+    const nameButtons = handle!.shadowRoot.querySelectorAll(".mi-ancestry-name")
+    expect(nameButtons.length).toBe(2)
+    ;(nameButtons[0] as HTMLElement).click()
+    render()
+
+    const rect = handle!.shadowRoot.querySelector(".mi-rect-frozen") as HTMLElement | null
+    expect(rect?.style.left).toBe("5px")
+    expect(rect?.style.top).toBe("6px")
+  })
+
+  it("offers the 'Reveal component' action and the multi-choice group when more than one source resolves (§9.3)", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const rangeNode = document.createElement("span")
+    document.body.appendChild(rangeNode)
+
+    const declLoc: SourceLocation = { ...source, kind: "component-declaration", line: 42 }
+    const record = componentRecord({
+      id: "c:1" as ComponentId,
+      displayName: "Card",
+      domRange: { first: rangeNode, last: rangeNode },
+      source: declLoc,
+    })
+    const hook = fakeHook({
+      resolveDomComponent: () => "c:1" as ComponentId,
+      componentRecord: () => record,
+      componentAncestry: () => [record],
+      resolveDomSource: (node) => (node === rangeNode ? source : null),
+      componentViewSource: () => null,
+    })
+    handle = mountInspectorOverlay({ picker: { openOnClick: false } }, { hook })
+    handle!.controller.startPicker()
+    originalEfp = document.elementsFromPoint
+    document.elementsFromPoint = () => [el]
+    handle!.controller.handlePointerMove(1, 1)
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-ancestry-actions .mi-btn").length).toBeGreaterThan(0)
+    const choiceGroup = handle!.shadowRoot.querySelector(".mi-reveal-choices")
+    expect(choiceGroup).not.toBeNull()
+    expect(choiceGroup?.textContent).toContain("Rendered element")
+    expect(choiceGroup?.textContent).toContain("Component declaration")
+  })
+
+  it("shows the 'no owning component' fallback when nothing resolved", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const hook = fakeHook({ resolveDomComponent: () => null })
+    handle = mountInspectorOverlay({ picker: { openOnClick: false } }, { hook })
+    handle!.controller.startPicker()
+    originalEfp = document.elementsFromPoint
+    document.elementsFromPoint = () => [el]
+    handle!.controller.handlePointerMove(1, 1)
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-ancestry li").length).toBe(0)
+    expect(handle!.shadowRoot.textContent).toContain("No owning component resolved for this element.")
   })
 })
 

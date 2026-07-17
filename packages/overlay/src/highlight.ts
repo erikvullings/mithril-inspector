@@ -8,6 +8,8 @@
  * work is coalesced to at most one update per animation frame.
  */
 
+import type { DomRange } from "@mithril-inspector/protocol"
+
 export interface HighlightRect {
   readonly left: number
   readonly top: number
@@ -36,6 +38,35 @@ export function rectsOfNodes(nodes: Iterable<Node>): HighlightRect[] {
     if (isElement(node)) rects.push(rectOfElement(node))
   }
   return rects
+}
+
+/**
+ * Enumerate the top-level sibling nodes spanned by a component's
+ * {@link DomRange} (first→last inclusive), for per-node highlighting of a
+ * component's rendered range (§8.6, §9.3 "highlight its DOM range"). A
+ * fragment-root component's range can span several sibling nodes.
+ */
+export function nodesOfDomRange(range: DomRange): Node[] {
+  const { first, last } = range
+  if (first === null) return []
+  if (last === null || last === first) return [first]
+  const nodes: Node[] = [first]
+  let current: Node = first
+  // A real range is a handful of siblings; cap the walk so a malformed range
+  // (whose `last` is never reached via `nextSibling`) degrades to a partial
+  // result instead of scanning the rest of the document.
+  for (let i = 0; i < 10_000 && current !== last; i++) {
+    const next = current.nextSibling
+    if (next === null) break
+    nodes.push(next)
+    current = next
+  }
+  return nodes
+}
+
+/** One rect per element in a component's {@link DomRange} (§8.6, §9.3). */
+export function rectsOfDomRange(range: DomRange): HighlightRect[] {
+  return rectsOfNodes(nodesOfDomRange(range))
 }
 
 /** The union bounding box of several rectangles, or `null` when empty. */

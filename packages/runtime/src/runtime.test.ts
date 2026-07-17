@@ -1,7 +1,7 @@
 import m from "mithril"
 import type { Component } from "mithril"
 import type { ModuleId, RuntimeEvent } from "@mithril-inspector/protocol"
-import { PROTOCOL_VERSION } from "@mithril-inspector/protocol"
+import { makeComponentId, PROTOCOL_VERSION } from "@mithril-inspector/protocol"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { createRuntime } from "./runtime.js"
@@ -254,5 +254,40 @@ describe("InspectorRuntime end-to-end", () => {
     const activeUsage = m(OtherWidget)
     m.render(root, activeUsage)
     expect(componentsMode.components.idOf(activeUsage.state as object)).toBeDefined()
+  })
+
+  it("wires componentAncestry through to the component registry, root-first including self (task 0019)", () => {
+    const Row = runtime.component("", { view: () => m("span.row") } as Component)
+    const App = runtime.component(`${MODULE}:s1`, { view: () => m("div.app", m(Row)) } as Component)
+    const usage = m(App)
+    m.render(root, usage)
+    runtime.flush()
+
+    const rowId = runtime.resolveDomComponent(root.querySelector("span.row")!)!
+    const chain = runtime.componentAncestry(rowId)
+    expect(chain.map((r) => r.id)).toEqual([runtime.components.idOf(usage.state as object), rowId])
+  })
+
+  it("returns [] from componentAncestry for an unknown id (task 0019)", () => {
+    expect(runtime.componentAncestry(makeComponentId(999_999))).toEqual([])
+  })
+
+  it("wires componentViewSource through to the component registry (task 0019, §9.3)", () => {
+    runtime.registerSourceModule(MODULE, {
+      file: "/project/src/App.ts",
+      relativeFile: "src/App.ts",
+      sources: {
+        s1: { line: 3, column: 1, kind: "component-declaration", displayName: "App" },
+        s2: { line: 4, column: 3, kind: "component-view" },
+      },
+    })
+    const App = runtime.component(`${MODULE}:s1`, { view: () => m("div.app") } as Component)
+    const usage = m(App)
+    m.render(root, usage)
+    runtime.flush()
+
+    const id = runtime.components.idOf(usage.state as object)!
+    expect(runtime.componentViewSource(id)?.kind).toBe("component-view")
+    expect(runtime.componentViewSource(id)?.line).toBe(4)
   })
 })

@@ -1,4 +1,25 @@
-import type { ComponentId, ComponentRecord, SourceLocation } from "@mithril-inspector/protocol"
+import type {
+  ComponentId,
+  ComponentRecord,
+  InspectorListener,
+  InspectorSnapshot,
+  PreviewNode,
+  PreviewPath,
+  SourceLocation,
+} from "@mithril-inspector/protocol"
+
+/**
+ * Local mirror of the runtime's `InspectorMode` (§17) — not imported, so the
+ * overlay stays decoupled from `@mithril-inspector/runtime` (only a
+ * devDependency, used for the compile-time hook-shape assertion below).
+ */
+export type OverlayInspectorMode = "source" | "components" | "full"
+
+/** Local mirror of the runtime serializer's `ExpandOptions` (§7.4, task 0020). */
+export interface ExpandPreviewOptions {
+  /** Page start for a container's `entries`/`items` (default 0). */
+  readonly offset?: number
+}
 
 /**
  * The subset of the runtime hook (`window.__MITHRIL_INSPECTOR__`, §7.1) that the
@@ -25,6 +46,23 @@ export interface OverlayHook {
   excludeHost(host: Node): void
   /** Force the runtime's batched DOM-association flush (used before resolving). */
   flush(): void
+  /** A strong snapshot of every currently-tracked record (§9.4, task 0021); the tree's initial seed. */
+  getSnapshot(): InspectorSnapshot
+  /** Subscribe to batched `RuntimeEvent`s (§9.4); returns an unsubscribe function. */
+  subscribe(listener: InspectorListener): () => void
+  /** The runtime's active performance/feature mode (§17) — attrs/state require `"full"`. */
+  getMode(): OverlayInspectorMode
+  /** The lazy, redacted attrs preview tree for an instance (§7.4, §15, task 0020), or `null`. */
+  attrsPreview(id: ComponentId): PreviewNode | null
+  /** The lazy, redacted state preview tree for an instance (§7.4, §15, task 0020), or `null`. */
+  statePreview(id: ComponentId): PreviewNode | null
+  /** Evaluate a deferred getter, page a container, or expand a `max-depth` stub (§7.4). */
+  expandPreview(
+    id: ComponentId,
+    target: "attrs" | "state",
+    path: PreviewPath,
+    options?: ExpandPreviewOptions,
+  ): PreviewNode | null
 }
 
 const GLOBAL_KEY = "__MITHRIL_INSPECTOR__"
@@ -39,7 +77,9 @@ function looksLikeHook(candidate: unknown): candidate is OverlayHook {
   return (
     typeof hook.resolveDomSource === "function" &&
     typeof hook.resolveDomComponent === "function" &&
-    typeof hook.excludeHost === "function"
+    typeof hook.excludeHost === "function" &&
+    typeof hook.getSnapshot === "function" &&
+    typeof hook.subscribe === "function"
   )
 }
 

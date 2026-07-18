@@ -73,6 +73,13 @@ describe("click selects the correct source (§19.2 assertion 4)", () => {
     const page = scenario.page()
     await page.hover("#item-apple")
     await page.click("#item-apple")
+    // openOnClick (default true) fires this selection's own editor invocation
+    // asynchronously (a POST round-trip + process spawn) — wait for it to
+    // actually land before establishing the "before" baseline below, or under
+    // load its write can arrive late and be mistaken for the ancestor-reveal
+    // invocation the second half of this test waits for (task 0022 found this
+    // while adding a browser-test file that increases parallel load).
+    await scenario.editorStub.waitForInvocation(5_000)
     await waitForShadowPresence(page, ".mi-ancestry-name", true)
 
     const layoutRect = await page.evaluate(() => {

@@ -193,6 +193,7 @@ describe("InspectorRuntime end-to-end", () => {
       displayNameInferred: false,
       source: null,
       kind: "object",
+      key: null,
       attrs: null,
       state: null,
       mounted: true,

@@ -69,3 +69,6 @@ export {
 export type { ModifierState, ShortcutSpec } from "./shortcuts.js"
 export { loadOverlayState, OVERLAY_STORAGE_KEY, saveOverlayState } from "./persistence.js"
 export type { OverlayPersistedState, StorageLike } from "./persistence.js"
+export { createComponentTreeStore } from "./tree.js"
+export type { ComponentTreeStore, PinnedRow, TreeRow } from "./tree.js"
+export { isExpandable, pathKey, summarizeNode } from "./preview.js"

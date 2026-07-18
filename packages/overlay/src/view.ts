@@ -1,12 +1,21 @@
-import type { ComponentId } from "@mithril-inspector/protocol"
+import type { ComponentId, PreviewNode } from "@mithril-inspector/protocol"
 import m from "mithril"
 import type { Children, Component, Vnode } from "mithril"
 
-import type { AncestryEntry, OverlayController, OverlayTab, OverlayViewState, SourceChoice } from "./controller.js"
+import type {
+  AncestryEntry,
+  ComponentTreeGating,
+  OverlayController,
+  OverlayTab,
+  OverlayViewState,
+  SourceChoice,
+} from "./controller.js"
 import { beginDrag, type DragPointerEvent } from "./drag.js"
 import type { HighlightRect } from "./highlight.js"
 import type { MappingInfo, MappingPrecision } from "./mapping.js"
 import type { OverlayTheme } from "./options.js"
+import { pathKey, summarizeNode } from "./preview.js"
+import type { PinnedRow, TreeRow } from "./tree.js"
 
 /**
  * The overlay's Mithril view tree (§8.3). It is a pure function of
@@ -259,10 +268,372 @@ function describeSelected(state: OverlayViewState): string {
   return `${tag}${classes}`
 }
 
-function componentsPanel(): Vnode {
+/** `key="42"` badge (§9.1 example), only rendered when the vnode actually carries a key. */
+function treeKeyBadge(record: TreeRow["record"]): Children {
+  if (record.key === null) return null
+  const value = typeof record.key === "string" ? `"${record.key}"` : record.key
+  return m("span.mi-tree-key.mi-mono", ` key=${value}`)
+}
+
+/** Update-counter badge (§3.2), hidden until a component has actually redrawn at least once. */
+function updateCountBadge(record: TreeRow["record"]): Children {
+  if (record.updateCount <= 0) return null
+  return m("span.mi-badge-count", { title: `Updated ${record.updateCount} time(s)` }, `×${record.updateCount}`)
+}
+
+function pinButton(controller: OverlayController, id: ComponentId, pinned: boolean): Vnode {
+  return m(
+    "button.mi-btn.mi-btn-small.mi-pin-btn",
+    {
+      type: "button",
+      "aria-pressed": pinned ? "true" : "false",
+      "aria-label": pinned ? "Unpin component" : "Pin component",
+      title: pinned ? "Unpin component" : "Pin component",
+      onclick: (event: Event) => {
+        event.stopPropagation()
+        controller.togglePinned(id)
+      },
+    },
+    "📌",
+  )
+}
+
+/** Moves DOM focus to the tree row for `id` within the same `role=tree` container as `origin` (roving tabindex, §18). */
+function focusTreeRow(origin: EventTarget | null, id: ComponentId): void {
+  const el = origin instanceof Element ? origin.closest('[role="tree"]') : null
+  const row = el?.querySelector(`[data-mi-tree-id="${id}"]`)
+  if (row instanceof HTMLElement) row.focus()
+}
+
+/** Arrow-key/Enter navigation over the flattened row list (§18 "keyboard expand/collapse/navigate"). */
+function handleTreeKeyDown(controller: OverlayController, rows: readonly TreeRow[], index: number, event: KeyboardEvent): void {
+  const row = rows[index]
+  if (row === undefined) return
+  switch (event.key) {
+    case "ArrowDown": {
+      event.preventDefault()
+      const next = rows[index + 1]
+      if (next !== undefined) focusTreeRow(event.currentTarget, next.record.id)
+      return
+    }
+    case "ArrowUp": {
+      event.preventDefault()
+      const previous = rows[index - 1]
+      if (previous !== undefined) focusTreeRow(event.currentTarget, previous.record.id)
+      return
+    }
+    case "ArrowRight": {
+      event.preventDefault()
+      if (!row.hasChildren) return
+      if (!row.expanded) {
+        controller.toggleTreeNode(row.record.id)
+        return
+      }
+      const child = rows[index + 1]
+      if (child !== undefined) focusTreeRow(event.currentTarget, child.record.id)
+      return
+    }
+    case "ArrowLeft": {
+      event.preventDefault()
+      if (row.hasChildren && row.expanded) {
+        controller.toggleTreeNode(row.record.id)
+        return
+      }
+      if (row.record.parentId !== null) focusTreeRow(event.currentTarget, row.record.parentId)
+      return
+    }
+    case "Enter":
+    case " ": {
+      event.preventDefault()
+      controller.selectComponent(row.record.id)
+      return
+    }
+    default:
+  }
+}
+
+/** One `role=treeitem` row — a flat list with `aria-level` for depth, not physically nested `role=group`s (§18). */
+function treeRow(
+  controller: OverlayController,
+  state: OverlayViewState,
+  rows: readonly TreeRow[],
+  index: number,
+  focusedId: ComponentId | null,
+): Vnode {
+  const row = rows[index]!
+  const { record } = row
+  const selected = state.selection.componentId === record.id
+  const isRovingTarget = focusedId === null ? index === 0 : focusedId === record.id
+  return m(
+    "li",
+    {
+      key: record.id,
+      role: "treeitem",
+      "data-mi-tree-id": record.id,
+      "aria-level": row.depth + 1,
+      "aria-selected": selected ? "true" : "false",
+      ...(row.hasChildren ? { "aria-expanded": row.expanded ? "true" : "false" } : {}),
+      tabindex: isRovingTarget ? 0 : -1,
+      class: selected ? "mi-tree-row-selected" : undefined,
+      onkeydown: (event: KeyboardEvent) => handleTreeKeyDown(controller, rows, index, event),
+      onclick: () => controller.selectComponent(record.id),
+    },
+    m("div.mi-tree-row", { style: `padding-left:${row.depth * 14}px;` }, [
+      row.hasChildren
+        ? m(
+            "button.mi-tree-chevron",
+            {
+              type: "button",
+              "aria-label": row.expanded ? "Collapse" : "Expand",
+              onclick: (event: Event) => {
+                event.stopPropagation()
+                controller.toggleTreeNode(record.id)
+              },
+            },
+            row.expanded ? "▾" : "▸",
+          )
+        : m("span.mi-tree-chevron-spacer"),
+      m("span.mi-tree-name", [
+        record.displayName,
+        record.displayNameInferred ? [" ", inferredNameBadge()] : null,
+        treeKeyBadge(record),
+      ]),
+      updateCountBadge(record),
+      pinButton(controller, record.id, state.componentTree.pinned.some((p) => p.record.id === record.id)),
+    ]),
+  )
+}
+
+/** The `role=tree` component hierarchy list (§9.1) — excludes plain HTML elements by construction (records are components only). */
+function treeList(controller: OverlayController, state: OverlayViewState): Vnode {
+  const { rows } = state.componentTree
+  if (rows.length === 0) {
+    return m("p.mi-empty", state.componentTree.search.trim() !== "" ? "No components match your search." : "No components tracked yet.")
+  }
+  const focusedId = state.selection.componentId
+  return m(
+    "ul.mi-tree",
+    { role: "tree", "aria-label": "Component hierarchy" },
+    rows.map((_row, index) => treeRow(controller, state, rows, index, focusedId)),
+  )
+}
+
+function pinnedRow(controller: OverlayController, pinned: PinnedRow): Vnode {
+  const { record } = pinned
+  return m("li", { key: record.id }, [
+    m(
+      "button.mi-ancestry-name",
+      { type: "button", disabled: !pinned.mounted, onclick: () => controller.selectComponent(record.id) },
+      record.displayName,
+    ),
+    treeKeyBadge(record),
+    !pinned.mounted ? [" ", m("span.mi-muted", "(not mounted)")] : null,
+    pinButton(controller, record.id, true),
+  ])
+}
+
+/** Pinned components (§3.2) — kept visible (with a "not mounted" marker) rather than silently dropped when unmounted. */
+function pinnedSection(controller: OverlayController, state: OverlayViewState): Children {
+  if (state.componentTree.pinned.length === 0) return null
+  return [
+    m("div.mi-section-title", "Pinned"),
+    m("ul.mi-ancestry.mi-pinned", state.componentTree.pinned.map((p) => pinnedRow(controller, p))),
+  ]
+}
+
+function treeSearchInput(controller: OverlayController, state: OverlayViewState): Vnode {
+  return m("input.mi-tree-search", {
+    type: "search",
+    placeholder: "Search components…",
+    "aria-label": "Search components by name",
+    value: state.componentTree.search,
+    oninput: (event: Event) => controller.setTreeSearch((event.target as HTMLInputElement).value),
+  })
+}
+
+/** Renders one entry's label + value for an object/map/array/set/typed-array container. */
+function previewEntries(
+  controller: OverlayController,
+  target: "attrs" | "state",
+  node: PreviewNode,
+  overrides: ReadonlyMap<string, PreviewNode>,
+): Children {
+  switch (node.kind) {
+    case "object":
+      return node.entries.map((entry) =>
+        m("li", { key: entry.key }, [
+          m("span.mi-preview-key", `${entry.key}: `),
+          previewNodeView(controller, target, entry.node, overrides),
+        ]),
+      )
+    case "map":
+      return node.entries.map((entry, i) =>
+        m("li", { key: node.offset + i }, [
+          previewNodeView(controller, target, entry.key, overrides),
+          m("span.mi-preview-key", " => "),
+          previewNodeView(controller, target, entry.value, overrides),
+        ]),
+      )
+    case "array":
+    case "typed-array":
+      return node.items.map((item, i) =>
+        m("li", { key: node.offset + i }, [
+          m("span.mi-preview-key", `${node.offset + i}: `),
+          previewNodeView(controller, target, item, overrides),
+        ]),
+      )
+    case "set":
+      return node.items.map((item, i) =>
+        m("li", { key: node.offset + i }, previewNodeView(controller, target, item, overrides)),
+      )
+    default:
+      return null
+  }
+}
+
+type ContainerNode = Extract<PreviewNode, { kind: "object" | "array" | "map" | "set" | "typed-array" }>
+
+function isContainerNode(node: PreviewNode): node is ContainerNode {
+  switch (node.kind) {
+    case "object":
+    case "array":
+    case "map":
+    case "set":
+    case "typed-array":
+      return true
+    default:
+      return false
+  }
+}
+
+/** How many entries/items a container has already fetched, for the "N more" pagination label. */
+function shownCountOf(node: ContainerNode): number {
+  if (node.kind === "object" || node.kind === "map") return node.entries.length
+  return node.items.length
+}
+
+function totalCountOf(node: ContainerNode): number {
+  if (node.kind === "object" || node.kind === "map" || node.kind === "set") return node.size
+  return node.length
+}
+
+/** Recursively renders one preview node (§7.4), fetching getter/max-depth/pagination expansions on demand. */
+function previewNodeView(
+  controller: OverlayController,
+  target: "attrs" | "state",
+  node: PreviewNode,
+  overrides: ReadonlyMap<string, PreviewNode>,
+): Vnode {
+  if (node.kind === "getter" || node.kind === "max-depth") {
+    const resolved = overrides.get(pathKey(node.path))
+    if (resolved !== undefined) return previewNodeView(controller, target, resolved, overrides)
+    return m("span.mi-preview-getter", [
+      m("span.mi-muted", summarizeNode(node)),
+      m(
+        "button.mi-btn.mi-btn-small",
+        { type: "button", onclick: () => controller.expandComponentPreview(target, node.path) },
+        node.kind === "getter" ? "Evaluate" : "Expand",
+      ),
+    ])
+  }
+  if (isContainerNode(node)) {
+    const paged = node.truncated ? overrides.get(pathKey(node.path)) : undefined
+    const effective = paged !== undefined && isContainerNode(paged) ? paged : node
+    const shown = shownCountOf(effective)
+    const remaining = totalCountOf(effective) - (effective.truncated ? effective.offset + shown : totalCountOf(effective))
+    return m("div.mi-preview-node", [
+      m("span.mi-preview-summary", summarizeNode(effective)),
+      m("ul.mi-preview-entries", previewEntries(controller, target, effective, overrides)),
+      effective.truncated
+        ? m(
+            "button.mi-btn.mi-btn-small",
+            {
+              type: "button",
+              onclick: () => controller.expandComponentPreview(target, node.path, { offset: effective.offset + shown }),
+            },
+            `Show more (${remaining} more)`,
+          )
+        : null,
+    ])
+  }
+  return m("span.mi-preview-value", summarizeNode(node))
+}
+
+/** One of the two gating reasons attrs/state can be unavailable, or `null` when available (§11.1, §17). */
+function previewGateMessage(gating: ComponentTreeGating, label: string): string | null {
+  if (!gating.fullMode) return `Enable mode: "full" to inspect ${label}.`
+  const captured = label === "attrs" ? gating.captureAttrs : gating.captureState
+  if (!captured) return `${label} capture is disabled (componentTree.capture${label === "attrs" ? "Attrs" : "State"}).`
+  return null
+}
+
+function previewSection(controller: OverlayController, state: OverlayViewState, target: "attrs" | "state"): Vnode {
+  const { componentTree } = state
+  const label = target === "attrs" ? "attrs" : "state"
+  const gateMessage = previewGateMessage(componentTree.gating, label)
+  if (gateMessage !== null) return m("p.mi-muted", gateMessage)
+  const node = target === "attrs" ? componentTree.attrsPreview : componentTree.statePreview
+  const overrides = target === "attrs" ? componentTree.attrsOverrides : componentTree.stateOverrides
+  if (node === null) return m("p.mi-muted", `No ${label} available.`)
+  return previewNodeView(controller, target, node, overrides)
+}
+
+/** The selected component's details: source actions, "scroll into view", and attrs/state previews (§9.3, §7.4). */
+function selectedComponentPanel(controller: OverlayController, state: OverlayViewState): Children {
+  const { componentId } = state.selection
+  if (componentId === null) return null
+  const self = state.ancestry[state.ancestry.length - 1]
+  if (self === undefined) {
+    // The instance was untracked between selection and this redraw (§8.8-style
+    // tolerance — retain the fact that *something* was selected rather than
+    // silently showing nothing).
+    return [m("hr.mi-hr"), m("div.mi-section-title", "Selected component"), m("p.mi-muted", "Component is no longer tracked.")]
+  }
+  return [
+    m("hr.mi-hr"),
+    m("div.mi-section-title", "Selected component"),
+    detailRow(
+      "Component",
+      [self.name.name, self.name.inferred ? [" ", inferredNameBadge()] : null, !self.mounted ? [" ", m("span.mi-muted", "(not mounted)")] : null],
+    ),
+    m("div.mi-actions", [
+      revealButton(controller, componentId, self.choices),
+      m(
+        "button.mi-btn",
+        { type: "button", onclick: () => controller.scrollComponentIntoView(componentId) },
+        "Scroll into view",
+      ),
+    ]),
+    revealChoiceGroup(controller, componentId, self.choices),
+    state.componentTree.gating.enabled
+      ? [
+          m("div.mi-section-title", "Attrs"),
+          previewSection(controller, state, "attrs"),
+          m("div.mi-section-title", "State"),
+          previewSection(controller, state, "state"),
+        ]
+      : null,
+  ]
+}
+
+function componentsPanel(controller: OverlayController, state: OverlayViewState): Vnode {
+  const { gating } = state.componentTree
+  if (!gating.enabled) {
+    return m("div", [
+      m("p.mi-muted", "Component tree tracking is disabled."),
+      m(
+        "p.mi-muted",
+        'Set componentTree.enabled (and mode: "components" or "full") in the Vite plugin options to see the full tree (§11.1).',
+      ),
+      m("p.mi-muted", "Use the Inspector tab to pick an element and open its source."),
+    ])
+  }
   return m("div", [
-    m("p.mi-muted", "The component tree arrives in a later phase."),
-    m("p.mi-muted", "Use the Inspector tab to pick an element and open its source."),
+    treeSearchInput(controller, state),
+    pinnedSection(controller, state),
+    m("div.mi-section-title", "Component tree"),
+    treeList(controller, state),
+    selectedComponentPanel(controller, state),
   ])
 }
 
@@ -320,7 +691,7 @@ function panelTab(controller: OverlayController, current: OverlayTab, tab: Overl
 function panel(controller: OverlayController, state: OverlayViewState): Vnode {
   const body =
     state.activeTab === "components"
-      ? componentsPanel()
+      ? componentsPanel(controller, state)
       : state.activeTab === "settings"
         ? settingsPanel(controller, state)
         : inspectorPanel(controller, state)

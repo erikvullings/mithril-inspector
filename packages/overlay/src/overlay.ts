@@ -158,6 +158,7 @@ export function mountInspectorOverlay(
       doc.removeEventListener("scroll", onScrollOrResize, true)
       win?.removeEventListener("resize", onScrollOrResize)
       modalObserver?.disconnect()
+      controller.dispose()
       m.mount(mountPoint, null)
       host.remove()
     },

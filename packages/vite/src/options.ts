@@ -217,7 +217,7 @@ export function toRuntimeBootstrapConfig(resolved: ResolvedInspectorOptions): Ru
   }
 }
 
-/** Map the `ui`/`picker` blocks onto the overlay's own options input (§8, §11.1). */
+/** Map the `ui`/`picker`/`componentTree` blocks onto the overlay's own options input (§8, §11.1). */
 export function toOverlayOptionsInput(resolved: ResolvedInspectorOptions): OverlayOptionsInput {
   return {
     enabled: resolved.ui.enabled,
@@ -231,6 +231,11 @@ export function toOverlayOptionsInput(resolved: ResolvedInspectorOptions): Overl
       holdShortcut: resolved.picker.holdShortcut,
       openOnClick: resolved.picker.openOnClick,
       continuous: resolved.picker.continuous,
+    },
+    componentTree: {
+      enabled: resolved.componentTree.enabled,
+      captureAttrs: resolved.componentTree.captureAttrs,
+      captureState: resolved.componentTree.captureState,
     },
   }
 }

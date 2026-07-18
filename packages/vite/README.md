@@ -52,6 +52,13 @@ mithrilInspector({
 })
 ```
 
+`componentTree` (default `{ enabled: false, captureAttrs: false, captureState:
+false }`) is passed straight through to the overlay's Components tab (task
+0022): `enabled` gates the full component tree UI itself, while
+`captureAttrs`/`captureState` additionally gate the attrs/state preview panels
+— which also require `mode: "full"` regardless of these two flags (§17: attrs,
+state and diagnostics are a `"full"`-mode capability).
+
 ## Virtual modules (§11.2)
 
 Two virtual modules are served with `\0`-prefixed resolved ids:

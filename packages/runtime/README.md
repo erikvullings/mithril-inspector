@@ -193,6 +193,14 @@ excludes a component and its whole subtree from `recordOf`/`componentsSnapshot`/
 `resolveDomComponent` (filtered at read time, since hiding can be toggled
 independently of when a component was instrumented).
 
+`ComponentRecord.key` (task 0022, §9.1's own `UserCard key="42"` example) is the
+instance's vnode `key` attribute (`string | number`), or `null` when unkeyed —
+read straight off the `latestVnode` recorded at allocation/flush time, never
+recomputed or cached separately. A vnode's key is stable for the instance's
+whole lifetime (Mithril only reuses a `state` object across renders when the
+key matches; a changed key allocates a new instance instead), so unlike
+`domRange`/`childIds` it's never repatched via `ComponentPatch`.
+
 ## Ancestry and component-view source (task 0019)
 
 `ComponentRegistry.ancestryOf(id)` returns the root-first ancestor chain for a

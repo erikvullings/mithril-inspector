@@ -1,4 +1,4 @@
-import type { ComponentId, ComponentRecord, SourceLocation } from "@mithril-inspector/protocol"
+import type { ComponentId, ComponentRecord, RuntimeEvent, SourceLocation } from "@mithril-inspector/protocol"
 import m from "mithril"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -22,6 +22,7 @@ function componentRecord(overrides: Partial<ComponentRecord> & { id: ComponentId
     displayNameInferred: false,
     source: null,
     kind: "object",
+    key: null,
     attrs: null,
     state: null,
     mounted: true,
@@ -51,6 +52,12 @@ function fakeHook(over: Partial<OverlayHook> = {}): OverlayHook & { excluded: No
     sourceOfVnode: () => null,
     excludeHost: (host) => excluded.push(host),
     flush: () => {},
+    getSnapshot: () => ({ components: new Map(), vnodes: new Map(), modules: new Map(), domAssociations: new Map() }),
+    subscribe: () => () => {},
+    getMode: () => "source",
+    attrsPreview: () => null,
+    statePreview: () => null,
+    expandPreview: () => null,
     ...over,
   }
 }
@@ -365,6 +372,234 @@ describe("mountInspectorOverlay — ancestry panel & reveal component (§8.3, §
 
     expect(handle!.shadowRoot.querySelectorAll(".mi-ancestry li").length).toBe(0)
     expect(handle!.shadowRoot.textContent).toContain("No owning component resolved for this element.")
+  })
+})
+
+describe("mountInspectorOverlay — Components tab tree (§9, §9.3, §9.4, task 0022)", () => {
+  function snapshotOf(records: ComponentRecord[]) {
+    return {
+      components: new Map(records.map((r) => [r.id, r] as const)),
+      vnodes: new Map(),
+      modules: new Map(),
+      domAssociations: new Map(),
+    }
+  }
+
+  it("renders the component hierarchy with display names and keys, excluding plain HTML elements", () => {
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", childIds: ["c:2" as ComponentId] })
+    const list = componentRecord({
+      id: "c:2" as ComponentId,
+      displayName: "UserList",
+      parentId: "c:1" as ComponentId,
+      childIds: ["c:3" as ComponentId],
+    })
+    const card = componentRecord({
+      id: "c:3" as ComponentId,
+      displayName: "UserCard",
+      parentId: "c:2" as ComponentId,
+      key: "42",
+      updateCount: 3,
+    })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app, list, card]) })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    render()
+
+    const rows = handle!.shadowRoot.querySelectorAll('[role="treeitem"]')
+    expect(rows.length).toBe(3)
+    const names = Array.from(rows).map((r) => r.querySelector(".mi-tree-name")?.textContent)
+    expect(names).toEqual(["App", "UserList", 'UserCard key="42"'])
+    expect(handle!.shadowRoot.querySelector(".mi-badge-count")?.textContent).toBe("×3")
+  })
+
+  it("shows the disabled message instead of the tree when componentTree.enabled is false", () => {
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([componentRecord({ id: "c:1" as ComponentId })]) })
+    handle = mountInspectorOverlay({ componentTree: { enabled: false } }, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll('[role="treeitem"]').length).toBe(0)
+    expect(handle!.shadowRoot.textContent).toContain("Component tree tracking is disabled.")
+  })
+
+  it("applies incremental batched updates from subscribe() without re-fetching the snapshot (§9.4)", () => {
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App" })
+    let listener: ((event: RuntimeEvent) => void) | null = null
+    const hook = fakeHook({
+      getSnapshot: () => snapshotOf([app]),
+      subscribe: (fn) => {
+        listener = fn
+        return () => {}
+      },
+    })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    render()
+    expect(handle!.shadowRoot.querySelectorAll('[role="treeitem"]').length).toBe(1)
+
+    listener!({
+      type: "components-added",
+      records: [componentRecord({ id: "c:2" as ComponentId, displayName: "Late" })],
+    })
+    render()
+    expect(handle!.shadowRoot.querySelectorAll('[role="treeitem"]').length).toBe(2)
+    expect(handle!.shadowRoot.textContent).toContain("Late")
+  })
+
+  it("searching filters rows to matches and their ancestors", () => {
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", childIds: ["c:2" as ComponentId] })
+    const card = componentRecord({ id: "c:2" as ComponentId, displayName: "UserCard", parentId: "c:1" as ComponentId })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app, card]) })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    render()
+
+    const search = handle!.shadowRoot.querySelector(".mi-tree-search") as HTMLInputElement
+    search.value = "nomatch"
+    search.dispatchEvent(new Event("input"))
+    render()
+    expect(handle!.shadowRoot.querySelectorAll('[role="treeitem"]').length).toBe(0)
+    expect(handle!.shadowRoot.textContent).toContain("No components match your search.")
+  })
+
+  it("clicking a tree row selects the component, syncing the shared selection and highlighting its DOM range (§9.3)", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 3, top: 4, width: 5, height: 6 })
+    document.body.appendChild(el)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: el, last: el } })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app]), componentRecord: () => app, componentAncestry: () => [app] })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    render()
+
+    const nameButton = handle!.shadowRoot.querySelector(".mi-tree-name") as HTMLElement
+    nameButton.closest('[role="treeitem"]')!.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    render()
+
+    expect(handle!.controller.getState().selection.componentId).toBe("c:1")
+    const rect = handle!.shadowRoot.querySelector(".mi-rect-frozen") as HTMLElement | null
+    expect(rect?.style.left).toBe("3px")
+    expect(handle!.shadowRoot.textContent).toContain("Selected component")
+  })
+
+  it("pins a component and keeps it listed with a not-mounted marker after it unmounts (§3.2)", () => {
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "Modal" })
+    let listener: ((event: RuntimeEvent) => void) | null = null
+    const hook = fakeHook({
+      getSnapshot: () => snapshotOf([app]),
+      subscribe: (fn) => {
+        listener = fn
+        return () => {}
+      },
+    })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    render()
+
+    ;(handle!.shadowRoot.querySelector(".mi-pin-btn") as HTMLElement).click()
+    render()
+    expect(handle!.shadowRoot.querySelector(".mi-pinned")?.textContent).toContain("Modal")
+
+    listener!({ type: "components-removed", ids: ["c:1"] })
+    render()
+    expect(handle!.shadowRoot.querySelector(".mi-pinned")?.textContent).toContain("Modal")
+    expect(handle!.shadowRoot.querySelector(".mi-pinned")?.textContent).toContain("not mounted")
+  })
+
+  it("keyboard: ArrowDown moves the roving tabindex to the next row, ArrowRight expands a collapsed node", () => {
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", childIds: ["c:2" as ComponentId] })
+    const card = componentRecord({ id: "c:2" as ComponentId, displayName: "UserCard", parentId: "c:1" as ComponentId })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app, card]) })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    render()
+
+    // Collapse App first so ArrowRight has something to do.
+    ;(handle!.shadowRoot.querySelector(".mi-tree-chevron") as HTMLElement).click()
+    render()
+    expect(handle!.shadowRoot.querySelectorAll('[role="treeitem"]').length).toBe(1)
+
+    const appRow = handle!.shadowRoot.querySelector('[data-mi-tree-id="c:1"]') as HTMLElement
+    appRow.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
+    render()
+    expect(handle!.shadowRoot.querySelectorAll('[role="treeitem"]').length).toBe(2)
+  })
+
+  it("shows a mode:full gating message for attrs/state until the runtime is in full mode", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: el, last: el } })
+    const hook = fakeHook({
+      getSnapshot: () => snapshotOf([app]),
+      componentRecord: () => app,
+      componentAncestry: () => [app],
+      getMode: () => "source",
+    })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    render()
+
+    expect(handle!.shadowRoot.textContent).toContain('Enable mode: "full" to inspect attrs.')
+  })
+
+  it("renders an attrs preview and evaluates a getter on demand (§7.4)", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: el, last: el } })
+    const getterNode = { kind: "getter" as const, path: [{ kind: "prop" as const, key: "value" }] }
+    const objectNode = {
+      kind: "object" as const,
+      className: "Object",
+      size: 1,
+      entries: [{ key: "value", node: getterNode }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    const expandPreview = vi.fn(() => ({ kind: "primitive" as const, type: "number" as const, value: 42 }))
+    const hook = fakeHook({
+      getSnapshot: () => snapshotOf([app]),
+      componentRecord: () => app,
+      componentAncestry: () => [app],
+      getMode: () => "full",
+      attrsPreview: () => objectNode,
+      expandPreview,
+    })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    render()
+
+    expect(handle!.shadowRoot.querySelector(".mi-preview-getter")?.textContent).toContain("(...)")
+    ;(handle!.shadowRoot.querySelector(".mi-preview-getter button") as HTMLElement).click()
+    render()
+
+    expect(expandPreview).toHaveBeenCalledWith("c:1", "attrs", [{ kind: "prop", key: "value" }], undefined)
+    expect(handle!.shadowRoot.querySelector(".mi-preview-value")?.textContent).toBe("42")
+  })
+
+  it("shows a 'no longer tracked' fallback instead of silently hiding the details panel once the selected component untracks (§8.8-style tolerance)", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: el, last: el } })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app]), componentRecord: () => app, componentAncestry: () => [] })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    render()
+
+    expect(handle!.shadowRoot.textContent).toContain("Component is no longer tracked.")
   })
 })
 

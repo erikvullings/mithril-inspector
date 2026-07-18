@@ -273,6 +273,37 @@ describe("createComponentRegistry", () => {
     expect(renderOrderIds).toEqual([idByLabel.get("c"), idByLabel.get("a"), idByLabel.get("b")])
   })
 
+  it("reports a keyed instance's vnode key on the record (§9.1 \"UserCard key=42\", task 0022)", () => {
+    const { registry } = setup()
+    const Card: Component<{ label: string }> = { view: (vnode) => m("li", vnode.attrs.label) }
+    const InstrumentedCard = registry.instrument(`${MODULE}:s2`, Card)
+    const List: Component = {
+      view: () =>
+        m("ul", [
+          m(InstrumentedCard, { key: "42", label: "Ada" }),
+          m(InstrumentedCard, { key: 84, label: "Grace" }),
+        ]),
+    }
+    const InstrumentedList = registry.instrument(`${MODULE}:s1`, List)
+    m.render(root, m(InstrumentedList))
+    registry.flush()
+
+    const keys = Array.from(root.querySelectorAll("li")).map((li) => {
+      const id = registry.resolveDomComponent(li)
+      return registry.recordOf(id!)?.key
+    })
+    expect(keys).toEqual(["42", 84])
+  })
+
+  it("reports key: null for an unkeyed instance", () => {
+    const { registry } = setup()
+    const InstrumentedApp = registry.instrument(`${MODULE}:s1`, { view: () => m("div") } as Component)
+    m.render(root, m(InstrumentedApp))
+    registry.flush()
+    const id = registry.resolveDomComponent(root.firstElementChild!)
+    expect(registry.recordOf(id!)?.key).toBeNull()
+  })
+
   it("distinguishes multiple roots mounting the same component object (§3.1)", () => {
     const { registry } = setup()
     const App = registry.instrument(`${MODULE}:s1`, { view: () => m("div.app") } as Component)

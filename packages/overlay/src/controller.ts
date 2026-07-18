@@ -1,10 +1,18 @@
-import type { ComponentId, ComponentRecord, EditorRequest, SourceLocation } from "@mithril-inspector/protocol"
+import type {
+  ComponentId,
+  ComponentRecord,
+  DomRange,
+  EditorRequest,
+  PreviewNode,
+  PreviewPath,
+  SourceLocation,
+} from "@mithril-inspector/protocol"
 
 import { createDiagnostics, type Diagnostic, type DiagnosticsLog } from "./diagnostics.js"
 import { describeElement, eligibleElementAt, isWithinHost } from "./element-info.js"
 import { createEditorClient, type OpenInEditor } from "./editor.js"
 import { rectOfElement, rectsOfDomRange, type HighlightRect } from "./highlight.js"
-import type { OverlayHook } from "./hook.js"
+import type { ExpandPreviewOptions, OverlayHook } from "./hook.js"
 import { describeMapping, type MappingInfo } from "./mapping.js"
 import type { OverlayOptions } from "./options.js"
 import {
@@ -13,6 +21,7 @@ import {
   type PickerState,
 } from "./picker.js"
 import { loadOverlayState, saveOverlayState, type StorageLike } from "./persistence.js"
+import { pathKey } from "./preview.js"
 import { createSelectionModel, type SelectionData, type SelectionSnapshot } from "./selection.js"
 import {
   isModifierHeld,
@@ -21,6 +30,7 @@ import {
   parseShortcut,
   type ShortcutSpec,
 } from "./shortcuts.js"
+import { createComponentTreeStore, type ComponentTreeStore, type PinnedRow, type TreeRow } from "./tree.js"
 
 export type OverlayTab = "inspector" | "components" | "settings"
 
@@ -66,6 +76,35 @@ export interface AncestryEntry {
   readonly choices: readonly SourceChoice[]
 }
 
+/**
+ * Whether the Components tab's tree/attrs/state features are actually active
+ * (§11.1 `componentTree`, §17 `mode`). `enabled` gates the tree itself;
+ * `fullMode`/`captureAttrs`/`captureState` independently gate the attrs/state
+ * panel — all three must hold for a preview to be fetched (task 0022).
+ */
+export interface ComponentTreeGating {
+  readonly enabled: boolean
+  readonly fullMode: boolean
+  readonly captureAttrs: boolean
+  readonly captureState: boolean
+}
+
+/** Everything the Components tab renders from (§9, §9.4, task 0022). */
+export interface ComponentTreeViewState {
+  readonly gating: ComponentTreeGating
+  readonly search: string
+  readonly rows: readonly TreeRow[]
+  readonly pinned: readonly PinnedRow[]
+  /** The selection's lazy attrs preview (§7.4), or `null` when gated off / nothing selected / unmapped. */
+  readonly attrsPreview: PreviewNode | null
+  /** The selection's lazy state preview (§7.4); see {@link attrsPreview}. */
+  readonly statePreview: PreviewNode | null
+  /** Fetched replacements for expanded getter/max-depth/paginated attrs paths, keyed by `pathKey` (task 0020). */
+  readonly attrsOverrides: ReadonlyMap<string, PreviewNode>
+  /** Fetched replacements for expanded getter/max-depth/paginated state paths; see {@link attrsOverrides}. */
+  readonly stateOverrides: ReadonlyMap<string, PreviewNode>
+}
+
 /** Everything the Mithril views render from — a pull-based snapshot. */
 export interface OverlayViewState {
   readonly picker: PickerState
@@ -86,6 +125,8 @@ export interface OverlayViewState {
   readonly focusedAncestorId: ComponentId | null
   readonly frozenRects: readonly HighlightRect[]
   readonly diagnostics: readonly Diagnostic[]
+  /** The Components tab's tree/attrs/state state (task 0022). */
+  readonly componentTree: ComponentTreeViewState
 }
 
 /** Structural click event (satisfied by `MouseEvent`); testable without the DOM. */
@@ -141,6 +182,20 @@ export interface OverlayController {
   focusAncestor(id: ComponentId): void
   /** Open a component's source — the most-precise available choice, or a specific `kind` (§9.3). */
   revealComponent(id: ComponentId, kind?: SourceChoiceKind): void
+
+  // --- Components tab: tree/search/pin/attrs+state (task 0022) -----------
+  setTreeSearch(query: string): void
+  toggleTreeNode(id: ComponentId): void
+  togglePinned(id: ComponentId): void
+  /** Select a tree row's component — the reverse of a DOM pick (§9.3): highlights its DOM range and updates the shared selection. */
+  selectComponent(id: ComponentId): void
+  /** Scroll a component's first rendered DOM node into view (§9.3), respecting reduced-motion (§18). */
+  scrollComponentIntoView(id: ComponentId): void
+  /** Evaluate a getter, page a container, or expand a `max-depth` stub in the currently-selected component's attrs/state preview (§7.4). */
+  expandComponentPreview(target: "attrs" | "state", path: PreviewPath, options?: ExpandPreviewOptions): void
+
+  /** Unsubscribe from the runtime and release resources (idempotent). */
+  dispose(): void
 }
 
 interface Shortcuts {
@@ -148,6 +203,24 @@ interface Shortcuts {
   readonly hold: ShortcutSpec | null
   readonly open: ShortcutSpec | null
   readonly cancel: ShortcutSpec | null
+}
+
+/** The nearest `Element` a component's DOM range can be selected/scrolled/highlighted through, or `null` (§9.3). */
+function representativeElementOf(range: DomRange | null | undefined): Element | null {
+  const node = range?.first ?? null
+  if (node === null) return null
+  return node instanceof Element ? node : node.parentElement
+}
+
+/** `matchMedia`-backed reduced-motion check (§18); degrades to `false` where `matchMedia` is unavailable (e.g. jsdom). */
+function prefersReducedMotion(): boolean {
+  const matchMedia = (globalThis as { matchMedia?: (query: string) => { matches: boolean } }).matchMedia
+  if (typeof matchMedia !== "function") return false
+  try {
+    return matchMedia("(prefers-reduced-motion: reduce)").matches
+  } catch {
+    return false
+  }
 }
 
 function editorRequestOf(location: SourceLocation): EditorRequest | null {
@@ -291,6 +364,44 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   // whenever the underlying selection changes so a stale ancestor never lingers.
   let focusedAncestorId: ComponentId | null = null
 
+  // --- Components tab: tree/search/pin/attrs+state (task 0022) -------------
+  // Seeded once from getSnapshot() and patched incrementally from batched
+  // RuntimeEvents (§9.4) — never re-fetched wholesale. Only initialized when
+  // the feature is actually enabled (§11.1 componentTree.enabled), so a host
+  // that hasn't opted in pays no subscription/seeding cost at all (§17).
+  const treeStore: ComponentTreeStore = createComponentTreeStore()
+  let unsubscribeTree: (() => void) | null = null
+  if (options.componentTree.enabled && hook !== null && hook !== undefined) {
+    diagnostics.guard(
+      "tree",
+      () => {
+        treeStore.seed(hook.getSnapshot())
+        return undefined
+      },
+      undefined,
+    )
+    unsubscribeTree = hook.subscribe((event) => {
+      diagnostics.guard(
+        "tree",
+        () => {
+          treeStore.applyEvent(event)
+          redraw()
+          return undefined
+        },
+        undefined,
+      )
+    })
+  }
+  // Fetched replacements for expanded getter/max-depth/paginated preview
+  // paths (task 0020), keyed by `pathKey`. Reset whenever the selected
+  // component changes so a stale expansion never leaks onto a new selection.
+  let attrsOverrides = new Map<string, PreviewNode>()
+  let stateOverrides = new Map<string, PreviewNode>()
+  const resetPreviewOverrides = (): void => {
+    attrsOverrides = new Map()
+    stateOverrides = new Map()
+  }
+
   const persist = (): void => {
     saveOverlayState({ collapsed, offset }, storage)
   }
@@ -327,6 +438,27 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         choices: computeChoices(record),
       }))
       const selectedComponentChoices = ancestry.length > 0 ? ancestry[ancestry.length - 1]!.choices : []
+
+      const gating: ComponentTreeGating = {
+        enabled: options.componentTree.enabled,
+        fullMode: (hook?.getMode() ?? "source") === "full",
+        captureAttrs: options.componentTree.captureAttrs,
+        captureState: options.componentTree.captureState,
+      }
+      const selectedId = snapshot.componentId
+      const attrsAvailable = gating.enabled && gating.fullMode && gating.captureAttrs && selectedId !== null
+      const stateAvailable = gating.enabled && gating.fullMode && gating.captureState && selectedId !== null
+      const componentTree: ComponentTreeViewState = {
+        gating,
+        search: treeStore.getSearch(),
+        rows: treeStore.rows(),
+        pinned: treeStore.pinnedRows(),
+        attrsPreview: attrsAvailable ? hook?.attrsPreview(selectedId) ?? null : null,
+        statePreview: stateAvailable ? hook?.statePreview(selectedId) ?? null : null,
+        attrsOverrides,
+        stateOverrides,
+      }
+
       return {
         picker: picker.getState(),
         picking: picker.isPicking(),
@@ -342,6 +474,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         focusedAncestorId,
         frozenRects,
         diagnostics: diagnostics.list(),
+        componentTree,
       }
     },
 
@@ -442,6 +575,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           selection.select(target, data)
           focusedAncestorId = null // a new selection starts with no ancestor focused
           frozenRects = [rectOfElement(target)]
+          resetPreviewOverrides()
           collapsed = false // show the details panel (§8.7)
           activeTab = "inspector"
           persist()
@@ -535,11 +669,13 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       selection.clear()
       focusedAncestorId = null
       frozenRects = []
+      resetPreviewOverrides()
       redraw()
     },
 
     promoteStaleSelection() {
       focusedAncestorId = null
+      resetPreviewOverrides()
       if (selection.promoteToNearestAncestor()) {
         recomputeFrozen()
         redraw()
@@ -573,6 +709,89 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         },
         undefined,
       )
+    },
+
+    // --- Components tab: tree/search/pin/attrs+state (task 0022) -----------
+    setTreeSearch(query) {
+      treeStore.setSearch(query)
+      redraw()
+    },
+    toggleTreeNode(id) {
+      treeStore.toggleCollapsed(id)
+      redraw()
+    },
+    togglePinned(id) {
+      treeStore.togglePinned(id)
+      redraw()
+    },
+
+    selectComponent(id) {
+      diagnostics.guard(
+        "select",
+        () => {
+          const record = hook?.componentRecord(id)
+          if (record === undefined) {
+            diagnostics.record("select", new Error("Component is no longer available"))
+            redraw()
+            return
+          }
+          const element = representativeElementOf(record.domRange)
+          if (element === null) {
+            diagnostics.record("select", new Error("Component has no associated DOM to select"))
+            redraw()
+            return
+          }
+          const source = hook?.resolveDomSource(element) ?? null
+          selection.select(element, { source, componentId: id })
+          focusedAncestorId = null
+          frozenRects = record.domRange !== null ? rectsOfDomRange(record.domRange) : [rectOfElement(element)]
+          resetPreviewOverrides()
+          redraw()
+        },
+        undefined,
+      )
+    },
+
+    scrollComponentIntoView(id) {
+      diagnostics.guard(
+        "scroll",
+        () => {
+          const record = hook?.componentRecord(id)
+          const element = representativeElementOf(record?.domRange)
+          if (element === null) {
+            diagnostics.record("scroll", new Error("Component has no associated DOM to scroll to"))
+            redraw()
+            return
+          }
+          element.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" })
+        },
+        undefined,
+      )
+    },
+
+    expandComponentPreview(target, path, expandOptions) {
+      diagnostics.guard(
+        "preview",
+        () => {
+          const id = selection.snapshot().componentId
+          if (id === null) return
+          const node = hook?.expandPreview(id, target, path, expandOptions) ?? null
+          if (node === null) {
+            diagnostics.record("preview", new Error("Unable to expand this value"))
+            redraw()
+            return
+          }
+          const key = pathKey(path)
+          if (target === "attrs") attrsOverrides.set(key, node)
+          else stateOverrides.set(key, node)
+          redraw()
+        },
+        undefined,
+      )
+    },
+
+    dispose() {
+      unsubscribeTree?.()
     },
   }
 

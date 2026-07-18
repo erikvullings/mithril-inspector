@@ -132,6 +132,23 @@ describe("derived configuration builders", () => {
     expect(overlay.picker?.toggleShortcut).toBe("Alt+Shift+M")
   })
 
+  it("toOverlayOptionsInput maps componentTree, defaulting the tree off (task 0022)", () => {
+    const resolved = toOverlayOptionsInput(resolveInspectorOptions({}, { NODE_ENV: "development" }))
+    expect(resolved.componentTree).toEqual({ enabled: false, captureAttrs: false, captureState: false })
+  })
+
+  it("toOverlayOptionsInput passes through an explicit componentTree opt-in", () => {
+    const resolved = resolveInspectorOptions(
+      { componentTree: { enabled: true, captureAttrs: true, captureState: false } },
+      { NODE_ENV: "development" },
+    )
+    expect(toOverlayOptionsInput(resolved).componentTree).toEqual({
+      enabled: true,
+      captureAttrs: true,
+      captureState: false,
+    })
+  })
+
   it("toServerOptions binds the endpoint to the resolved root and passes editor/mappings (§10.2)", () => {
     const resolved = resolveInspectorOptions(
       { editor: "code", projectRoots: ["/repo/b"], pathMappings: [{ from: "/a", to: "/b" }] },

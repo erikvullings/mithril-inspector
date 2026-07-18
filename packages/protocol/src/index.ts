@@ -92,6 +92,8 @@ export interface ComponentRecord {
   displayNameInferred: boolean
   source: SourceLocation | null
   kind: "object" | "closure" | "class" | "function" | "route-resolver" | "anonymous"
+  /** The vnode's `key` attribute (§9.1 "UserCard key=\"42\""), or `null` when unkeyed. */
+  key: string | number | null
   attrs: unknown
   state: unknown
   mounted: boolean
@@ -109,6 +111,7 @@ export interface ComponentPatch {
   displayNameInferred?: boolean
   source?: SourceLocation | null
   kind?: ComponentRecord["kind"]
+  key?: string | number | null
   attrs?: unknown
   state?: unknown
   mounted?: boolean

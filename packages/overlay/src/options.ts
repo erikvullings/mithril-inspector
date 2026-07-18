@@ -25,6 +25,22 @@ export interface PickerOptions {
   readonly passThroughModifier: string
 }
 
+/**
+ * Phase-3 component tree feature toggles (§11.1 `componentTree`, §17). The
+ * Vite adapter's own resolver (`ResolvedComponentTreeOptions`) defaults
+ * `enabled` to `false` for existing apps that haven't opted in; the overlay
+ * package's own standalone default is permissive (`true`) so the tree just
+ * works when the package is used directly (tests, non-Vite hosts).
+ */
+export interface ComponentTreeOptions {
+  /** Show the real component tree in the Components tab; `false` keeps the Phase 1/2 placeholder. */
+  readonly enabled: boolean
+  /** Fetch/display the lazy attrs preview (§7.4) in a selected component's details; also requires `mode: "full"`. */
+  readonly captureAttrs: boolean
+  /** Fetch/display the lazy state preview (§7.4) in a selected component's details; also requires `mode: "full"`. */
+  readonly captureState: boolean
+}
+
 export interface OverlayOptions {
   readonly enabled: boolean
   readonly position: OverlayPosition
@@ -35,6 +51,7 @@ export interface OverlayOptions {
   /** Attach a closed shadow root instead of the default open one (§8.2). */
   readonly closedShadowRoot: boolean
   readonly picker: PickerOptions
+  readonly componentTree: ComponentTreeOptions
 }
 
 export type DeepPartial<T> = {
@@ -56,6 +73,12 @@ export const DEFAULT_PICKER_OPTIONS: PickerOptions = {
   passThroughModifier: "Meta",
 }
 
+export const DEFAULT_COMPONENT_TREE_OPTIONS: ComponentTreeOptions = {
+  enabled: true,
+  captureAttrs: true,
+  captureState: true,
+}
+
 export const DEFAULT_OVERLAY_OPTIONS: OverlayOptions = {
   enabled: true,
   position: "bottom-right",
@@ -66,15 +89,17 @@ export const DEFAULT_OVERLAY_OPTIONS: OverlayOptions = {
   zIndex: 2_147_483_000,
   closedShadowRoot: false,
   picker: DEFAULT_PICKER_OPTIONS,
+  componentTree: DEFAULT_COMPONENT_TREE_OPTIONS,
 }
 
-/** Merge partial input over the defaults, resolving the nested picker block. */
+/** Merge partial input over the defaults, resolving the nested picker/componentTree blocks. */
 export function resolveOverlayOptions(input: OverlayOptionsInput = {}): OverlayOptions {
-  const { picker: pickerInput, ...rest } = input
+  const { picker: pickerInput, componentTree: componentTreeInput, ...rest } = input
   return {
     ...DEFAULT_OVERLAY_OPTIONS,
     ...omitUndefined(rest),
     picker: { ...DEFAULT_PICKER_OPTIONS, ...omitUndefined(pickerInput ?? {}) },
+    componentTree: { ...DEFAULT_COMPONENT_TREE_OPTIONS, ...omitUndefined(componentTreeInput ?? {}) },
   }
 }
 

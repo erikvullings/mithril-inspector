@@ -36,8 +36,7 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
 
 - **Tab & panel (§8.1, §8.3):** collapsed tab fixed to a configurable corner;
   drag it (or the panel header) to move it. Position and collapsed state persist
-  in `localStorage`. Expanded tabs are `[ Inspector ] [ Components ] [ Settings ]`
-  (Components is a placeholder until the component tree lands).
+  in `localStorage`. Expanded tabs are `[ Inspector ] [ Components ] [ Settings ]`.
 - **Picker (§8.4):** toggle with `Alt+Shift+M`, momentary hold with `Alt+Shift`,
   `Enter` opens the current source, `Escape` cancels. Every shortcut is
   remappable and can be disabled (`"none"`). Plain `Alt+Click` is never bound.
@@ -74,10 +73,39 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   "Open: …" button group is shown only when more than one actually resolved
   (§2.4 degrade), and a component inside a hidden (`markInspectorHidden`)
   ancestor's subtree is excluded from the chain rather than leaving a gap.
+- **Component tree (§9, §9.3, §9.4, task 0022):** the Components tab shows the
+  full Mithril component hierarchy — display names and `key="…"` badges (§9.1
+  `UserCard key="42"`), plain HTML elements excluded by default — seeded once
+  from `hook.getSnapshot()` and thereafter patched incrementally from batched
+  `RuntimeEvent`s via `hook.subscribe` (§9.4: no re-fetch, no full rebuild per
+  redraw). Each row shows an update-count badge (§3.2) and can be
+  expanded/collapsed (chevron, or `ArrowRight`/`ArrowLeft`; `ArrowUp`/`ArrowDown`
+  move a roving `tabindex`, `Enter`/`Space` select — a flat `role="tree"` with
+  `aria-level` per row rather than physically nested `role="group"`s, §18).
+  Selection is bidirectional and shared with the Inspector tab (§9.3): picking
+  a DOM element marks its nearest component selected in the tree, and selecting
+  a tree row highlights that component's own DOM range, offers **Scroll into
+  view**, and exposes the same **Reveal component** / "Open: rendered element /
+  component view / component declaration" source actions as the ancestry panel.
+  A search box filters by display name, keeping every match's ancestors visible
+  for context. Pinned components (§3.2, `📌`) stay listed with a "not mounted"
+  marker instead of disappearing once they unmount (ids are never reused, so
+  that's the last state they'll ever report). The whole tab is gated by
+  `componentTree.enabled` (§11.1); attrs/state previews additionally require
+  `mode: "full"` and `componentTree.captureAttrs`/`captureState` — each shows an
+  explanatory message instead of silently doing nothing when a prerequisite
+  isn't met. Attrs/state render the lazy preview tree from task 0020's safe
+  serializer: containers show their already-fetched entries inline with a
+  "Show more" page-forward button once truncated, a getter shows `(...)` until
+  clicked (`expandComponentPreview` → the hook's `expandPreview`, evaluated only
+  on that explicit action, §7.4), and a redacted value always renders its
+  configured replacement text (default `[redacted]`, §15) — the redaction
+  itself happens in the runtime, never in this package.
 - **Accessibility (§18):** semantic controls, ARIA roles (`dialog`, `tablist`,
-  `tab`, `status`), visible focus indicators, WCAG AA contrast, reduced-motion
-  support, a visible picker-active banner, and light/dark theming that follows
-  `prefers-color-scheme` by default.
+  `tab`, `status`, `tree`, `treeitem`), visible focus indicators, WCAG AA
+  contrast, reduced-motion support (also respected by "Scroll into view", via
+  `matchMedia`), a visible picker-active banner, and light/dark theming that
+  follows `prefers-color-scheme` by default.
 - **Resilience (§16):** every overlay operation runs inside an error boundary;
   failures are recorded and surfaced in the Settings panel's diagnostics view,
   and never break the host application.
@@ -88,7 +116,9 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
 exported for tooling and tests: `createOverlayController`, `OverlayRoot` (the
 Mithril component), `resolveOverlayOptions`, `getOverlayHook`, `describeMapping`,
 `createPickerMachine`, `createSelectionModel`, `createFrameScheduler`,
-`createEditorClient`, `parseShortcut`, and the persistence helpers.
+`createEditorClient`, `parseShortcut`, the persistence helpers, and (task 0022)
+`createComponentTreeStore` plus the preview-tree formatters `summarizeNode`,
+`isExpandable` and `pathKey`.
 
 ## Editor endpoint
 
@@ -103,12 +133,26 @@ CSS, which conflicts with the shadow-root / no-global-styles constraint (§8.1,
 §8.2). The overlay uses a self-contained, shadow-scoped stylesheet instead
 (`styles.ts`).
 
-## Known Phase 1 limitations
+## Known Phase 1/3 limitations
 
-- The Components tab is still a placeholder; the full expandable component
-  tree arrives with task 0022. (The "Component ancestry" section itself now
-  shows the full multi-level chain, not just the nearest component — task
-  0019.)
+- **Expanding a component into its owned vnode/element tree (§9.1's "optional"
+  sub-feature) is not implemented.** The tree always shows only the Mithril
+  component hierarchy; there is no per-component toggle to reveal the plain
+  DOM/vnode subtree it renders. Everything else in the acceptance criteria
+  (display names/keys, search, pinning, update counters, bidirectional
+  selection sync, attrs/state previews, incremental batched updates) is
+  implemented — this one sub-feature is deliberately deferred, per the
+  requirement's own "optional" wording, rather than silently dropped.
+- **Large trees are not virtualized** (no windowing library). Collapsing a
+  node does stop its subtree from being rendered at all, which is the cheap
+  half of "virtualize or lazily render large trees" (§17); true virtualization
+  of a fully-expanded huge tree is a follow-up.
+- **Attrs/state pagination replaces the shown page rather than accumulating
+  it.** Clicking "Show more" on a truncated container re-fetches and displays
+  entries `[offset, offset + maxEntries)` (the runtime's `expandPreview`
+  contract, task 0020) instead of appending to what's already shown — simpler
+  and still fully "paginated" per the acceptance criteria, but not an
+  infinite-scroll accumulation.
 - Highlight margins/padding visualization is deferred (§8.6, "later release").
 - Real-browser integration (playground, Chromium/Firefox/Safari) is exercised by
   the Vite playground (0014) and browser tests (0015); this package is unit- and

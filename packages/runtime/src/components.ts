@@ -49,6 +49,7 @@ interface Rendered extends RenderedVnode {
   instance?: unknown
   state?: unknown
   attrs?: unknown
+  key?: unknown
 }
 
 interface InstanceRecord {
@@ -148,6 +149,12 @@ export interface ComponentRegistryOptions {
   readonly onActivity?: () => void
   /** Live mode accessor (§17); default always reports `"source"`. */
   readonly getMode?: () => RegistryMode
+}
+
+/** Normalize a raw vnode `key` (`string | number | undefined` per Mithril, but read defensively) to the §9.1 wire shape. */
+function keyOf(vnode: Rendered | null): string | number | null {
+  const key = vnode?.key
+  return typeof key === "string" || typeof key === "number" ? key : null
 }
 
 /** Basename without its extension, e.g. `"src/UserCard.tsx"` → `"UserCard"` (§9.2 tier 6). */
@@ -583,6 +590,7 @@ export function createComponentRegistry(
       displayNameInferred,
       source,
       kind,
+      key: keyOf(record.latestVnode),
       attrs: record.latestVnode?.attrs ?? null,
       state: record.latestVnode?.state ?? null,
       mounted: record.mounted,

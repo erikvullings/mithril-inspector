@@ -19,12 +19,19 @@ pnpm test:browser # from the repo root, or `pnpm test` inside this package
   with shuffle/remove controls (`ListScene`), a fragment-root component with
   no wrapping element (`FragmentScene`, ADR-104), a second independent
   `m.mount` root (`SecondRoot`), a component with a real click handler
-  (`Counter`), and a component edited on disk by the HMR test (`Hmr.ts`).
-  `Counter`/`ListScene` are written as `const X = () => {...}` — only that
-  closure form is lifecycle-wrapped for instance tracking in Phase 1 (see
-  `packages/runtime/README.md` "Known Phase 1 limitations"); a bare
+  (`Counter`), a component edited on disk by the HMR test (`Hmr.ts`), and a
+  keyed list of `UserCard` *components* (`UserList`/`UserCard.ts`, task 0022 —
+  §9.1's own `UserCard key="42"` example, mirrored deliberately) with its own
+  `#reorder-users-btn`, distinct from `ListScene`'s plain-DOM-`li` keyed list so
+  that neither fixture's existing test assertions (e.g. "the nearest component
+  for `#item-apple` is `ListScene`") shift.
+  `Counter`/`ListScene`/`UserList` are written as `const X = () => {...}` —
+  only that closure form is lifecycle-wrapped for instance tracking in Phase 1
+  (see `packages/runtime/README.md` "Known Phase 1 limitations"); a bare
   `function X() {...}` declaration is registered for display-name resolution
-  only.
+  only. `UserCard` itself is a plain object component (like `Greeting`), which
+  gets a fresh tracked instance per keyed usage via Mithril's own
+  `Object.create(vnode.tag)` — no factory wrapper needed.
 - `fixtures/editor-stub.mjs` — the "editor" every test launches: it records
   its `{file, line, column}` argv to a result file instead of opening
   anything. The launcher is mocked at the server boundary (a `CustomEditorOption`
@@ -44,6 +51,13 @@ pnpm test:browser # from the repo root, or `pnpm test` inside this package
   keyed-reorder redraws update the DOM/source mapping, removed nodes report
   "no longer mounted", overlay interactions suppress the app's own click
   handler, and a real production build contains no inspector runtime.
+  `component-tree.test.ts` (task 0022) covers the Components tab specifically —
+  it needs `mode: "full"` and `componentTree: { enabled, captureAttrs,
+  captureState }` opted in (both off by default), so it builds its own
+  `createScenario(...)` rather than reusing the other files' defaults: the
+  tree renders the playground's hierarchy with display names/keys, selection
+  syncs both directions (§9.3), and a keyed reorder of `UserList`'s `UserCard`s
+  keeps each instance's tree row matched to its new DOM position.
 
 ## Notes
 

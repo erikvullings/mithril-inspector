@@ -29,6 +29,21 @@ describe("resolveOverlayOptions", () => {
     expect(options.picker.toggleShortcut).toBe("Alt+Shift+M") // preserved
   })
 
+  it("defaults componentTree to enabled with attrs/state capture on (§11.1, task 0022)", () => {
+    const options = resolveOverlayOptions()
+    expect(options.componentTree).toEqual({ enabled: true, captureAttrs: true, captureState: true })
+  })
+
+  it("merges a partial componentTree block without dropping sibling defaults", () => {
+    const options = resolveOverlayOptions({ componentTree: { captureState: false } })
+    expect(options.componentTree).toEqual({ enabled: true, captureAttrs: true, captureState: false })
+  })
+
+  it("lets the Vite adapter disable the tree entirely (its own resolver defaults componentTree.enabled to false)", () => {
+    const options = resolveOverlayOptions({ componentTree: { enabled: false, captureAttrs: false, captureState: false } })
+    expect(options.componentTree).toEqual({ enabled: false, captureAttrs: false, captureState: false })
+  })
+
   it("overrides top-level fields and ignores explicit undefined", () => {
     const options = resolveOverlayOptions({ position: "top-left", theme: undefined })
     expect(options.position).toBe("top-left")

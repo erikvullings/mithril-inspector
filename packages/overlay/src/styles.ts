@@ -262,6 +262,68 @@ export function overlayCss(): string {
   box-shadow: var(--mi-shadow);
 }
 
+/* --- Component tree (§9, task 0022) ------------------------------------- */
+.mi-tree-search {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  margin-bottom: 10px;
+  border: 1px solid var(--mi-border);
+  border-radius: 6px;
+  background: var(--mi-bg);
+  color: var(--mi-fg);
+  font: inherit;
+}
+.mi-tree { list-style: none; padding: 0; margin: 0 0 6px; }
+.mi-tree li { border-radius: 6px; }
+.mi-tree li[aria-selected="true"] { background: var(--mi-highlight-fill); }
+.mi-tree li:focus-visible { outline: 2px solid var(--mi-accent); outline-offset: -2px; }
+.mi-tree-row { display: flex; align-items: center; gap: 4px; padding: 3px 4px; font-family: var(--mi-mono); }
+.mi-tree-chevron {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--mi-muted);
+  cursor: pointer;
+  width: 16px;
+  padding: 0;
+  font: inherit;
+}
+.mi-tree-chevron-spacer { display: inline-block; width: 16px; }
+.mi-tree-name {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--mi-fg);
+  font: inherit;
+  font-family: var(--mi-mono);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  flex: 1;
+  text-align: left;
+}
+.mi-tree-key { color: var(--mi-muted); }
+.mi-badge-count {
+  color: var(--mi-muted);
+  font-size: 11px;
+  border: 1px solid var(--mi-border);
+  border-radius: 999px;
+  padding: 0 5px;
+}
+.mi-pin-btn { padding: 1px 6px; }
+.mi-pin-btn[aria-pressed="true"] { background: var(--mi-accent); color: var(--mi-accent-fg); border-color: var(--mi-accent); }
+.mi-pinned { margin-bottom: 8px; }
+
+/* --- Attrs/state preview tree (§7.4, task 0020/0022) -------------------- */
+.mi-preview-node { font-family: var(--mi-mono); }
+.mi-preview-entries { list-style: none; margin: 2px 0 4px 14px; padding: 0; }
+.mi-preview-key { color: var(--mi-muted); }
+.mi-preview-summary { font-weight: 600; }
+.mi-preview-getter { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mi-mono); }
+.mi-preview-value { font-family: var(--mi-mono); }
+
 .mi-diagnostics { list-style: none; padding: 0; margin: 0; }
 .mi-diagnostics li { border-left: 3px solid var(--mi-danger); padding: 4px 8px; margin-bottom: 6px; background: var(--mi-surface); }
 .mi-diag-feature { font-weight: 700; }

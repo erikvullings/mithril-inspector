@@ -30,6 +30,12 @@ function fakeHook(): OverlayHook {
     sourceOfVnode: () => null,
     excludeHost: () => {},
     flush: () => {},
+    getSnapshot: () => ({ components: new Map(), vnodes: new Map(), modules: new Map(), domAssociations: new Map() }),
+    subscribe: () => () => {},
+    getMode: () => "source",
+    attrsPreview: () => null,
+    statePreview: () => null,
+    expandPreview: () => null,
   }
 }
 
@@ -46,5 +52,12 @@ describe("getOverlayHook", () => {
   it("returns null for a value that is not a hook", () => {
     expect(getOverlayHook({ __MITHRIL_INSPECTOR__: { nope: true } })).toBeNull()
     expect(getOverlayHook({ __MITHRIL_INSPECTOR__: 42 })).toBeNull()
+  })
+
+  it("returns null when the candidate is missing the batched-events surface (task 0022)", () => {
+    const { subscribe: _subscribe, getSnapshot: _getSnapshot, ...withoutTreeSurface } = fakeHook()
+    void _subscribe
+    void _getSnapshot
+    expect(getOverlayHook({ __MITHRIL_INSPECTOR__: withoutTreeSurface })).toBeNull()
   })
 })

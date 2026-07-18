@@ -67,16 +67,36 @@ export function mountInspectorOverlay(
   // Keep the host out of runtime tracking and element picking (§8.2).
   hook?.excludeHost(host)
 
+  // `m.mount` registers its root in Mithril's own shared, module-level
+  // subscription list, and `m.redraw()` redraws *every* registered root —
+  // there is no scoped "redraw just this mount" API. Since the overlay and
+  // the host app resolve to the same `mithril` module, calling `m.redraw()`
+  // from here would redraw the app too — which, worse, is observable by our
+  // own instrumentation (every component's `onupdate`/`updateCount` fires
+  // again), producing a fresh batch of `RuntimeEvent`s that the Components
+  // tab's subscription (task 0022) reacts to by redrawing again: an
+  // unbounded, self-sustaining loop needing no user interaction at all.
+  // `m.render(dom, vnode)` called directly (not through `m.mount`) is scoped
+  // to exactly the element passed in and never touches that shared registry,
+  // so the overlay can redraw itself without ever cascading into the app.
+  // Every state-mutating controller method already calls `redraw()`
+  // explicitly at its end (never relies on Mithril's implicit
+  // redraw-after-event), so swapping the mechanism here is enough.
+  let renderOverlay: () => void = () => {}
   const controller = createOverlayController({
     hook,
     options: resolved,
     doc,
-    redraw: () => m.redraw(),
+    redraw: () => renderOverlay(),
     storage: win?.localStorage ?? null,
   })
   controller.setHost(host)
 
-  m.mount(mountPoint, OverlayRoot(controller))
+  const overlayComponent = OverlayRoot(controller)
+  renderOverlay = () => {
+    m.render(mountPoint, m(overlayComponent))
+  }
+  renderOverlay()
 
   // --- Listener wiring (capture phase, rAF-throttled) --------------------
   let lastX = 0
@@ -159,7 +179,7 @@ export function mountInspectorOverlay(
       win?.removeEventListener("resize", onScrollOrResize)
       modalObserver?.disconnect()
       controller.dispose()
-      m.mount(mountPoint, null)
+      m.render(mountPoint, [])
       host.remove()
     },
   }

@@ -603,6 +603,61 @@ describe("mountInspectorOverlay — Components tab tree (§9, §9.3, §9.4, task
   })
 })
 
+describe("mountInspectorOverlay — no global-redraw feedback loop (regression)", () => {
+  function snapshotOf(records: ComponentRecord[]) {
+    return {
+      components: new Map(records.map((r) => [r.id, r] as const)),
+      vnodes: new Map(),
+      modules: new Map(),
+      domAssociations: new Map(),
+    }
+  }
+
+  it("never calls the global m.redraw() — reacting to batched RuntimeEvents must not be observable outside the overlay's own DOM (task 0022 bug)", () => {
+    // `m.redraw()` is Mithril's *global* redraw — it re-renders every
+    // `m.mount`-ed root sharing this module, not just the overlay's own, and
+    // (worse) doing so re-fires every host-app component's `onupdate`/
+    // `updateCount`, producing more batched events that the Components tab's
+    // subscription would react to by redrawing again: an unbounded,
+    // self-sustaining loop needing no user interaction at all. A spy is used
+    // rather than a second `m.mount`-ed "host app" stand-in because
+    // `m.redraw()` is scheduled asynchronously (rAF by default) — a
+    // synchronous test would not observe a cascaded redraw that way even with
+    // the bug present, whereas asserting the function itself was never
+    // invoked is precise regardless of scheduling.
+    const redrawSpy = vi.spyOn(m, "redraw")
+    try {
+      const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App" })
+      const listeners: Array<(event: RuntimeEvent) => void> = []
+      const hook = fakeHook({
+        getSnapshot: () => snapshotOf([app]),
+        subscribe: (fn) => {
+          listeners.push(fn)
+          return () => {}
+        },
+      })
+      handle = mountInspectorOverlay({}, { hook })
+      handle!.controller.setCollapsed(false)
+      handle!.controller.setActiveTab("components")
+
+      // Simulate a burst of batched updates, as a fast redraw loop would produce.
+      for (let i = 0; i < 25; i += 1) {
+        listeners[0]?.({
+          type: "components-updated",
+          records: [{ id: "c:1" as ComponentId, updateCount: i, updatedAt: i }],
+        })
+      }
+
+      // The overlay's own tree did update...
+      expect(handle!.shadowRoot.querySelector(".mi-badge-count")?.textContent).toBe("×24")
+      // ...via a scoped m.render(), never the global, cross-app m.redraw().
+      expect(redrawSpy).not.toHaveBeenCalled()
+    } finally {
+      redrawSpy.mockRestore()
+    }
+  })
+})
+
 describe("mountInspectorOverlay — modal <dialog> detection (§8.2 known limitation)", () => {
   let originalQuerySelector: typeof document.querySelector
 

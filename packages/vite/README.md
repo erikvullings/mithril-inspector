@@ -42,7 +42,7 @@ mithrilInspector({
   editor,             // "code" | "cursor" | … | { command, args } (§10.3)
   pathMappings,       // remote-path rewrites (§10.4)
   mode,               // "source" | "components" | "full" (§17; default "source")
-  ui:            { enabled, position, defaultOpen, theme, zIndex },
+  ui:            { enabled, defaultOpen, theme, zIndex },
   picker:        { enabled, toggleShortcut, holdShortcut, openOnClick, continuous },
   componentTree: { enabled, captureAttrs, captureState },
   source:        { elements, components, attributes, textExpressions, exposeDomAttributes },

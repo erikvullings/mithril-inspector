@@ -524,6 +524,51 @@ export function createComponentRegistry(
     visit(root.latestVnode, root)
   }
 
+  // The seven names `composeHooks` always defines as the wrapper's own
+  // properties (§ its own doc comment above) — never real component data, so
+  // never worth showing in an attrs/state preview.
+  const LIFECYCLE_HOOK_KEYS: ReadonlySet<string> = new Set([
+    "view",
+    "oninit",
+    "oncreate",
+    "onbeforeupdate",
+    "onupdate",
+    "onbeforeremove",
+    "onremove",
+  ])
+
+  /**
+   * `vnode.state` for a closure component is `composeHooks`'s own
+   * `Object.create(app)` wrapper *directly* (Mithril allocates no further
+   * per-instance object for a function-tag component, unlike the object-tag
+   * case where `render.js` does its own extra `Object.create` on top —
+   * confirmed against `mithril/render/render.js`). So the wrapper's own keys
+   * are exactly the seven composed hooks, and any field the factory's
+   * returned object declared as a literal property (the idiomatic
+   * `{ count: 0, view() {} }` shape) sits one prototype level up, invisible
+   * to `Object.keys` — the inspector would otherwise show only hook noise
+   * and none of the component's real state. This rebuilds a flat view for
+   * *display only* (never fed back into any live binding): own keys of both
+   * levels, closest (most-current, possibly mutated) wins, hook names
+   * dropped. Property descriptors (not just values) are copied so a getter
+   * stays lazy for the preview's click-to-evaluate flow.
+   */
+  const displayStateOf = (record: InstanceRecord): unknown => {
+    const raw = record.latestVnode?.state
+    if (record.meta.kind !== "closure" || typeof raw !== "object" || raw === null) return raw ?? null
+    const proto = Object.getPrototypeOf(raw) as object | null
+    if (proto === null || proto === Object.prototype) return raw
+    const merged: Record<string, unknown> = Object.create(null)
+    for (const source of [proto, raw]) {
+      for (const key of Object.keys(source)) {
+        if (LIFECYCLE_HOOK_KEYS.has(key)) continue
+        const descriptor = Object.getOwnPropertyDescriptor(source, key)
+        if (descriptor !== undefined) Object.defineProperty(merged, key, descriptor)
+      }
+    }
+    return merged
+  }
+
   const domRangeEqual = (a: DomRange | null, b: DomRange | null): boolean => {
     if (a === null || b === null) return a === b
     return a.first === b.first && a.last === b.last
@@ -592,7 +637,7 @@ export function createComponentRegistry(
       kind,
       key: keyOf(record.latestVnode),
       attrs: record.latestVnode?.attrs ?? null,
-      state: record.latestVnode?.state ?? null,
+      state: displayStateOf(record),
       mounted: record.mounted,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,

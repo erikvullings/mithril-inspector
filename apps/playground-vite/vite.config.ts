@@ -3,5 +3,11 @@ import { mithrilInspector } from "@mithril-inspector/vite";
 
 // Zero-config usage (§2.2, §24): no other app-code changes are required.
 export default defineConfig({
-  plugins: [mithrilInspector({ editor: "code" })],
+  plugins: [
+    mithrilInspector({
+      editor: "code",
+      componentTree: { enabled: true },
+      mode: "full",
+    }),
+  ],
 });

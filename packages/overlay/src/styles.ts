@@ -84,71 +84,173 @@ export function overlayCss(): string {
 }
 
 /* Interactive surfaces opt back into pointer events. */
-.mi-tab, .mi-panel { pointer-events: auto; }
+.mi-toggle, .mi-dock { pointer-events: auto; }
 
-/* --- Collapsed tab (§8.1) ------------------------------------------------ */
-.mi-tab {
-  position: absolute;
+/* --- Collapsed toggle (§8.1) --------------------------------------------- */
+/*
+ * A "reverse U" (⊓) fused to the bottom edge: rounded top, flat/open bottom
+ * flush with the viewport edge — like a tab handle poking up, not a floating
+ * pill. Non-hovered it's just the "M" mark; hovering (or active picking)
+ * widens it and splits in a second cell for the target/crosshair icon,
+ * separated by a divider, with a glow halo.
+ */
+.mi-toggle {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
+  padding: 4px 2px 0;
   border: 1px solid var(--mi-border);
-  border-radius: var(--mi-radius);
+  border-bottom: none;
+  border-radius: 18px 18px 0 0;
   background: var(--mi-bg);
-  color: var(--mi-fg);
   box-shadow: var(--mi-shadow);
-  cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-}
-.mi-tab:hover { background: var(--mi-surface); }
-.mi-tab .mi-diamond { color: var(--mi-accent); }
-
-.mi-pos-bottom-right .mi-tab, .mi-pos-bottom-right .mi-panel { bottom: 16px; right: 16px; }
-.mi-pos-bottom-left .mi-tab, .mi-pos-bottom-left .mi-panel { bottom: 16px; left: 16px; }
-.mi-pos-top-right .mi-tab, .mi-pos-top-right .mi-panel { top: 16px; right: 16px; }
-.mi-pos-top-left .mi-tab, .mi-pos-top-left .mi-panel { top: 16px; left: 16px; }
-
-/* --- Expanded panel (§8.3) ---------------------------------------------- */
-.mi-panel {
-  position: absolute;
-  width: 340px;
-  max-width: calc(100vw - 32px);
-  max-height: calc(100vh - 32px);
-  display: flex;
-  flex-direction: column;
-  background: var(--mi-bg);
-  border: 1px solid var(--mi-border);
-  border-radius: var(--mi-radius);
-  box-shadow: var(--mi-shadow);
+  opacity: 0.55;
+  transition: opacity 150ms, box-shadow 150ms;
   overflow: hidden;
 }
-
-.mi-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--mi-border);
-  cursor: grab;
+.mi-toggle:hover, .mi-toggle:focus-within, .mi-toggle-active {
+  opacity: 1;
+  box-shadow: 0 0 0 4px var(--mi-highlight-fill), var(--mi-shadow);
 }
-.mi-panel-title { font-weight: 700; flex: 1; }
+.mi-toggle-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--mi-fg);
+  width: 30px;
+  height: 26px;
+  border-radius: 14px 14px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+}
+.mi-toggle-btn:hover { background: var(--mi-surface); }
+.mi-toggle-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.mi-toggle-pick {
+  width: 0;
+  height: 26px;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  color: var(--mi-muted);
+  border-left: 1px solid transparent;
+  transition: width 150ms, opacity 150ms, border-color 150ms;
+}
+.mi-toggle:hover .mi-toggle-pick,
+.mi-toggle:focus-within .mi-toggle-pick,
+.mi-toggle-active .mi-toggle-pick {
+  width: 30px;
+  opacity: 1;
+  pointer-events: auto;
+  border-left-color: var(--mi-border);
+}
+.mi-toggle-pick.mi-active { color: var(--mi-accent); }
 
-.mi-tablist { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--mi-border); }
-.mi-tabbtn {
+/* --- Docked panel (§8.3) ------------------------------------------------- */
+/* Capped at 80% of the viewport (and an absolute max), centered — never a
+ * full-bleed bar, even on wide monitors. */
+.mi-dock {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(80vw, 1100px);
+  height: min(46vh, 520px);
+  min-height: 300px;
+  display: flex;
+  background: var(--mi-bg);
+  border: 1px solid var(--mi-border);
+  border-bottom: none;
+  border-radius: var(--mi-radius) var(--mi-radius) 0 0;
+  box-shadow: var(--mi-shadow);
+}
+
+.mi-sidebar {
+  width: 44px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  border-right: 1px solid var(--mi-border);
+  gap: 2px;
+}
+.mi-sidebar-logo {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--mi-accent);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+}
+.mi-sidebar-logo:hover { background: var(--mi-surface); }
+.mi-sidebar-spacer { flex: 1; }
+.mi-sidebar-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--mi-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.mi-sidebar-btn:hover { background: var(--mi-surface); color: var(--mi-fg); }
+.mi-sidebar-btn[aria-pressed="true"] { background: var(--mi-highlight-fill); color: var(--mi-accent); }
+
+.mi-main { flex: 1; display: flex; min-width: 0; }
+.mi-tree-pane {
+  width: 300px;
+  flex: 0 0 auto;
+  border-right: 1px solid var(--mi-border);
+  padding: 10px;
+  overflow: auto;
+}
+.mi-detail-pane { flex: 1; min-width: 0; padding: 10px 14px; overflow: auto; }
+.mi-detail-empty { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; }
+.mi-settings { flex: 1; min-width: 0; padding: 12px 16px; overflow: auto; }
+
+@media (max-width: 640px) {
+  .mi-main { flex-direction: column; }
+  .mi-tree-pane { width: auto; max-height: 45%; border-right: 0; border-bottom: 1px solid var(--mi-border); }
+}
+
+/* --- Icon buttons (§8.3) -------------------------------------------------- */
+.mi-icon-btn {
   appearance: none;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--mi-muted);
-  padding: 4px 10px;
+  color: var(--mi-fg);
+  width: 30px;
+  height: 30px;
   border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  font: inherit;
+  transition: border-color 120ms, background 120ms;
 }
-.mi-tabbtn[aria-selected="true"] { background: var(--mi-surface); color: var(--mi-fg); font-weight: 600; }
-
-.mi-panel-body { padding: 12px; overflow: auto; }
+.mi-icon-btn:hover { background: var(--mi-surface); border-color: var(--mi-border); }
+.mi-icon-btn[aria-pressed="true"] { background: var(--mi-accent); color: var(--mi-accent-fg); }
+.mi-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.mi-icon-btn-small { width: 26px; height: 26px; }
 
 .mi-btn {
   appearance: none;
@@ -160,18 +262,26 @@ export function overlayCss(): string {
   cursor: pointer;
   font: inherit;
   font-weight: 600;
+  white-space: nowrap;
+  transition: border-color 120ms, background 120ms;
 }
 .mi-btn:hover { border-color: var(--mi-accent); }
-.mi-btn-primary { background: var(--mi-accent); color: var(--mi-accent-fg); border-color: var(--mi-accent); }
-.mi-btn[aria-pressed="true"] { background: var(--mi-accent); color: var(--mi-accent-fg); border-color: var(--mi-accent); }
 .mi-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.mi-btn-small { padding: 3px 8px; font-size: 11px; font-weight: 600; border: 1px solid var(--mi-border); border-radius: 6px; background: var(--mi-surface); color: var(--mi-fg); cursor: pointer; }
+.mi-btn-small:hover { border-color: var(--mi-accent); }
 
 .mi-row { display: grid; grid-template-columns: 84px 1fr; gap: 4px 8px; margin-bottom: 8px; }
 .mi-key { color: var(--mi-muted); }
 .mi-val { font-family: var(--mi-mono); word-break: break-all; }
-.mi-actions { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
-.mi-section-title { font-weight: 700; margin: 12px 0 6px; }
-.mi-hr { height: 1px; background: var(--mi-border); border: 0; margin: 10px 0; }
+.mi-section-title {
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--mi-muted);
+  margin: 16px 0 8px;
+}
+.mi-hr { height: 1px; background: var(--mi-border); border: 0; margin: 14px 0; }
 .mi-muted { color: var(--mi-muted); }
 .mi-mono { font-family: var(--mi-mono); }
 
@@ -186,28 +296,28 @@ export function overlayCss(): string {
 .mi-precision-inferred { background: var(--mi-inferred); color: #1b1b1f; }
 .mi-precision-none { background: var(--mi-border); color: var(--mi-fg); }
 
-.mi-ancestry { list-style: none; padding: 0; margin: 0; }
-.mi-ancestry li { padding: 4px 0; font-family: var(--mi-mono); }
-.mi-ancestry .mi-depth { color: var(--mi-muted); }
-.mi-ancestry-focused { background: var(--mi-surface); border-radius: 6px; }
-.mi-ancestry-name {
+/* --- Selection meta + breadcrumb (§8.3, §9.1) ---------------------------- */
+.mi-detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+.mi-breadcrumb { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-family: var(--mi-mono); margin-bottom: 4px; }
+.mi-breadcrumb-sep { color: var(--mi-muted); }
+.mi-crumb {
   appearance: none;
   border: 0;
   background: transparent;
-  color: var(--mi-fg);
+  color: var(--mi-muted);
   font: inherit;
   font-family: var(--mi-mono);
-  font-weight: 600;
   cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-  text-decoration-color: transparent;
+  padding: 2px 5px;
+  border-radius: 4px;
 }
-.mi-ancestry-name:hover { text-decoration-color: currentColor; }
-.mi-ancestry-actions { margin: 4px 0 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mi-crumb:hover { background: var(--mi-surface); color: var(--mi-fg); }
+.mi-crumb:disabled { cursor: not-allowed; opacity: 0.6; }
+.mi-crumb-current { color: var(--mi-accent); font-weight: 700; }
+.mi-crumb-focused { background: var(--mi-highlight-fill); }
 
-.mi-btn-small { padding: 3px 8px; font-size: 11px; font-weight: 600; }
-.mi-reveal-choices { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; font-family: var(--mi-font); }
+.mi-toolbar { display: flex; align-items: center; gap: 2px; margin: 4px 0 12px; flex-wrap: wrap; }
+.mi-toolbar-divider { width: 1px; height: 18px; background: var(--mi-border); margin: 0 4px; }
 
 .mi-stale {
   border: 1px solid var(--mi-inferred);
@@ -263,12 +373,14 @@ export function overlayCss(): string {
 }
 
 /* --- Component tree (§9, task 0022) ------------------------------------- */
+.mi-search-row { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
+.mi-search-icon { display: inline-flex; color: var(--mi-muted); flex: 0 0 auto; }
 .mi-tree-search {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
   padding: 6px 9px;
-  margin-bottom: 10px;
   border: 1px solid var(--mi-border);
   border-radius: 6px;
   background: var(--mi-bg);
@@ -277,7 +389,8 @@ export function overlayCss(): string {
 }
 .mi-tree { list-style: none; padding: 0; margin: 0 0 6px; }
 .mi-tree li { border-radius: 6px; }
-.mi-tree li[aria-selected="true"] { background: var(--mi-highlight-fill); }
+.mi-tree li:hover { background: var(--mi-surface); }
+.mi-tree li[aria-selected="true"], .mi-tree li[aria-selected="true"]:hover { background: var(--mi-highlight-fill); }
 .mi-tree li:focus-visible { outline: 2px solid var(--mi-accent); outline-offset: -2px; }
 .mi-tree-row { display: flex; align-items: center; gap: 4px; padding: 3px 4px; font-family: var(--mi-mono); }
 .mi-tree-chevron {
@@ -292,17 +405,13 @@ export function overlayCss(): string {
 }
 .mi-tree-chevron-spacer { display: inline-block; width: 16px; }
 .mi-tree-name {
-  appearance: none;
-  border: 0;
-  background: transparent;
   color: var(--mi-fg);
-  font: inherit;
   font-family: var(--mi-mono);
   font-weight: 600;
-  cursor: pointer;
-  padding: 0;
   flex: 1;
-  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mi-tree-key { color: var(--mi-muted); }
 .mi-badge-count {
@@ -312,17 +421,38 @@ export function overlayCss(): string {
   border-radius: 999px;
   padding: 0 5px;
 }
-.mi-pin-btn { padding: 1px 6px; }
-.mi-pin-btn[aria-pressed="true"] { background: var(--mi-accent); color: var(--mi-accent-fg); border-color: var(--mi-accent); }
-.mi-pinned { margin-bottom: 8px; }
+.mi-pin-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--mi-muted);
+  padding: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+}
+.mi-pin-btn:hover { background: var(--mi-surface); color: var(--mi-fg); }
+.mi-pin-btn[aria-pressed="true"] { color: var(--mi-accent); }
+.mi-pinned { list-style: none; padding: 0; margin: 0 0 8px; }
+.mi-pinned li { display: flex; align-items: center; gap: 4px; padding: 2px 0; font-family: var(--mi-mono); }
 
 /* --- Attrs/state preview tree (§7.4, task 0020/0022) -------------------- */
-.mi-preview-node { font-family: var(--mi-mono); }
+.mi-preview-node { font-family: var(--mi-mono); font-size: 12px; }
 .mi-preview-entries { list-style: none; margin: 2px 0 4px 14px; padding: 0; }
-.mi-preview-key { color: var(--mi-muted); }
+.mi-preview-entries.mi-preview-root { margin: 0; }
+.mi-preview-entries > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--mi-border);
+}
+.mi-preview-entries > li:last-child { border-bottom: 0; }
+.mi-preview-key { color: var(--mi-muted); flex: 0 0 auto; }
 .mi-preview-summary { font-weight: 600; }
 .mi-preview-getter { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mi-mono); }
-.mi-preview-value { font-family: var(--mi-mono); }
+.mi-preview-value { font-family: var(--mi-mono); word-break: break-word; }
 
 .mi-diagnostics { list-style: none; padding: 0; margin: 0; }
 .mi-diagnostics li { border-left: 3px solid var(--mi-danger); padding: 4px 8px; margin-bottom: 6px; background: var(--mi-surface); }

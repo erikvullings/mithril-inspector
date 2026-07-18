@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { HOST_ID } from "@mithril-inspector/overlay"
 
 import { mi } from "./harness/browser.js"
-import { activatePicker, shadowClick, shadowTextAll, waitForShadowPresence } from "./harness/overlay.js"
+import { activatePicker, shadowClick, shadowText, shadowTextAll, waitForShadowPresence } from "./harness/overlay.js"
 import { createScenario, type Scenario } from "./harness/scenario.js"
 
 /**
@@ -31,17 +31,10 @@ describe("Components tab: full component tree (§9, §9.3, §9.4, task 0022)", (
     await scenario.teardown()
   })
 
-  /** Opens the panel (if collapsed) and switches to the Components tab, without engaging the picker. */
+  /** Opens the docked panel (if collapsed), without engaging the picker — the merged view shows the tree by default. */
   async function openComponentsTab(page: Page): Promise<void> {
-    const collapsedTab = await page.$(mi(".mi-tab"))
-    if (collapsedTab !== null) await collapsedTab.click()
-    await page.waitForSelector(mi('[role="tab"]'), { visible: true })
-    await page.evaluate((hostId) => {
-      const host = document.getElementById(hostId)
-      const tabs = Array.from(host?.shadowRoot?.querySelectorAll('[role="tab"]') ?? [])
-      const tab = tabs.find((t) => t.textContent === "Components")
-      ;(tab as HTMLElement | undefined)?.click()
-    }, HOST_ID)
+    const toggle = await page.$(mi(".mi-toggle"))
+    if (toggle !== null) await page.click(mi(".mi-toggle-btn:not(.mi-toggle-pick)"))
     await waitForShadowPresence(page, ".mi-tree-search", true)
   }
 
@@ -108,7 +101,7 @@ describe("Components tab: full component tree (§9, §9.3, §9.4, task 0022)", (
       return rect?.style.top ?? null
     }, HOST_ID)
     expect(frozenTop).toBe(cardRect.top)
-    expect(await shadowTextAll(page, ".mi-section-title")).toContain("Selected component")
+    expect(await shadowText(page, ".mi-crumb-current")).toBe('UserCard key="42"')
   })
 
   it("keeps each UserCard's tree/DOM association correct after a keyed reorder", async () => {

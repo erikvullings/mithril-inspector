@@ -14,7 +14,6 @@ export type {
   DeepPartial,
   OverlayOptions,
   OverlayOptionsInput,
-  OverlayPosition,
   OverlayTheme,
   PickerOptions,
 } from "./options.js"

@@ -231,12 +231,26 @@ describe("overlay controller — selection (§8.7)", () => {
     expect(openInEditor).not.toHaveBeenCalled()
   })
 
-  it("opens the editor on click when openOnClick is set", () => {
+  it("does not open the editor on click by default — a pick lands in the panel, not the editor", () => {
     const el = document.createElement("article")
     stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
     document.body.appendChild(el)
     const openInEditor = vi.fn(async () => ({ ok: true }))
     const { controller, setHits } = setup({ openInEditor })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+    expect(openInEditor).not.toHaveBeenCalled()
+    expect(controller.getState().selection.node).toBe(el)
+  })
+
+  it("opens the editor on click when openOnClick is explicitly enabled", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const { controller, setHits } = setup({ options: { picker: { openOnClick: true } }, openInEditor })
     controller.startPicker()
     setHits([el])
     controller.handlePointerMove(1, 1)

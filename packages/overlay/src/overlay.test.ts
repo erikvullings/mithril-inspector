@@ -85,15 +85,15 @@ function render(): void {
 }
 
 describe("mountInspectorOverlay — host & isolation", () => {
-  it("mounts a shadow-root host and shows the collapsed tab by default (§8.1)", () => {
+  it("mounts a shadow-root host and shows the collapsed toggle by default (§8.1)", () => {
     handle = mountInspectorOverlay({}, { hook: fakeHook() })
     expect(handle).not.toBeNull()
     const host = document.getElementById(HOST_ID)
     expect(host).toBe(handle!.host)
     expect(handle!.shadowRoot.mode).toBe("open")
     render()
-    expect(handle!.shadowRoot.querySelector(".mi-tab")).not.toBeNull()
-    expect(handle!.shadowRoot.querySelector(".mi-panel")).toBeNull()
+    expect(handle!.shadowRoot.querySelector(".mi-toggle")).not.toBeNull()
+    expect(handle!.shadowRoot.querySelector(".mi-dock")).toBeNull()
   })
 
   it("adds no global styles — the stylesheet lives inside the shadow root (§8.2)", () => {
@@ -124,21 +124,23 @@ describe("mountInspectorOverlay — host & isolation", () => {
     handle = mountInspectorOverlay({}, { hook: null })
     render()
     expect(handle).not.toBeNull()
-    expect(handle!.shadowRoot.querySelector(".mi-tab")).not.toBeNull()
+    expect(handle!.shadowRoot.querySelector(".mi-toggle")).not.toBeNull()
   })
 })
 
 describe("mountInspectorOverlay — panel (§8.3)", () => {
-  it("expands to a panel with Inspector/Components/Settings tabs", () => {
+  it("expands to a docked panel with a Components/Settings sidebar", () => {
     handle = mountInspectorOverlay({}, { hook: fakeHook() })
     handle!.controller.setCollapsed(false)
     render()
-    const tabs = Array.from(handle!.shadowRoot.querySelectorAll('[role="tab"]')).map((t) => t.textContent)
-    expect(tabs).toEqual(["Inspector", "Components", "Settings"])
+    const sidebarLabels = Array.from(handle!.shadowRoot.querySelectorAll(".mi-sidebar-btn")).map((b) =>
+      b.getAttribute("aria-label"),
+    )
+    expect(sidebarLabels).toEqual(["Components", "Settings"])
     expect(handle!.shadowRoot.querySelector('[role="dialog"]')).not.toBeNull()
   })
 
-  it("surfaces recorded diagnostics in the Settings panel (§16)", () => {
+  it("surfaces recorded diagnostics in the Settings section (§16)", () => {
     handle = mountInspectorOverlay({}, { hook: fakeHook() })
     handle!.controller.diagnostics.record("hover", new Error("kaboom"))
     handle!.controller.setCollapsed(false)
@@ -217,6 +219,37 @@ describe("mountInspectorOverlay — picker wiring (§8.4–8.7)", () => {
     expect(handle!.controller.getState().selection.node).toBe(button)
   })
 
+  it("clears the frozen highlight box once a route swap removes the selected element from the DOM (regression)", async () => {
+    const page = document.createElement("div")
+    document.body.appendChild(page)
+    const el = document.createElement("article")
+    stubRect(el, { left: 4, top: 8, width: 40, height: 20 })
+    page.appendChild(el)
+
+    handle = mountInspectorOverlay({ picker: { openOnClick: false } }, { hook: fakeHook() })
+    handle!.controller.startPicker()
+    originalEfp = document.elementsFromPoint
+    document.elementsFromPoint = () => [el]
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-rect-frozen").length).toBe(1)
+
+    // Simulate an in-app route change swapping out the previously selected
+    // element's subtree (e.g. `m.route.set()` between two pages) — no
+    // scroll/resize fires, only a DOM mutation.
+    page.removeChild(el)
+    document.body.appendChild(document.createElement("section"))
+    // The overlay's MutationObserver callback lands in a microtask, then it
+    // requests an animation frame to recompute the highlight.
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-rect-frozen").length).toBe(0)
+    expect(handle!.controller.getState().selection.stale).toBe(true)
+  })
+
   it("dispose() removes the host and stops intercepting", () => {
     handle = mountInspectorOverlay({}, { hook: fakeHook() })
     handle!.dispose()
@@ -228,17 +261,29 @@ describe("mountInspectorOverlay — picker wiring (§8.4–8.7)", () => {
     handle = null
   })
 
-  it("applies and persists a drag offset as a transform (§8.1 movable)", () => {
+  it("persists the collapsed state so it survives a reload", () => {
     const store = document.defaultView!.localStorage
     handle = mountInspectorOverlay({}, { hook: fakeHook() })
-    handle!.controller.setOffset({ x: 24, y: -12 })
+    handle!.controller.setCollapsed(false)
     render()
 
-    const tab = handle!.shadowRoot.querySelector(".mi-tab") as HTMLElement
-    expect(tab).not.toBeNull()
-    expect(tab.style.transform.replace(/\s+/g, "")).toBe("translate(24px,-12px)")
-    // Offset was persisted so it survives a reload.
-    expect(store.getItem("__mithril-inspector-overlay")).toContain('"offset"')
+    expect(handle!.shadowRoot.querySelector(".mi-dock")).not.toBeNull()
+    expect(store.getItem("__mithril-inspector-overlay")).toContain('"collapsed":false')
+  })
+
+  it("reveals the picker icon on the collapsed toggle and starts picking from it directly", () => {
+    handle = mountInspectorOverlay({}, { hook: fakeHook() })
+    render()
+
+    const toggle = handle!.shadowRoot.querySelector(".mi-toggle") as HTMLElement
+    expect(toggle).not.toBeNull()
+    const pickBtn = toggle.querySelector(".mi-toggle-pick") as HTMLElement
+    expect(pickBtn).not.toBeNull()
+
+    pickBtn.click()
+    expect(handle!.controller.isPicking()).toBe(true)
+    // Picking doesn't expand the panel — the collapsed toggle can pick directly.
+    expect(handle!.controller.getState().collapsed).toBe(true)
   })
 
   it("replaces a prior host instead of duplicating it (HMR remount)", () => {
@@ -249,8 +294,8 @@ describe("mountInspectorOverlay — picker wiring (§8.4–8.7)", () => {
   })
 })
 
-describe("mountInspectorOverlay — ancestry panel & reveal component (§8.3, §9.1, §9.3, task 0019)", () => {
-  it("renders the resolved ancestry chain, root-first, with inferred-name and not-mounted markers", () => {
+describe("mountInspectorOverlay — ancestry breadcrumb & detail toolbar (§8.3, §9.1, §9.3, task 0019)", () => {
+  it("renders the resolved ancestry chain as a breadcrumb, root-first, with inferred-name and not-mounted markers", () => {
     const el = document.createElement("article")
     stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
     document.body.appendChild(el)
@@ -275,15 +320,15 @@ describe("mountInspectorOverlay — ancestry panel & reveal component (§8.3, §
     el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
     render()
 
-    const items = handle!.shadowRoot.querySelectorAll(".mi-ancestry li")
-    expect(items.length).toBe(2)
-    expect(items[0]?.textContent).toContain("App")
-    expect(items[1]?.textContent).toContain("UserCard")
-    expect(items[1]?.textContent).toContain("Inferred")
-    expect(items[1]?.textContent).toContain("not mounted")
+    const crumbs = handle!.shadowRoot.querySelectorAll(".mi-crumb")
+    expect(crumbs.length).toBe(2)
+    expect(crumbs[0]?.textContent).toContain("App")
+    expect(crumbs[1]?.textContent).toContain("UserCard")
+    expect(crumbs[1]?.textContent).toContain("Inferred")
+    expect(crumbs[1]?.textContent).toContain("not mounted")
   })
 
-  it("clicking an ancestor's name focuses it and highlights its own DOM range (§9.3)", () => {
+  it("clicking an ancestor's crumb focuses it and highlights its own DOM range (§9.3)", () => {
     const el = document.createElement("article")
     stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
     document.body.appendChild(el)
@@ -311,9 +356,9 @@ describe("mountInspectorOverlay — ancestry panel & reveal component (§8.3, §
     el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
     render()
 
-    const nameButtons = handle!.shadowRoot.querySelectorAll(".mi-ancestry-name")
-    expect(nameButtons.length).toBe(2)
-    ;(nameButtons[0] as HTMLElement).click()
+    const crumbs = handle!.shadowRoot.querySelectorAll(".mi-crumb")
+    expect(crumbs.length).toBe(2)
+    ;(crumbs[0] as HTMLElement).click()
     render()
 
     const rect = handle!.shadowRoot.querySelector(".mi-rect-frozen") as HTMLElement | null
@@ -321,7 +366,7 @@ describe("mountInspectorOverlay — ancestry panel & reveal component (§8.3, §
     expect(rect?.style.top).toBe("6px")
   })
 
-  it("offers the 'Reveal component' action and the multi-choice group when more than one source resolves (§9.3)", () => {
+  it("the detail toolbar offers one icon per resolved source choice, without duplicating 'Open in editor' (§9.3)", () => {
     const el = document.createElement("article")
     stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
     document.body.appendChild(el)
@@ -350,11 +395,16 @@ describe("mountInspectorOverlay — ancestry panel & reveal component (§8.3, §
     el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
     render()
 
-    expect(handle!.shadowRoot.querySelectorAll(".mi-ancestry-actions .mi-btn").length).toBeGreaterThan(0)
-    const choiceGroup = handle!.shadowRoot.querySelector(".mi-reveal-choices")
-    expect(choiceGroup).not.toBeNull()
-    expect(choiceGroup?.textContent).toContain("Rendered element")
-    expect(choiceGroup?.textContent).toContain("Component declaration")
+    const toolbarLabels = Array.from(handle!.shadowRoot.querySelectorAll(".mi-toolbar .mi-icon-btn")).map((b) =>
+      b.getAttribute("aria-label"),
+    )
+    // "Open in editor" (the exact clicked element's own source) plus the
+    // declaration choice — no separate "Rendered element" icon duplicating
+    // "Open in editor", and no "Component view" icon since none resolved.
+    expect(toolbarLabels).toContain("Open in editor")
+    expect(toolbarLabels).toContain("Component declaration")
+    expect(toolbarLabels).not.toContain("Rendered element")
+    expect(toolbarLabels).not.toContain("Component view")
   })
 
   it("shows the 'no owning component' fallback when nothing resolved", () => {
@@ -370,7 +420,7 @@ describe("mountInspectorOverlay — ancestry panel & reveal component (§8.3, §
     el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
     render()
 
-    expect(handle!.shadowRoot.querySelectorAll(".mi-ancestry li").length).toBe(0)
+    expect(handle!.shadowRoot.querySelectorAll(".mi-crumb").length).toBe(0)
     expect(handle!.shadowRoot.textContent).toContain("No owning component resolved for this element.")
   })
 })
@@ -484,7 +534,7 @@ describe("mountInspectorOverlay — Components tab tree (§9, §9.3, §9.4, task
     expect(handle!.controller.getState().selection.componentId).toBe("c:1")
     const rect = handle!.shadowRoot.querySelector(".mi-rect-frozen") as HTMLElement | null
     expect(rect?.style.left).toBe("3px")
-    expect(handle!.shadowRoot.textContent).toContain("Selected component")
+    expect(handle!.shadowRoot.querySelector(".mi-breadcrumb")?.textContent).toContain("App")
   })
 
   it("pins a component and keeps it listed with a not-mounted marker after it unmounts (§3.2)", () => {

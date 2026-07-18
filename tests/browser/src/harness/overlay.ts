@@ -10,10 +10,15 @@ import { mi } from "./browser.js"
  * (e.g. a second activation within the same test).
  */
 export async function activatePicker(page: Page): Promise<void> {
-  const collapsedTab = await page.$(mi(".mi-tab"))
-  if (collapsedTab !== null) await collapsedTab.click()
-  await page.waitForSelector(mi("button[aria-pressed]"), { visible: true })
-  await page.click(mi("button[aria-pressed]"))
+  const toggle = await page.$(mi(".mi-toggle"))
+  if (toggle !== null) {
+    // Expand via the "M" mark, not `.mi-picker-btn` — that one picks
+    // directly from the collapsed state without expanding the panel.
+    await page.click(mi(".mi-toggle-btn:not(.mi-toggle-pick)"))
+    await page.waitForSelector(mi(".mi-dock"), { visible: true })
+  }
+  await page.waitForSelector(mi(".mi-picker-btn"), { visible: true })
+  await page.click(mi(".mi-picker-btn"))
   await page.waitForFunction(
     (hostId) => {
       const host = document.getElementById(hostId)
@@ -47,23 +52,6 @@ export function shadowText(page: Page, selector: string): Promise<string | null>
     },
     HOST_ID,
     selector,
-  )
-}
-
-/** The `.mi-val` of the details row whose `.mi-key` is exactly `key` (the "Selected" panel), or `null`. */
-export function shadowDetailRow(page: Page, key: string): Promise<string | null> {
-  return page.evaluate(
-    (hostId, expectedKey) => {
-      const host = document.getElementById(hostId)
-      const rows = host?.shadowRoot?.querySelectorAll(".mi-row") ?? []
-      for (const row of Array.from(rows)) {
-        const keyText = row.querySelector(".mi-key")?.textContent?.trim()
-        if (keyText === expectedKey) return row.querySelector(".mi-val")?.textContent?.trim() ?? null
-      }
-      return null
-    },
-    HOST_ID,
-    key,
   )
 }
 

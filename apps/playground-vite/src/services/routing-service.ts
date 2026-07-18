@@ -8,6 +8,7 @@ import { HomePage } from "../pages/home-page.js"
 import { ListPage } from "../pages/list-page.js"
 import { ScrollPage } from "../pages/scroll-page.js"
 import { ShadowDomPage } from "../pages/shadow-dom-page.js"
+import { StateDemoPage } from "../pages/state-demo-page.js"
 import { SvgPage } from "../pages/svg-page.js"
 import { TransformPage } from "../pages/transform-page.js"
 import { TrustedHtmlPage } from "../pages/trusted-html-page.js"
@@ -28,6 +29,7 @@ class RoutingService {
     { id: Pages.DIALOG, title: "Dialog", route: "/dialog", component: DialogPage },
     { id: Pages.SCROLL, title: "Scroll", route: "/scroll", component: ScrollPage },
     { id: Pages.TRANSFORM, title: "Transform", route: "/transform", component: TransformPage },
+    { id: Pages.STATE_DEMO, title: "State demo", route: "/state-demo", component: StateDemoPage },
   ]
 
   get defaultRoute(): string {

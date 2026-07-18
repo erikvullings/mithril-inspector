@@ -26,17 +26,17 @@ describe("removed nodes are no longer selectable (§19.2 assertion 8)", () => {
     await activatePicker(page)
     await page.hover("#item-apple")
     await page.click("#item-apple")
-    await waitForShadowPresence(page, ".mi-section-title", true)
-    expect(await shadowText(page, ".mi-key")).toBe("Component")
+    await waitForShadowPresence(page, ".mi-breadcrumb", true)
+    expect(await shadowText(page, ".mi-crumb-current")).toBe("ListScene")
 
     // Selecting exits picking (non-continuous, §8.7), so this reaches the app directly.
     await page.click("#remove-apple")
     await page.waitForFunction(() => document.getElementById("item-apple") === null)
 
     // The overlay only re-checks `isConnected` when it next redraws (§8.8) —
-    // switching tabs is a real, deterministic redraw trigger, not a sleep.
-    await page.click(mi("#mi-tab-settings"))
-    await page.click(mi("#mi-tab-inspector"))
+    // switching sidebar sections is a real, deterministic redraw trigger, not a sleep.
+    await page.click(mi('.mi-sidebar-btn[aria-label="Settings"]'))
+    await page.click(mi('.mi-sidebar-btn[aria-label="Components"]'))
 
     await waitForShadowText(page, ".mi-stale", "Element no longer mounted")
     const staleText = await shadowText(page, ".mi-stale")

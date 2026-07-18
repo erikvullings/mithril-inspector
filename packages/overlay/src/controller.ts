@@ -32,7 +32,7 @@ import {
 } from "./shortcuts.js"
 import { createComponentTreeStore, type ComponentTreeStore, type PinnedRow, type TreeRow } from "./tree.js"
 
-export type OverlayTab = "inspector" | "components" | "settings"
+export type OverlayTab = "components" | "settings"
 
 /**
  * A resolved component display name plus whether it's a §9.2 fallback tier
@@ -72,6 +72,8 @@ export interface SourceChoice {
 export interface AncestryEntry {
   readonly id: ComponentId
   readonly name: ComponentNameInfo
+  /** The vnode's `key` attribute (§9.1), or `null` — distinguishes keyed siblings in the breadcrumb. */
+  readonly key: string | number | null
   readonly mounted: boolean
   readonly choices: readonly SourceChoice[]
 }
@@ -110,7 +112,6 @@ export interface OverlayViewState {
   readonly picker: PickerState
   readonly picking: boolean
   readonly collapsed: boolean
-  readonly offset: { x: number; y: number } | null
   readonly activeTab: OverlayTab
   readonly hover: HoverInfo | null
   readonly hoverRects: readonly HighlightRect[]
@@ -160,7 +161,6 @@ export interface OverlayController {
   toggleCollapsed(): void
   setCollapsed(collapsed: boolean): void
   setActiveTab(tab: OverlayTab): void
-  setOffset(offset: { x: number; y: number } | null): void
 
   togglePicker(): void
   startPicker(): void
@@ -355,8 +355,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   // --- Reactive fields the views read via getState() -----------------------
   const persisted = loadOverlayState(storage)
   let collapsed = persisted.collapsed ?? !options.defaultOpen
-  let offset: { x: number; y: number } | null = persisted.offset ?? null
-  let activeTab: OverlayTab = persisted.activeTab ?? "inspector"
+  let activeTab: OverlayTab = persisted.activeTab ?? "components"
   let hover: HoverInfo | null = null
   let hoverRects: readonly HighlightRect[] = []
   let frozenRects: readonly HighlightRect[] = []
@@ -404,7 +403,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   }
 
   const persist = (): void => {
-    saveOverlayState({ collapsed, offset, activeTab, treeSearch: treeStore.getSearch() }, storage)
+    saveOverlayState({ collapsed, activeTab, treeSearch: treeStore.getSearch() }, storage)
   }
 
   const clearHover = (): void => {
@@ -435,6 +434,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       const ancestry: AncestryEntry[] = ancestryRecords.map((record) => ({
         id: record.id,
         name: { name: record.displayName, inferred: record.displayNameInferred === true },
+        key: record.key,
         mounted: record.mounted,
         choices: computeChoices(record),
       }))
@@ -464,7 +464,6 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         picker: picker.getState(),
         picking: picker.isPicking(),
         collapsed,
-        offset,
         activeTab,
         hover,
         hoverRects,
@@ -497,11 +496,6 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     },
     setActiveTab(tab) {
       activeTab = tab
-      persist()
-      redraw()
-    },
-    setOffset(next) {
-      offset = next
       persist()
       redraw()
     },
@@ -579,7 +573,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           frozenRects = [rectOfElement(target)]
           resetPreviewOverrides()
           collapsed = false // show the details panel (§8.7)
-          activeTab = "inspector"
+          activeTab = "components" // the merged tree/detail view is where a pick's result shows (§8.3)
           persist()
 
           if (options.picker.openOnClick) controller.openSelectedInEditor()

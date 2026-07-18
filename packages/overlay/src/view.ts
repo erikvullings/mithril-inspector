@@ -8,10 +8,20 @@ import type {
   OverlayController,
   OverlayTab,
   OverlayViewState,
-  SourceChoice,
 } from "./controller.js"
-import { beginDrag, type DragPointerEvent } from "./drag.js"
 import type { HighlightRect } from "./highlight.js"
+import {
+  iconClose,
+  iconCode,
+  iconComponents,
+  iconEye,
+  iconFileText,
+  iconFocus,
+  iconPin,
+  iconSearch,
+  iconSettings,
+  iconTarget,
+} from "./icons.js"
 import type { MappingInfo, MappingPrecision } from "./mapping.js"
 import type { OverlayTheme } from "./options.js"
 import { pathKey, summarizeNode } from "./preview.js"
@@ -21,6 +31,13 @@ import type { PinnedRow, TreeRow } from "./tree.js"
  * The overlay's Mithril view tree (§8.3). It is a pure function of
  * `controller.getState()`; all behavior is delegated to the controller, so the
  * view stays thin and the logic stays testable without the DOM.
+ *
+ * Layout follows a Vue-DevTools-style docked panel: an unobtrusive
+ * bottom-center toggle when collapsed, and a full-width bottom-docked panel
+ * with a left icon sidebar when expanded. The former Inspector/Components
+ * split is merged into one view — the DOM picker and the component tree
+ * write to the same shared selection, so there is only ever one place a pick
+ * or a tree click shows up.
  */
 
 const PRECISION_LABEL: Record<MappingPrecision, string> = {
@@ -46,72 +63,32 @@ function inferredNameBadge(): Vnode {
   )
 }
 
-/**
- * "Reveal component" (§8.3 mockup, §9.3): opens the most-precise available
- * source for a component. Disabled when nothing resolved at all (§2.4).
- */
-function revealButton(controller: OverlayController, id: ComponentId, choices: readonly SourceChoice[]): Vnode {
+/** A small icon button with the action's name as its only visible label — a native tooltip on hover/focus. */
+function iconButton(
+  icon: Vnode,
+  options: {
+    readonly label: string
+    readonly onclick: () => void
+    readonly disabled?: boolean
+    readonly pressed?: boolean
+    readonly compact?: boolean
+    readonly extraClass?: string
+  },
+): Vnode {
+  const classes = ["mi-icon-btn", options.compact ? "mi-icon-btn-small" : null, options.extraClass ?? null]
+    .filter(Boolean)
+    .join(".")
   return m(
-    "button.mi-btn",
+    `button.${classes}`,
     {
       type: "button",
-      disabled: choices.length === 0,
-      onclick: () => controller.revealComponent(id),
+      title: options.label,
+      "aria-label": options.label,
+      disabled: options.disabled === true,
+      ...(options.pressed !== undefined ? { "aria-pressed": options.pressed ? "true" : "false" } : {}),
+      onclick: options.onclick,
     },
-    "Reveal component",
-  )
-}
-
-/**
- * The §9.3 "Open: rendered element / component view / component
- * declaration" choice — only rendered when more than one location actually
- * resolved (§2.4 degrade); the default (`revealButton`) already covers the
- * single/none cases.
- */
-function revealChoiceGroup(controller: OverlayController, id: ComponentId, choices: readonly SourceChoice[]): Children {
-  if (choices.length <= 1) return null
-  return m("div.mi-reveal-choices", [
-    m("span.mi-muted", "Open: "),
-    choices.map((choice) =>
-      m(
-        "button.mi-btn.mi-btn-small",
-        { type: "button", key: choice.kind, onclick: () => controller.revealComponent(id, choice.kind) },
-        [choice.label, " ", precisionBadge(choice.mapping)],
-      ),
-    ),
-  ])
-}
-
-/** One row of the ancestry list (§8.3 example, §9.1); indentation shows depth. */
-function ancestryRow(controller: OverlayController, entry: AncestryEntry, depth: number, focused: boolean): Vnode {
-  return m(
-    "li",
-    { key: entry.id, class: focused ? "mi-ancestry-focused" : undefined },
-    m("div", { style: `padding-left:${depth * 14}px;` }, [
-      depth > 0 ? m("span.mi-depth", "└─ ") : null,
-      m(
-        "button.mi-ancestry-name",
-        { type: "button", onclick: () => controller.focusAncestor(entry.id) },
-        entry.name.name,
-      ),
-      entry.name.inferred ? [" ", inferredNameBadge()] : null,
-      !entry.mounted ? [" ", m("span.mi-muted", "(not mounted)")] : null,
-      m("div.mi-ancestry-actions", [
-        revealButton(controller, entry.id, entry.choices),
-        revealChoiceGroup(controller, entry.id, entry.choices),
-      ]),
-    ]),
-  )
-}
-
-/** The "Component ancestry" section (§8.3, §9.1) — resolved display names, root-first. */
-function ancestrySection(controller: OverlayController, state: OverlayViewState): Vnode {
-  if (state.ancestry.length === 0) {
-    return m("p.mi-muted", "No owning component resolved for this element.")
-  }
-  return m(
-    "ul.mi-ancestry",
-    state.ancestry.map((entry, depth) => ancestryRow(controller, entry, depth, entry.id === state.focusedAncestorId)),
+    icon,
   )
 }
 
@@ -149,40 +126,38 @@ function pickingBanner(state: OverlayViewState): Children {
   )
 }
 
-/** `transform: translate(...)` for the persisted drag offset (§8.1), or "". */
-function offsetStyle(state: OverlayViewState): string {
-  return state.offset === null ? "" : `transform:translate(${state.offset.x}px,${state.offset.y}px);`
-}
-
-function collapsedTab(controller: OverlayController, state: OverlayViewState): Vnode {
+/** The unobtrusive bottom-center toggle (§8.1): an "M" mark by default; hovering (or active picking) reveals a target/crosshair icon for picking straight from the collapsed state, with a glow. */
+function collapsedToggle(controller: OverlayController, state: OverlayViewState): Vnode {
   return m(
-    "button.mi-tab",
-    {
-      type: "button",
-      style: offsetStyle(state),
-      "aria-label": "Open Mithril Inspector panel",
-      onpointerdown: (event: DragPointerEvent) => beginDrag(event, controller),
-      onclick: () => controller.setCollapsed(false),
-    },
-    [m("span.mi-diamond", { "aria-hidden": "true" }, "◇"), "Mithril Inspect"],
+    "div.mi-toggle",
+    { class: state.picking ? "mi-toggle-active" : undefined },
+    [
+      m(
+        "button.mi-toggle-btn",
+        {
+          type: "button",
+          "aria-label": "Open Mithril Inspector",
+          onclick: () => controller.setCollapsed(false),
+        },
+        "M",
+      ),
+      m(
+        "button.mi-toggle-btn.mi-toggle-pick.mi-picker-btn",
+        {
+          type: "button",
+          class: state.picking ? "mi-active" : undefined,
+          "aria-label": state.picking ? "Stop inspecting" : "Pick an element",
+          "aria-pressed": state.picking ? "true" : "false",
+          disabled: !controller.options.picker.enabled,
+          onclick: (event: Event) => {
+            event.stopPropagation()
+            controller.togglePicker()
+          },
+        },
+        iconTarget(),
+      ),
+    ],
   )
-}
-
-function pickerButton(controller: OverlayController, state: OverlayViewState): Vnode {
-  return m(
-    "button.mi-btn",
-    {
-      type: "button",
-      "aria-pressed": state.picking ? "true" : "false",
-      disabled: !controller.options.picker.enabled,
-      onclick: () => controller.togglePicker(),
-    },
-    state.picking ? "Stop inspecting" : "Select element",
-  )
-}
-
-function detailRow(key: string, value: Children): Vnode {
-  return m("div.mi-row", [m("span.mi-key", key), m("span.mi-val", value)])
 }
 
 function staleNotice(controller: OverlayController): Vnode {
@@ -202,62 +177,6 @@ function staleNotice(controller: OverlayController): Vnode {
   ])
 }
 
-function inspectorPanel(controller: OverlayController, state: OverlayViewState): Vnode {
-  const { selection } = state
-  if (!selection || selection.node === null) {
-    // Nothing selected yet — show the picker affordance and a hint.
-    if (selection?.stale) {
-      return m("div", [staleNotice(controller), m("p.mi-muted", "The captured source is retained below.")])
-    }
-    return m("div", [
-      m("p.mi-muted", "No element selected."),
-      m("p.mi-muted", "Press “Select element”, then hover and click an element in the page."),
-    ])
-  }
-
-  const { mapping } = selection
-  const componentName = state.selectedComponentName
-
-  return m("div", [
-    selection.stale ? staleNotice(controller) : null,
-    m("div.mi-section-title", "Selected"),
-    detailRow(
-      "Component",
-      componentName
-        ? [componentName.name, componentName.inferred ? [" ", inferredNameBadge()] : null]
-        : m("span.mi-muted", "—"),
-    ),
-    detailRow("Element", m("span.mi-mono", describeSelected(state))),
-    detailRow("Source", mapping.fileLine ? m("span.mi-mono", mapping.fileLine) : m("span.mi-muted", "unknown")),
-    detailRow("Mapping", [precisionBadge(mapping), m("span", { style: "margin-left:6px;" }, mapping.label)]),
-    m("div.mi-actions", [
-      m(
-        "button.mi-btn.mi-btn-primary",
-        {
-          type: "button",
-          disabled: mapping.fileLine === null,
-          onclick: () => controller.openSelectedInEditor(),
-        },
-        "Open in editor",
-      ),
-      selection.componentId !== null
-        ? revealButton(controller, selection.componentId, state.selectedComponentChoices)
-        : null,
-      m(
-        "button.mi-btn",
-        { type: "button", onclick: () => controller.clearSelection() },
-        "Clear",
-      ),
-    ]),
-    selection.componentId !== null
-      ? revealChoiceGroup(controller, selection.componentId, state.selectedComponentChoices)
-      : null,
-    m("hr.mi-hr"),
-    m("div.mi-section-title", "Component ancestry"),
-    ancestrySection(controller, state),
-  ])
-}
-
 function describeSelected(state: OverlayViewState): string {
   const node = state.selection.node
   if (node === null) return "—"
@@ -266,6 +185,113 @@ function describeSelected(state: OverlayViewState): string {
     .map((c) => `.${c}`)
     .join("")
   return `${tag}${classes}`
+}
+
+/** The picked element's tag/class + source file:line + mapping precision, compact enough for one line above the breadcrumb. */
+function selectionMeta(state: OverlayViewState): Vnode {
+  const { mapping } = state.selection
+  return m("div.mi-detail-meta", [
+    m("span.mi-mono", describeSelected(state)),
+    mapping.fileLine ? m("span.mi-mono.mi-muted", mapping.fileLine) : m("span.mi-muted", "unknown source"),
+    precisionBadge(mapping),
+  ])
+}
+
+/**
+ * The ancestry breadcrumb (§8.3, §9.1): root-first, each crumb a click target
+ * that highlights that ancestor's own DOM range (`focusAncestor`) without
+ * changing the shared selection — the toolbar's actions stay scoped to the
+ * actually-selected/picked component throughout.
+ */
+function ancestryBreadcrumb(controller: OverlayController, state: OverlayViewState): Vnode {
+  if (state.ancestry.length === 0) {
+    return m("p.mi-muted", "No owning component resolved for this element.")
+  }
+  // Each entry renders as one keyed group (separator + button) rather than
+  // interleaving keyed buttons with unkeyed separators as flat siblings —
+  // Mithril requires a fragment's children to be either all keyed or all
+  // unkeyed, and mixing the two throws at render time.
+  const crumbs = state.ancestry.map((entry, index) => {
+    const isLast = index === state.ancestry.length - 1
+    const focused = entry.id === state.focusedAncestorId
+    return m("span", { key: entry.id }, [
+      index > 0 ? m("span.mi-breadcrumb-sep", "›") : null,
+      m(
+        "button.mi-crumb",
+        {
+          type: "button",
+          class: [isLast ? "mi-crumb-current" : null, focused ? "mi-crumb-focused" : null].filter(Boolean).join(" ") || undefined,
+          onclick: () => controller.focusAncestor(entry.id),
+        },
+        [
+          entry.name.name,
+          entry.key !== null
+            ? m("span.mi-tree-key.mi-mono", ` key=${typeof entry.key === "string" ? `"${entry.key}"` : entry.key}`)
+            : null,
+          entry.name.inferred ? [" ", inferredNameBadge()] : null,
+          !entry.mounted ? [" ", m("span.mi-muted", "(not mounted)")] : null,
+        ],
+      ),
+    ])
+  })
+  return m("div.mi-breadcrumb", crumbs)
+}
+
+/**
+ * The action row (§9.3): one icon per action, the former label now only a
+ * tooltip. "Open in editor" always covers the exact clicked element's own
+ * source (`selection.mapping`) — the same target the ancestry-choice group's
+ * "Rendered element" entry used to duplicate for the selected component
+ * itself, so that icon is never shown redundantly there. `sourceEntry` is
+ * whichever ancestry entry a breadcrumb crumb last focused, or the selection
+ * itself when none is — its own "element" location only gets a separate icon
+ * when it's a *different* component than the selection (focusing an
+ * ancestor is exactly how you'd want to reach that ancestor's own rendered
+ * element, view, and declaration, task 0019). Pin/scroll/clear stay bound to
+ * the actual selection regardless of which ancestor is focused.
+ */
+function detailToolbar(
+  controller: OverlayController,
+  state: OverlayViewState,
+  componentId: ComponentId,
+  sourceEntry: AncestryEntry,
+): Vnode {
+  const { mapping } = state.selection
+  const { choices } = sourceEntry
+  const element = sourceEntry.id !== componentId ? choices.find((c) => c.kind === "element") : undefined
+  const view = choices.find((c) => c.kind === "view")
+  const declaration = choices.find((c) => c.kind === "declaration")
+  const pinned = state.componentTree.pinned.some((p) => p.record.id === componentId)
+  return m("div.mi-toolbar", [
+    iconButton(iconCode(), {
+      label: "Open in editor",
+      disabled: mapping.fileLine === null,
+      onclick: () => controller.openSelectedInEditor(),
+    }),
+    element !== undefined
+      ? iconButton(iconCode(), { label: `${element.label} (${sourceEntry.name.name})`, onclick: () => controller.revealComponent(sourceEntry.id, "element") })
+      : null,
+    view !== undefined
+      ? iconButton(iconEye(), { label: view.label, onclick: () => controller.revealComponent(sourceEntry.id, "view") })
+      : null,
+    declaration !== undefined
+      ? iconButton(iconFileText(), { label: declaration.label, onclick: () => controller.revealComponent(sourceEntry.id, "declaration") })
+      : null,
+    m("span.mi-toolbar-divider"),
+    iconButton(iconPin(), {
+      label: pinned ? "Unpin component" : "Pin component",
+      pressed: pinned,
+      onclick: () => controller.togglePinned(componentId),
+    }),
+    iconButton(iconFocus(), {
+      label: "Scroll into view",
+      onclick: () => controller.scrollComponentIntoView(componentId),
+    }),
+    iconButton(iconClose(), {
+      label: "Clear selection",
+      onclick: () => controller.clearSelection(),
+    }),
+  ])
 }
 
 /** `key="42"` badge (§9.1 example), only rendered when the vnode actually carries a key. */
@@ -283,7 +309,7 @@ function updateCountBadge(record: TreeRow["record"]): Children {
 
 function pinButton(controller: OverlayController, id: ComponentId, pinned: boolean): Vnode {
   return m(
-    "button.mi-btn.mi-btn-small.mi-pin-btn",
+    "button.mi-btn-small.mi-pin-btn",
     {
       type: "button",
       "aria-pressed": pinned ? "true" : "false",
@@ -294,7 +320,7 @@ function pinButton(controller: OverlayController, id: ComponentId, pinned: boole
         controller.togglePinned(id)
       },
     },
-    "📌",
+    iconPin(),
   )
 }
 
@@ -422,7 +448,7 @@ function pinnedRow(controller: OverlayController, pinned: PinnedRow): Vnode {
   const { record } = pinned
   return m("li", { key: record.id }, [
     m(
-      "button.mi-ancestry-name",
+      "button.mi-crumb",
       { type: "button", disabled: !pinned.mounted, onclick: () => controller.selectComponent(record.id) },
       record.displayName,
     ),
@@ -437,18 +463,41 @@ function pinnedSection(controller: OverlayController, state: OverlayViewState): 
   if (state.componentTree.pinned.length === 0) return null
   return [
     m("div.mi-section-title", "Pinned"),
-    m("ul.mi-ancestry.mi-pinned", state.componentTree.pinned.map((p) => pinnedRow(controller, p))),
+    m("ul.mi-pinned", state.componentTree.pinned.map((p) => pinnedRow(controller, p))),
   ]
 }
 
-function treeSearchInput(controller: OverlayController, state: OverlayViewState): Vnode {
-  return m("input.mi-tree-search", {
-    type: "search",
-    placeholder: "Search components…",
-    "aria-label": "Search components by name",
-    value: state.componentTree.search,
-    oninput: (event: Event) => controller.setTreeSearch((event.target as HTMLInputElement).value),
+/** Search input plus a trailing picker icon (§8.4) — starting a pick from the tree pane, not a separate header. */
+/**
+ * The picker-activation icon (§8.4). Pulled out of `treeSearchRow` so it can
+ * also appear when the tree pane is showing its "tracking disabled" message
+ * instead — DOM picking is independent of `componentTree.enabled` (always
+ * was, back when this was the separate Inspector tab) and must stay reachable
+ * from the expanded panel either way, not only when the tree happens to be on.
+ */
+function pickerIconButton(controller: OverlayController, state: OverlayViewState): Vnode {
+  return iconButton(iconTarget(), {
+    label: state.picking ? "Stop inspecting" : "Select an element",
+    pressed: state.picking,
+    disabled: !controller.options.picker.enabled,
+    extraClass: "mi-picker-btn",
+    onclick: () => controller.togglePicker(),
+    compact: true,
   })
+}
+
+function treeSearchRow(controller: OverlayController, state: OverlayViewState): Vnode {
+  return m("div.mi-search-row", [
+    m("span.mi-search-icon", { "aria-hidden": "true" }, iconSearch()),
+    m("input.mi-tree-search", {
+      type: "search",
+      placeholder: "Find components…",
+      "aria-label": "Search components by name",
+      value: state.componentTree.search,
+      oninput: (event: Event) => controller.setTreeSearch((event.target as HTMLInputElement).value),
+    }),
+    pickerIconButton(controller, state),
+  ])
 }
 
 /** Renders one entry's label + value for an object/map/array/set/typed-array container. */
@@ -517,16 +566,23 @@ function totalCountOf(node: ContainerNode): number {
   return node.length
 }
 
-/** Recursively renders one preview node (§7.4), fetching getter/max-depth/pagination expansions on demand. */
+/**
+ * Recursively renders one preview node (§7.4), fetching getter/max-depth/pagination
+ * expansions on demand. `isRoot` suppresses the container's own type summary
+ * ("Object", "Array(3)") — redundant at the top of an Attrs/State section,
+ * which already carries that label — so the section reads as a plain
+ * key/value list instead of a generic "Object" dump (see `previewSection`).
+ */
 function previewNodeView(
   controller: OverlayController,
   target: "attrs" | "state",
   node: PreviewNode,
   overrides: ReadonlyMap<string, PreviewNode>,
+  isRoot = false,
 ): Vnode {
   if (node.kind === "getter" || node.kind === "max-depth") {
     const resolved = overrides.get(pathKey(node.path))
-    if (resolved !== undefined) return previewNodeView(controller, target, resolved, overrides)
+    if (resolved !== undefined) return previewNodeView(controller, target, resolved, overrides, isRoot)
     return m("span.mi-preview-getter", [
       m("span.mi-muted", summarizeNode(node)),
       m(
@@ -542,8 +598,12 @@ function previewNodeView(
     const shown = shownCountOf(effective)
     const remaining = totalCountOf(effective) - (effective.truncated ? effective.offset + shown : totalCountOf(effective))
     return m("div.mi-preview-node", [
-      m("span.mi-preview-summary", summarizeNode(effective)),
-      m("ul.mi-preview-entries", previewEntries(controller, target, effective, overrides)),
+      isRoot ? null : m("span.mi-preview-summary", summarizeNode(effective)),
+      m(
+        "ul.mi-preview-entries",
+        { class: isRoot ? "mi-preview-root" : undefined },
+        previewEntries(controller, target, effective, overrides),
+      ),
       effective.truncated
         ? m(
             "button.mi-btn.mi-btn-small",
@@ -575,65 +635,70 @@ function previewSection(controller: OverlayController, state: OverlayViewState, 
   const node = target === "attrs" ? componentTree.attrsPreview : componentTree.statePreview
   const overrides = target === "attrs" ? componentTree.attrsOverrides : componentTree.stateOverrides
   if (node === null) return m("p.mi-muted", `No ${label} available.`)
-  return previewNodeView(controller, target, node, overrides)
-}
-
-/** The selected component's details: source actions, "scroll into view", and attrs/state previews (§9.3, §7.4). */
-function selectedComponentPanel(controller: OverlayController, state: OverlayViewState): Children {
-  const { componentId } = state.selection
-  if (componentId === null) return null
-  const self = state.ancestry[state.ancestry.length - 1]
-  if (self === undefined) {
-    // The instance was untracked between selection and this redraw (§8.8-style
-    // tolerance — retain the fact that *something* was selected rather than
-    // silently showing nothing).
-    return [m("hr.mi-hr"), m("div.mi-section-title", "Selected component"), m("p.mi-muted", "Component is no longer tracked.")]
+  // An empty, non-truncated container (no props/fields at all) reads more
+  // clearly as an explicit "none" than as a bare, content-free "Object".
+  if (isContainerNode(node) && !node.truncated && shownCountOf(node) === 0) {
+    return m("p.mi-muted", `No ${label}.`)
   }
-  return [
-    m("hr.mi-hr"),
-    m("div.mi-section-title", "Selected component"),
-    detailRow(
-      "Component",
-      [self.name.name, self.name.inferred ? [" ", inferredNameBadge()] : null, !self.mounted ? [" ", m("span.mi-muted", "(not mounted)")] : null],
-    ),
-    m("div.mi-actions", [
-      revealButton(controller, componentId, self.choices),
-      m(
-        "button.mi-btn",
-        { type: "button", onclick: () => controller.scrollComponentIntoView(componentId) },
-        "Scroll into view",
-      ),
-    ]),
-    revealChoiceGroup(controller, componentId, self.choices),
-    state.componentTree.gating.enabled
-      ? [
-          m("div.mi-section-title", "Attrs"),
-          previewSection(controller, state, "attrs"),
-          m("div.mi-section-title", "State"),
-          previewSection(controller, state, "state"),
-        ]
-      : null,
-  ]
+  return previewNodeView(controller, target, node, overrides, true)
 }
 
-function componentsPanel(controller: OverlayController, state: OverlayViewState): Vnode {
+/** The left pane: search, pinned, and the component tree — independent of whether a component is selected. */
+function treePane(controller: OverlayController, state: OverlayViewState): Vnode {
   const { gating } = state.componentTree
   if (!gating.enabled) {
-    return m("div", [
+    return m("div.mi-tree-pane", [
+      m("div.mi-search-row", [pickerIconButton(controller, state)]),
       m("p.mi-muted", "Component tree tracking is disabled."),
       m(
         "p.mi-muted",
         'Set componentTree.enabled (and mode: "components" or "full") in the Vite plugin options to see the full tree (§11.1).',
       ),
-      m("p.mi-muted", "Use the Inspector tab to pick an element and open its source."),
     ])
   }
-  return m("div", [
-    treeSearchInput(controller, state),
-    pinnedSection(controller, state),
-    m("div.mi-section-title", "Component tree"),
-    treeList(controller, state),
-    selectedComponentPanel(controller, state),
+  return m("div.mi-tree-pane", [treeSearchRow(controller, state), pinnedSection(controller, state), treeList(controller, state)])
+}
+
+/** The right pane: the selected component's breadcrumb, actions, and attrs/state — merges the former Inspector tab in place. */
+function detailPane(controller: OverlayController, state: OverlayViewState): Vnode {
+  const { selection } = state
+  if (selection.node === null) {
+    if (selection.stale) return m("div.mi-detail-pane", [staleNotice(controller)])
+    return m("div.mi-detail-pane.mi-detail-empty", [
+      m("p.mi-muted", "No component selected."),
+      m("p.mi-muted", "Pick an element on the page, or choose a component from the tree."),
+    ])
+  }
+
+  const self = state.ancestry[state.ancestry.length - 1]
+  const componentId = selection.componentId
+  // Whichever crumb `focusAncestor` last highlighted, falling back to the
+  // selection itself — see `detailToolbar`'s doc comment.
+  const sourceEntry = state.ancestry.find((entry) => entry.id === state.focusedAncestorId) ?? self
+
+  return m("div.mi-detail-pane", [
+    selection.stale ? staleNotice(controller) : null,
+    selectionMeta(state),
+    self === undefined
+      ? // Same empty `ancestry`, two different causes worth distinguishing:
+        // a `componentId` that was resolved at pick time but the hook no
+        // longer reports (the instance untracked since) versus a DOM click
+        // that never resolved an owning component at all (§8.8-style).
+        m("p.mi-muted", componentId !== null ? "Component is no longer tracked." : "No owning component resolved for this element.")
+      : [
+          ancestryBreadcrumb(controller, state),
+          componentId !== null && sourceEntry !== undefined
+            ? detailToolbar(controller, state, componentId, sourceEntry)
+            : null,
+          state.componentTree.gating.enabled
+            ? [
+                m("div.mi-section-title", "Attrs"),
+                previewSection(controller, state, "attrs"),
+                m("div.mi-section-title", "State"),
+                previewSection(controller, state, "state"),
+              ]
+            : null,
+        ],
   ])
 }
 
@@ -642,9 +707,9 @@ function shortcutRow(label: string, value: string): Vnode {
   return m("div.mi-row", [m("span.mi-key", label), m("span.mi-val.mi-mono", shown)])
 }
 
-function settingsPanel(controller: OverlayController, state: OverlayViewState): Vnode {
+function settingsView(controller: OverlayController, state: OverlayViewState): Vnode {
   const { picker } = controller.options
-  return m("div", [
+  return m("div.mi-settings", [
     m("div.mi-section-title", "Shortcuts"),
     m("p.mi-muted", "Configured via the plugin options; each can be changed or disabled."),
     shortcutRow("Toggle", picker.toggleShortcut),
@@ -673,57 +738,44 @@ function diagnosticsView(state: OverlayViewState): Vnode {
   )
 }
 
-function panelTab(controller: OverlayController, current: OverlayTab, tab: OverlayTab, label: string): Vnode {
+function sidebarButton(icon: Vnode, options: { readonly label: string; readonly active?: boolean; readonly onclick: () => void }): Vnode {
   return m(
-    "button.mi-tabbtn",
+    "button.mi-sidebar-btn",
     {
       type: "button",
-      role: "tab",
-      id: `mi-tab-${tab}`,
-      "aria-selected": current === tab ? "true" : "false",
-      "aria-controls": "mi-panel-body",
-      onclick: () => controller.setActiveTab(tab),
+      title: options.label,
+      "aria-label": options.label,
+      "aria-pressed": options.active === true ? "true" : "false",
+      onclick: options.onclick,
     },
-    label,
+    icon,
   )
 }
 
-function panel(controller: OverlayController, state: OverlayViewState): Vnode {
+/** The left icon strip (§8.3): the "M" mark collapses back to the toggle (mirroring the Vue-DevTools "click the logo to close" convention), then one entry per section. */
+function sidebar(controller: OverlayController, tab: OverlayTab, setTab: (tab: OverlayTab) => void): Vnode {
+  return m("nav.mi-sidebar", { "aria-label": "Mithril Inspector sections" }, [
+    m(
+      "button.mi-sidebar-logo",
+      { type: "button", title: "Collapse Mithril Inspector", "aria-label": "Collapse Mithril Inspector", onclick: () => controller.setCollapsed(true) },
+      "M",
+    ),
+    sidebarButton(iconComponents(), { label: "Components", active: tab === "components", onclick: () => setTab("components") }),
+    m("div.mi-sidebar-spacer"),
+    sidebarButton(iconSettings(), { label: "Settings", active: tab === "settings", onclick: () => setTab("settings") }),
+  ])
+}
+
+function dockedPanel(controller: OverlayController, state: OverlayViewState): Vnode {
   const body =
-    state.activeTab === "components"
-      ? componentsPanel(controller, state)
-      : state.activeTab === "settings"
-        ? settingsPanel(controller, state)
-        : inspectorPanel(controller, state)
+    state.activeTab === "settings"
+      ? settingsView(controller, state)
+      : m("div.mi-main", [treePane(controller, state), detailPane(controller, state)])
 
   return m(
-    "section.mi-panel",
-    { role: "dialog", "aria-label": "Mithril Inspector", style: offsetStyle(state) },
-    [
-      m("header.mi-panel-header", [
-        m(
-          "span.mi-panel-title",
-          { onpointerdown: (event: DragPointerEvent) => beginDrag(event, controller) },
-          [m("span.mi-diamond", { "aria-hidden": "true" }, "◇ "), "Mithril Inspect"],
-        ),
-        pickerButton(controller, state),
-        m(
-          "button.mi-btn",
-          {
-            type: "button",
-            "aria-label": "Collapse Mithril Inspector",
-            onclick: () => controller.setCollapsed(true),
-          },
-          "–",
-        ),
-      ]),
-      m("div.mi-tablist", { role: "tablist", "aria-label": "Inspector sections" }, [
-        panelTab(controller, state.activeTab, "inspector", "Inspector"),
-        panelTab(controller, state.activeTab, "components", "Components"),
-        panelTab(controller, state.activeTab, "settings", "Settings"),
-      ]),
-      m("div.mi-panel-body", { id: "mi-panel-body", role: "tabpanel" }, body),
-    ],
+    "section.mi-dock",
+    { role: "dialog", "aria-label": "Mithril Inspector" },
+    [sidebar(controller, state.activeTab, (tab) => controller.setActiveTab(tab)), body],
   )
 }
 
@@ -738,7 +790,7 @@ export function OverlayRoot(controller: OverlayController): Component<Record<str
       const state = controller.getState()
       const themeAttr = resolveThemeAttr(controller.options.theme)
       const rootAttrs: Record<string, unknown> = {
-        class: `mi-root mi-pos-${controller.options.position}`,
+        class: "mi-root",
         style: `--mi-z:${controller.options.zIndex};`,
       }
       if (themeAttr !== undefined) rootAttrs["data-theme"] = themeAttr
@@ -747,7 +799,7 @@ export function OverlayRoot(controller: OverlayController): Component<Record<str
         highlightLayer(state),
         hoverBadge(state),
         pickingBanner(state),
-        state.collapsed ? collapsedTab(controller, state) : panel(controller, state),
+        state.collapsed ? collapsedToggle(controller, state) : dockedPanel(controller, state),
       ])
     },
   }

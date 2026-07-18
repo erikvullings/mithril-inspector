@@ -1,5 +1,5 @@
 import type { InspectorMode, RedactionConfig } from "@mithril-inspector/runtime"
-import type { OverlayOptionsInput, OverlayPosition, OverlayTheme } from "@mithril-inspector/overlay"
+import type { OverlayOptionsInput, OverlayTheme } from "@mithril-inspector/overlay"
 import type { EditorOption, InspectorServerOptions, PathMapping } from "@mithril-inspector/server"
 import type { FilterPattern, TransformOptions } from "@mithril-inspector/transform"
 
@@ -32,7 +32,6 @@ export interface MithrilInspectorOptions {
 
   ui?: {
     enabled?: boolean
-    position?: OverlayPosition
     defaultOpen?: boolean
     theme?: OverlayTheme
     zIndex?: number
@@ -89,7 +88,6 @@ const DEFAULT_HYPERSCRIPT_IDENTIFIERS = ["m"] as const
 
 export interface ResolvedUiOptions {
   readonly enabled: boolean
-  readonly position: OverlayPosition
   readonly defaultOpen: boolean
   readonly theme: OverlayTheme
   readonly zIndex?: number
@@ -175,7 +173,6 @@ export function resolveInspectorOptions(
     debug: options.debug ?? false,
     ui: {
       enabled: ui.enabled ?? true,
-      position: ui.position ?? "bottom-right",
       defaultOpen: ui.defaultOpen ?? false,
       theme: ui.theme ?? "system",
       ...(ui.zIndex !== undefined ? { zIndex: ui.zIndex } : {}),
@@ -184,7 +181,7 @@ export function resolveInspectorOptions(
       enabled: picker.enabled ?? true,
       toggleShortcut: picker.toggleShortcut ?? "Alt+Shift+M",
       holdShortcut: picker.holdShortcut ?? "Alt+Shift",
-      openOnClick: picker.openOnClick ?? true,
+      openOnClick: picker.openOnClick ?? false,
       continuous: picker.continuous ?? false,
     },
     componentTree: {
@@ -225,7 +222,6 @@ export function toRuntimeBootstrapConfig(resolved: ResolvedInspectorOptions): Ru
 export function toOverlayOptionsInput(resolved: ResolvedInspectorOptions): OverlayOptionsInput {
   return {
     enabled: resolved.ui.enabled,
-    position: resolved.ui.position,
     defaultOpen: resolved.ui.defaultOpen,
     theme: resolved.ui.theme,
     ...(resolved.ui.zIndex !== undefined ? { zIndex: resolved.ui.zIndex } : {}),

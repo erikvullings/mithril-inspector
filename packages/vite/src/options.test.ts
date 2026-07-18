@@ -18,7 +18,6 @@ describe("resolveInspectorOptions", () => {
     expect(resolved.debug).toBe(false)
     expect(resolved.ui).toEqual({
       enabled: true,
-      position: "bottom-right",
       defaultOpen: false,
       theme: "system",
     })
@@ -26,7 +25,7 @@ describe("resolveInspectorOptions", () => {
       enabled: true,
       toggleShortcut: "Alt+Shift+M",
       holdShortcut: "Alt+Shift",
-      openOnClick: true,
+      openOnClick: false,
       continuous: false,
     })
     expect(resolved.componentTree).toEqual({ enabled: false, captureAttrs: false, captureState: false })
@@ -105,7 +104,7 @@ describe("resolveInspectorOptions", () => {
         pathMappings: [{ from: "/workspace", to: "/Users/dev/app" }],
         include: [/\.ts$/],
         exclude: ["**/vendor/**"],
-        ui: { position: "top-left", theme: "dark", defaultOpen: true, zIndex: 42 },
+        ui: { theme: "dark", defaultOpen: true, zIndex: 42 },
         picker: { continuous: true, openOnClick: false, toggleShortcut: "Alt+I" },
         componentTree: { enabled: true, captureAttrs: true, captureState: true },
         source: { exposeDomAttributes: true, attributes: true, textExpressions: true },
@@ -120,7 +119,7 @@ describe("resolveInspectorOptions", () => {
     expect(resolved.editor).toBe("cursor")
     expect(resolved.projectRoots).toEqual(["/repo/pkg-a"])
     expect(resolved.pathMappings).toEqual([{ from: "/workspace", to: "/Users/dev/app" }])
-    expect(resolved.ui).toEqual({ enabled: true, position: "top-left", theme: "dark", defaultOpen: true, zIndex: 42 })
+    expect(resolved.ui).toEqual({ enabled: true, theme: "dark", defaultOpen: true, zIndex: 42 })
     expect(resolved.picker.continuous).toBe(true)
     expect(resolved.picker.openOnClick).toBe(false)
     expect(resolved.picker.toggleShortcut).toBe("Alt+I")
@@ -147,12 +146,11 @@ describe("derived configuration builders", () => {
 
   it("toOverlayOptionsInput maps the ui/picker blocks", () => {
     const resolved = resolveInspectorOptions(
-      { ui: { enabled: false, position: "top-right", zIndex: 10 }, picker: { continuous: true } },
+      { ui: { enabled: false, zIndex: 10 }, picker: { continuous: true } },
       { NODE_ENV: "development" },
     )
     const overlay = toOverlayOptionsInput(resolved)
     expect(overlay.enabled).toBe(false)
-    expect(overlay.position).toBe("top-right")
     expect(overlay.zIndex).toBe(10)
     expect(overlay.picker?.continuous).toBe(true)
     expect(overlay.picker?.toggleShortcut).toBe("Alt+Shift+M")

@@ -23,7 +23,6 @@ export default defineConfig({
       editor: "code",
       mode: "full",
       ui: {
-        position: "bottom-right",
         theme: "system",
       },
     }),
@@ -31,12 +30,14 @@ export default defineConfig({
 })
 ```
 
-Run `pnpm dev`, open the app, click the collapsed "Mithril Inspect" tab, then
-the element-picker button, and hover an element to see its owning component
-and exact TypeScript source line (`SaveButton` / `button.btn.primary` /
-`src/components/SaveButton.ts:28:7`). Click it to select without triggering
-the app's own click handler, then "Open in editor" to jump straight to that
-line in VS Code.
+Run `pnpm dev`, open the app, hover the unobtrusive "M" toggle at the bottom
+of the page and click its target/crosshair icon to start picking (or open the
+docked panel first via the "M" itself), then hover an element to see its
+owning component and exact TypeScript source line (`SaveButton` /
+`button.btn.primary` / `src/components/SaveButton.ts:28:7`). Click it to
+select without triggering the app's own click handler — the result shows in
+the docked panel's tree/detail view in place — then use the "Open in editor"
+icon to jump straight to that line in VS Code.
 
 The plugin is dev-only by default (`enabled` follows `NODE_ENV`) and adds no
 runtime, overlay or editor endpoint to production builds (§20.1.12).

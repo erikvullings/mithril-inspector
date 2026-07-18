@@ -6,7 +6,7 @@ import { resolveInspectorOptions, toOverlayOptionsInput, toRuntimeBootstrapConfi
 import { loadVirtualModule, overlayModuleCode, resolveVirtualId, runtimeModuleCode } from "./virtual-modules.js"
 
 const resolved = resolveInspectorOptions(
-  { mode: "components", source: { exposeDomAttributes: true }, ui: { position: "top-left" } },
+  { mode: "components", source: { exposeDomAttributes: true }, ui: { defaultOpen: true } },
   { NODE_ENV: "development" },
 )
 
@@ -56,7 +56,7 @@ describe("overlayModuleCode", () => {
   it("mounts the overlay with the resolved ui options", () => {
     expect(code).toContain("mountInspectorOverlay")
     expect(code).toContain('from "@mithril-inspector/overlay"')
-    expect(code).toContain('"position":"top-left"')
+    expect(code).toContain('"defaultOpen":true')
   })
 })
 

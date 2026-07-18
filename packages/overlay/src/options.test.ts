@@ -5,14 +5,13 @@ import { DEFAULT_OVERLAY_OPTIONS, resolveOverlayOptions } from "./options.js"
 describe("resolveOverlayOptions", () => {
   it("returns the documented defaults with no input", () => {
     const options = resolveOverlayOptions()
-    expect(options.position).toBe("bottom-right")
     expect(options.defaultOpen).toBe(false)
     expect(options.theme).toBe("system")
     expect(options.picker.toggleShortcut).toBe("Alt+Shift+M")
     expect(options.picker.holdShortcut).toBe("Alt+Shift")
     expect(options.picker.openShortcut).toBe("Enter")
     expect(options.picker.cancelShortcut).toBe("Escape")
-    expect(options.picker.openOnClick).toBe(true)
+    expect(options.picker.openOnClick).toBe(false)
     expect(options.picker.continuous).toBe(false)
   })
 
@@ -45,14 +44,14 @@ describe("resolveOverlayOptions", () => {
   })
 
   it("overrides top-level fields and ignores explicit undefined", () => {
-    const options = resolveOverlayOptions({ position: "top-left", theme: undefined })
-    expect(options.position).toBe("top-left")
+    const options = resolveOverlayOptions({ defaultOpen: true, theme: undefined })
+    expect(options.defaultOpen).toBe(true)
     expect(options.theme).toBe("system")
   })
 
   it("does not mutate the shared defaults object", () => {
-    resolveOverlayOptions({ position: "top-right", picker: { enabled: false } })
-    expect(DEFAULT_OVERLAY_OPTIONS.position).toBe("bottom-right")
+    resolveOverlayOptions({ defaultOpen: true, picker: { enabled: false } })
+    expect(DEFAULT_OVERLAY_OPTIONS.defaultOpen).toBe(false)
     expect(DEFAULT_OVERLAY_OPTIONS.picker.enabled).toBe(true)
   })
 })

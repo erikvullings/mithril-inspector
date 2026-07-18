@@ -334,6 +334,33 @@ describe("InspectorRuntime end-to-end", () => {
       })
     })
 
+    it("surfaces a closure component's own literal state fields instead of the composed lifecycle hooks (regression)", () => {
+      // The idiomatic closure/factory pattern: the factory returns a plain
+      // object with real data fields declared as literal properties. Mithril
+      // assigns `vnode.state` to the *composed* wrapper directly for a
+      // function-tag component (no extra per-instance `Object.create` layer
+      // like the object-tag case gets), so the real fields sit one prototype
+      // level above the wrapper's own seven lifecycle-hook properties.
+      function Counter(): { count: number; view: () => unknown } {
+        return { count: 3, view: () => m("div") }
+      }
+      const Instrumented = runtime.component(`${MODULE}:s1`, Counter as unknown as Component)
+      const usage = m(Instrumented)
+      m.render(root, usage)
+      runtime.flush()
+      const id = runtime.components.idOf(usage.state as object)!
+
+      expect(runtime.statePreview(id)).toEqual({
+        kind: "object",
+        className: "Object",
+        size: 1,
+        entries: [{ key: "count", node: { kind: "primitive", type: "number", value: 3 } }],
+        offset: 0,
+        truncated: false,
+        path: [],
+      })
+    })
+
     it("redacts attrs by the runtime's configured redaction policy", () => {
       interface SecretAttrs {
         secretValue: string

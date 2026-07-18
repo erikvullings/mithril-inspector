@@ -1,6 +1,6 @@
 /**
- * localStorage persistence for the overlay's position and collapsed state
- * (§8.1). All access is guarded: private-mode browsers throw on
+ * localStorage persistence for the overlay's collapsed state and last active
+ * section (§8.1). All access is guarded: private-mode browsers throw on
  * `localStorage`, and the overlay must never break the host page (§16), so a
  * failure degrades to in-memory defaults.
  */
@@ -9,24 +9,22 @@
  * Local mirror of `OverlayTab` (`./controller.js`) — not imported, to avoid a
  * circular dependency (the controller already imports this module).
  */
-type PersistedTab = "inspector" | "components" | "settings"
+type PersistedTab = "components" | "settings"
 
-const PERSISTED_TABS: ReadonlySet<string> = new Set<PersistedTab>(["inspector", "components", "settings"])
+const PERSISTED_TABS: ReadonlySet<string> = new Set<PersistedTab>(["components", "settings"])
 
 export interface OverlayPersistedState {
-  /** Whether the panel is collapsed to the bottom tab. */
+  /** Whether the panel is collapsed to the bottom toggle. */
   collapsed?: boolean
-  /** Absolute drag offset from the configured corner, or `null` if unmoved. */
-  offset?: { x: number; y: number } | null
   /**
-   * The last active panel tab (task 0022 follow-up): a Vite dev-server
-   * WebSocket reconnect (e.g. after "Reveal component" backgrounds the tab
-   * long enough for the browser to drop it) triggers a full page reload —
-   * Vite's own behavior, not the overlay's — which would otherwise silently
-   * reset back to the Inspector tab.
+   * The last active sidebar section (task 0022 follow-up): a Vite dev-server
+   * WebSocket reconnect (e.g. after "Open in editor" backgrounds the tab long
+   * enough for the browser to drop it) triggers a full page reload — Vite's
+   * own behavior, not the overlay's — which would otherwise silently reset
+   * back to the default section.
    */
   activeTab?: PersistedTab
-  /** The Components tab's search query; see {@link activeTab}. */
+  /** The component tree's search query; see {@link activeTab}. */
   treeSearch?: string
 }
 
@@ -46,10 +44,6 @@ function defaultStorage(): StorageLike | null {
     // Accessing localStorage can throw in sandboxed iframes / disabled storage.
     return null
   }
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value)
 }
 
 /** Load persisted overlay state, returning `{}` on any error or malformed data. */
@@ -74,16 +68,6 @@ export function loadOverlayState(storage: StorageLike | null = defaultStorage())
   const record = parsed as Record<string, unknown>
   const state: OverlayPersistedState = {}
   if (typeof record.collapsed === "boolean") state.collapsed = record.collapsed
-
-  const offset = record.offset
-  if (offset === null) {
-    state.offset = null
-  } else if (typeof offset === "object") {
-    const point = offset as Record<string, unknown>
-    if (isFiniteNumber(point.x) && isFiniteNumber(point.y)) {
-      state.offset = { x: point.x, y: point.y }
-    }
-  }
 
   if (typeof record.activeTab === "string" && PERSISTED_TABS.has(record.activeTab)) {
     state.activeTab = record.activeTab as PersistedTab

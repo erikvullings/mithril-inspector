@@ -4,7 +4,6 @@
  * and carries no bundler or Vite coupling.
  */
 
-export type OverlayPosition = "bottom-right" | "bottom-left" | "top-right" | "top-left"
 export type OverlayTheme = "system" | "light" | "dark"
 
 export interface PickerOptions {
@@ -17,7 +16,13 @@ export interface PickerOptions {
   readonly openShortcut: string
   /** Cancel the picker (§8.4, default `Escape`). */
   readonly cancelShortcut: string
-  /** Select on click while picking (§8.7). */
+  /**
+   * Open the editor immediately on a picker click (§8.7). Off by default —
+   * a pick should land the result in the docked panel (breadcrumb, attrs,
+   * state) in place; jumping to the editor is a separate, explicit action
+   * (the toolbar's "Open in editor" icon) rather than an automatic side
+   * effect of selecting.
+   */
   readonly openOnClick: boolean
   /** Stay in picker mode after a selection (§8.7). */
   readonly continuous: boolean
@@ -43,8 +48,7 @@ export interface ComponentTreeOptions {
 
 export interface OverlayOptions {
   readonly enabled: boolean
-  readonly position: OverlayPosition
-  /** Start expanded rather than collapsed to the tab (§8.1). */
+  /** Start expanded to the docked panel rather than collapsed to the toggle (§8.1). */
   readonly defaultOpen: boolean
   readonly theme: OverlayTheme
   readonly zIndex: number
@@ -66,7 +70,7 @@ export const DEFAULT_PICKER_OPTIONS: PickerOptions = {
   holdShortcut: "Alt+Shift",
   openShortcut: "Enter",
   cancelShortcut: "Escape",
-  openOnClick: true,
+  openOnClick: false,
   continuous: false,
   // Meta (Cmd/Win) is distinct from the Alt+Shift picker modifiers, so it works
   // as a pass-through in both sticky and hold modes.
@@ -81,7 +85,6 @@ export const DEFAULT_COMPONENT_TREE_OPTIONS: ComponentTreeOptions = {
 
 export const DEFAULT_OVERLAY_OPTIONS: OverlayOptions = {
   enabled: true,
-  position: "bottom-right",
   defaultOpen: false,
   theme: "system",
   // Just below the 32-bit signed max so the overlay sits above typical app UI

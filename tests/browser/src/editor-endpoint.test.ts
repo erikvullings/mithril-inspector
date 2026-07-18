@@ -2,6 +2,7 @@ import { join } from "node:path"
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 
+import { mi } from "./harness/browser.js"
 import { activatePicker, waitForShadowPresence } from "./harness/overlay.js"
 import { createScenario, type Scenario } from "./harness/scenario.js"
 import { positionOf } from "./harness/source-line.js"
@@ -28,13 +29,14 @@ describe("editor endpoint receives the expected file and line (§19.2 assertion 
     await scenario.teardown()
   })
 
-  it("selecting an element launches the (stub) editor with its exact file/line/column", async () => {
+  it("the 'Open in editor' toolbar action launches the (stub) editor with its exact file/line/column", async () => {
     const page = scenario.page()
     await page.hover("#greeting")
-    // openOnClick defaults to true (§8.7): clicking while picking both selects
-    // and opens the editor in one action.
+    // openOnClick defaults to false (§8.7): a pick lands in the panel, not
+    // the editor — opening it is a separate, explicit toolbar action.
     await page.click("#greeting")
-    await waitForShadowPresence(page, ".mi-section-title", true)
+    await waitForShadowPresence(page, ".mi-breadcrumb", true)
+    await page.click(mi('.mi-toolbar [aria-label="Open in editor"]'))
 
     const invocation = await scenario.editorStub.waitForInvocation()
     const { line, column } = positionOf(join(scenario.fixture.root, "src", "Greeting.ts"), 'm("h1#greeting')
@@ -48,6 +50,8 @@ describe("editor endpoint receives the expected file and line (§19.2 assertion 
     const page = scenario.page()
     await page.hover("#greeting")
     await page.click("#greeting")
+    await waitForShadowPresence(page, ".mi-breadcrumb", true)
+    await page.click(mi('.mi-toolbar [aria-label="Open in editor"]'))
 
     const invocation = await scenario.editorStub.waitForInvocation()
     // The stub only ever records `{file, line, column}` — no component data

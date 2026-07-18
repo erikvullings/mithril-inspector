@@ -132,6 +132,24 @@ export function mountInspectorOverlay(
   doc.addEventListener("scroll", onScrollOrResize, true)
   win?.addEventListener("resize", onScrollOrResize)
 
+  // --- Stale-highlight cleanup on SPA navigation --------------------------
+  // The frozen selection rectangle is only recomputed on scroll/resize
+  // (above) or an explicit controller action — an in-app route change (e.g.
+  // `m.route.set()`) swaps DOM without firing either, so a previously
+  // selected element's highlight box would otherwise keep floating over
+  // content that no longer exists. A DOM mutation is the one signal common
+  // to every routing approach (Mithril's own router included), so watching
+  // the document body's subtree and re-running the same rAF-throttled
+  // `refreshHighlight()` (which already checks `node.isConnected`) clears or
+  // repositions the box the next time anything meaningful changes. This
+  // never observes inside the overlay's own shadow root (shadow boundaries
+  // are opaque to a light-DOM `MutationObserver`), so it cannot loop back on
+  // the overlay's own re-renders.
+  const MutationObserverImplForDom = (globalThis as unknown as { MutationObserver?: typeof MutationObserver })
+    .MutationObserver
+  const domObserver = MutationObserverImplForDom ? new MutationObserverImplForDom(onScrollOrResize) : null
+  domObserver?.observe(doc.body, { childList: true, subtree: true })
+
   // --- Modal <dialog> detection (known Phase-1 limitation, §8.2) ---------
   // `showModal()` promotes a <dialog> into the browser's top layer, which
   // paints above the shadow-root host regardless of z-index and makes the
@@ -177,6 +195,7 @@ export function mountInspectorOverlay(
       doc.removeEventListener("keyup", onKeyUp, true)
       doc.removeEventListener("scroll", onScrollOrResize, true)
       win?.removeEventListener("resize", onScrollOrResize)
+      domObserver?.disconnect()
       modalObserver?.disconnect()
       controller.dispose()
       m.render(mountPoint, [])

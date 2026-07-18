@@ -19,10 +19,10 @@ function memoryStorage(seed?: Record<string, string>): StorageLike & { data: Map
 }
 
 describe("overlay persistence", () => {
-  it("round-trips collapsed + offset through storage", () => {
+  it("round-trips collapsed through storage", () => {
     const storage = memoryStorage()
-    saveOverlayState({ collapsed: true, offset: { x: 12, y: -34 } }, storage)
-    expect(loadOverlayState(storage)).toEqual({ collapsed: true, offset: { x: 12, y: -34 } })
+    saveOverlayState({ collapsed: true }, storage)
+    expect(loadOverlayState(storage)).toEqual({ collapsed: true })
     expect(storage.data.has(OVERLAY_STORAGE_KEY)).toBe(true)
   })
 
@@ -30,25 +30,15 @@ describe("overlay persistence", () => {
     expect(loadOverlayState(memoryStorage())).toEqual({})
   })
 
-  it("preserves an explicit null offset (unmoved)", () => {
-    const storage = memoryStorage()
-    saveOverlayState({ collapsed: false, offset: null }, storage)
-    expect(loadOverlayState(storage)).toEqual({ collapsed: false, offset: null })
-  })
-
   it("ignores malformed JSON", () => {
     expect(loadOverlayState(memoryStorage({ [OVERLAY_STORAGE_KEY]: "{not json" }))).toEqual({})
   })
 
-  it("ignores fields with the wrong type and non-finite offsets", () => {
+  it("ignores fields with the wrong type", () => {
     const storage = memoryStorage({
-      [OVERLAY_STORAGE_KEY]: JSON.stringify({ collapsed: "yes", offset: { x: "a", y: 3 } }),
+      [OVERLAY_STORAGE_KEY]: JSON.stringify({ collapsed: "yes" }),
     })
     expect(loadOverlayState(storage)).toEqual({})
-    const nan = memoryStorage({
-      [OVERLAY_STORAGE_KEY]: JSON.stringify({ offset: { x: Number.NaN, y: 3 } }),
-    })
-    expect(loadOverlayState(nan)).toEqual({})
   })
 
   it("round-trips activeTab and treeSearch (task 0022 follow-up: survive a Vite full-reload)", () => {

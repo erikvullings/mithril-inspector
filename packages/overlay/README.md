@@ -7,9 +7,12 @@ bundler dependencies (ADR-004): it depends only on `@mithril-inspector/protocol`
 (types) and `mithril`, and consumes the runtime hook (0010) through the global
 `window.__MITHRIL_INSPECTOR__` rather than importing the runtime package.
 
-Phase 1 ships the **source inspector** (§21): a collapsed bottom tab, an element
-picker, highlight rectangles, a source tooltip/badge, and a selected-element
-details panel with **Open in editor**.
+Phase 1 ships the **source inspector** (§21): an unobtrusive collapsed toggle,
+an element picker, highlight rectangles, a source tooltip/badge, and a
+selected-component detail pane with **Open in editor**. The panel's
+look-and-feel follows the Vue DevTools convention: an "M" toggle docked to the
+bottom of the viewport when collapsed, and a full-width docked panel with a
+left icon sidebar when expanded.
 
 ## Mounting
 
@@ -17,7 +20,6 @@ details panel with **Open in editor**.
 import { mountInspectorOverlay } from "@mithril-inspector/overlay"
 
 const handle = mountInspectorOverlay({
-  position: "bottom-right",
   theme: "system",
   picker: { toggleShortcut: "Alt+Shift+M", continuous: false },
 })
@@ -34,17 +36,25 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
 
 ## Behavior
 
-- **Tab & panel (§8.1, §8.3):** collapsed tab fixed to a configurable corner;
-  drag it (or the panel header) to move it. Position, collapsed state, the
-  active tab, and the Components tab's search query all persist in
-  `localStorage` — deliberately, since a Vite dev-server WebSocket reconnect
-  (e.g. after "Reveal component" backgrounds the browser tab long enough for
-  it to drop) triggers a full page reload (Vite's own behavior, not this
-  package's), which would otherwise silently reset the panel back to the
-  Inspector tab. Expanded tabs are `[ Inspector ] [ Components ] [ Settings ]`.
+- **Toggle & docked panel (§8.1, §8.3):** collapsed, the overlay is a small "M"
+  toggle centered at the bottom of the viewport, faded to low opacity until
+  hovered. Hovering (or picking) reveals a second target/crosshair icon next
+  to it — a glowing halo appears — that starts picking directly without
+  opening the panel. Expanded, the overlay docks a panel to the bottom of the
+  viewport spanning the full width, with a left icon sidebar (Components, then
+  Settings at the bottom; click the "M" mark at the top of the sidebar to
+  collapse back to the toggle). Collapsed state, the active sidebar section,
+  and the component tree's search query all persist in `localStorage` —
+  deliberately, since a Vite dev-server WebSocket reconnect (e.g. after "Open
+  in editor" backgrounds the browser tab long enough for it to drop) triggers
+  a full page reload (Vite's own behavior, not this package's), which would
+  otherwise silently reset the panel.
 - **Picker (§8.4):** toggle with `Alt+Shift+M`, momentary hold with `Alt+Shift`,
   `Enter` opens the current source, `Escape` cancels. Every shortcut is
   remappable and can be disabled (`"none"`). Plain `Alt+Click` is never bound.
+  Picking never jumps to the editor by itself (`picker.openOnClick` defaults
+  to `false`) — a pick lands its result in the docked panel in place; opening
+  the editor is a separate, explicit toolbar action.
 - **Hover (§8.5) & highlight (§8.6):** a capture-phase pointer listener uses
   `document.elementsFromPoint`, ignores the overlay host, resolves the best
   source/component mapping through the hook, and draws separate fixed-position
@@ -65,55 +75,59 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   component name resolved via the §9.2 fallback tiers (filename-derived or
   `"Anonymous"`), so a guessed name is never mistaken for an explicit or
   declared one.
-- **Ancestry panel & reveal component (§8.3, §9.1, §9.3, task 0019):** the
-  "Component ancestry" section lists the full root-first chain (`App` →
-  `UserList` → `UserCard`) for the selected element's owning component, each
-  with its own resolved (and exact-vs-inferred marked) display name. Clicking
-  an ancestor's name (`focusAncestor`) highlights its own rendered DOM range
-  — every top-level sibling node for a fragment-root component, not just the
-  first — without changing what's selected. Each ancestor and the "Selected"
-  section's own **Reveal component** button open a component's source via
-  `revealComponent`, defaulting to the most-precise of up to three §9.3
-  locations (rendered element → component view → component declaration); an
-  "Open: …" button group is shown only when more than one actually resolved
-  (§2.4 degrade), and a component inside a hidden (`markInspectorHidden`)
+- **Ancestry breadcrumb & source actions (§8.3, §9.1, §9.3, task 0019):** the
+  detail pane's breadcrumb shows the full root-first chain (`App › UserList ›
+  UserCard`) for the selected element's owning component, each crumb its own
+  resolved (and exact-vs-inferred marked) display name. Clicking a crumb
+  (`focusAncestor`) highlights its own rendered DOM range — every top-level
+  sibling node for a fragment-root component, not just the first — without
+  changing what's selected; the toolbar's actions always stay scoped to the
+  actually-selected component. The toolbar is one icon per action (the label
+  is a tooltip, `title`/`aria-label`): **Open in editor** (the exact clicked
+  element's own source, via `openSelectedInEditor`), then one icon per
+  additional §9.3 location that actually resolved — component view,
+  component declaration — skipping a redundant "rendered element" icon
+  (`openSelectedInEditor` already covers that exact target), then pin, scroll
+  into view, and clear. A component inside a hidden (`markInspectorHidden`)
   ancestor's subtree is excluded from the chain rather than leaving a gap.
-- **Component tree (§9, §9.3, §9.4, task 0022):** the Components tab shows the
-  full Mithril component hierarchy — display names and `key="…"` badges (§9.1
-  `UserCard key="42"`), plain HTML elements excluded by default — seeded once
-  from `hook.getSnapshot()` and thereafter patched incrementally from batched
-  `RuntimeEvent`s via `hook.subscribe` (§9.4: no re-fetch, no full rebuild per
-  redraw). Each row shows an update-count badge (§3.2) and can be
-  expanded/collapsed (chevron, or `ArrowRight`/`ArrowLeft`; `ArrowUp`/`ArrowDown`
-  move a roving `tabindex`, `Enter`/`Space` select — a flat `role="tree"` with
-  `aria-level` per row rather than physically nested `role="group"`s, §18).
-  Selection is bidirectional and shared with the Inspector tab (§9.3): picking
-  a DOM element marks its nearest component selected in the tree, and selecting
-  a tree row highlights that component's own DOM range, offers **Scroll into
-  view**, and exposes the same **Reveal component** / "Open: rendered element /
-  component view / component declaration" source actions as the ancestry panel.
-  A search box filters by display name, keeping every match's ancestors visible
-  for context. Pinned components (§3.2, `📌`) stay listed with a "not mounted"
-  marker instead of disappearing once they unmount (ids are never reused, so
-  that's the last state they'll ever report). The whole tab is gated by
-  `componentTree.enabled` (§11.1); attrs/state previews additionally require
-  `mode: "full"` and `componentTree.captureAttrs`/`captureState` — each shows an
-  explanatory message instead of silently doing nothing when a prerequisite
-  isn't met. Attrs/state render the lazy preview tree from task 0020's safe
-  serializer: containers show their already-fetched entries inline with a
-  "Show more" page-forward button once truncated, a getter shows `(...)` until
-  clicked (`expandComponentPreview` → the hook's `expandPreview`, evaluated only
-  on that explicit action, §7.4), and a redacted value always renders its
-  configured replacement text (default `[redacted]`, §15) — the redaction
-  itself happens in the runtime, never in this package.
-- **Accessibility (§18):** semantic controls, ARIA roles (`dialog`, `tablist`,
-  `tab`, `status`, `tree`, `treeitem`), visible focus indicators, WCAG AA
-  contrast, reduced-motion support (also respected by "Scroll into view", via
+- **Component tree (§9, §9.3, §9.4, task 0022):** the sidebar's Components
+  section shows the full Mithril component hierarchy — display names and
+  `key="…"` badges (§9.1 `UserCard key="42"`), plain HTML elements excluded by
+  default — seeded once from `hook.getSnapshot()` and thereafter patched
+  incrementally from batched `RuntimeEvent`s via `hook.subscribe` (§9.4: no
+  re-fetch, no full rebuild per redraw). Each row shows an update-count badge
+  (§3.2) and can be expanded/collapsed (chevron, or `ArrowRight`/`ArrowLeft`;
+  `ArrowUp`/`ArrowDown` move a roving `tabindex`, `Enter`/`Space` select — a
+  flat `role="tree"` with `aria-level` per row rather than physically nested
+  `role="group"`s, §18). Selection is bidirectional: picking a DOM element (via
+  the target icon next to the tree search, or the collapsed toggle's own
+  picker icon) marks its nearest component selected in the tree, and selecting
+  a tree row highlights that component's own DOM range and shows the same
+  detail pane described above. A search box filters by display name, keeping
+  every match's ancestors visible for context. Pinned components (§3.2) stay
+  listed with a "not mounted" marker instead of disappearing once they unmount
+  (ids are never reused, so that's the last state they'll ever report). The
+  tree pane is gated by `componentTree.enabled` (§11.1) — the detail pane's
+  breadcrumb/toolbar work regardless, since they only need a DOM
+  selection/mapping, not tree tracking; attrs/state previews additionally
+  require `mode: "full"` and `componentTree.captureAttrs`/`captureState` —
+  each shows an explanatory message instead of silently doing nothing when a
+  prerequisite isn't met. Attrs/state render the lazy preview tree from task
+  0020's safe serializer directly as a key/value list (no redundant "Object"
+  label at the root): containers show their already-fetched entries inline
+  with a "Show more" page-forward button once truncated, a getter shows
+  `(...)` until clicked (`expandComponentPreview` → the hook's `expandPreview`,
+  evaluated only on that explicit action, §7.4), and a redacted value always
+  renders its configured replacement text (default `[redacted]`, §15) — the
+  redaction itself happens in the runtime, never in this package.
+- **Accessibility (§18):** semantic controls, ARIA roles (`dialog`, `status`,
+  `tree`, `treeitem`), visible focus indicators, WCAG AA contrast,
+  reduced-motion support (also respected by "Scroll into view", via
   `matchMedia`), a visible picker-active banner, and light/dark theming that
   follows `prefers-color-scheme` by default.
 - **Resilience (§16):** every overlay operation runs inside an error boundary;
-  failures are recorded and surfaced in the Settings panel's diagnostics view,
-  and never break the host application.
+  failures are recorded and surfaced in the Settings section's diagnostics
+  view, and never break the host application.
 
 ## Public building blocks
 
@@ -159,8 +173,8 @@ CSS, which conflicts with the shadow-root / no-global-styles constraint (§8.1,
   and still fully "paginated" per the acceptance criteria, but not an
   infinite-scroll accumulation.
 - **The selected component itself does not survive a Vite full-reload** (only
-  the active tab and Components-tab search query do, both via `localStorage`
-  — see "Tab & panel" above). A `ComponentId` is only valid for the page load
+  the active sidebar section and component tree search query do, both via
+  `localStorage` — see "Toggle & docked panel" above). A `ComponentId` is only valid for the page load
   that assigned it, so after a reload the previous selection can't be
   re-applied directly; re-resolving the nearest matching component by its old
   source location was considered and deferred as a larger, separate piece of
@@ -182,7 +196,7 @@ CSS, which conflicts with the shadow-root / no-global-styles constraint (§8.1,
   picking elements hidden behind the dialog anyway) and is out of scope for
   Phase 1. Instead, `mountInspectorOverlay` watches for `:modal` via a
   `MutationObserver` on the `open` attribute and records a `"modal-dialog"`
-  diagnostic (visible in the Settings panel once the dialog closes, and via
+  diagnostic (visible in the Settings section once the dialog closes, and via
   `console.warn` in `debug` mode) so the silence is explained rather than
   silently swallowed. Ordinary custom "modal" UIs built from a plain
   `position: fixed` div are unaffected — the overlay's host already always wins

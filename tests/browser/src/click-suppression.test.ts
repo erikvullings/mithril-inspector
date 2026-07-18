@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 
-import { activatePicker, shadowDetailRow, waitForShadowPresence } from "./harness/overlay.js"
+import { activatePicker, shadowText, waitForShadowPresence } from "./harness/overlay.js"
 import { createScenario, type Scenario } from "./harness/scenario.js"
 
 /**
@@ -33,11 +33,11 @@ describe("overlay interactions do not trigger application click handlers (§19.2
     await activatePicker(page)
     await page.hover("#counter-btn")
     await page.click("#counter-btn")
-    await waitForShadowPresence(page, ".mi-section-title", true)
+    await waitForShadowPresence(page, ".mi-breadcrumb", true)
 
     // The click was intercepted for selection, not passed to the app.
     expect(await page.$eval("#counter-value", (el) => el.textContent)).toBe("1")
-    expect(await shadowDetailRow(page, "Component")).toBe("Counter")
+    expect(await shadowText(page, ".mi-crumb-current")).toBe("Counter")
 
     // Picking auto-exits after a non-continuous selection (§8.7): the next
     // click on the same button reaches the app again, unaffected.

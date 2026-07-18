@@ -10,6 +10,7 @@ export enum Pages {
   DIALOG = "dialog",
   SCROLL = "scroll",
   TRANSFORM = "transform",
+  STATE_DEMO = "state-demo",
 }
 
 export interface PageDef {

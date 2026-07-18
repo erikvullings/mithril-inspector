@@ -4,10 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest"
 
 import { HOST_ID } from "@mithril-inspector/overlay"
 
+import { mi } from "./harness/browser.js"
 import {
   activatePicker,
   shadowClick,
-  shadowDetailRow,
+  shadowText,
   shadowTextAll,
   waitForShadowPresence,
 } from "./harness/overlay.js"
@@ -40,14 +41,15 @@ describe("click selects the correct source (§19.2 assertion 4)", () => {
     await page.hover("#greeting")
     await page.click("#greeting")
 
-    await waitForShadowPresence(page, ".mi-section-title", true)
-    expect(await shadowDetailRow(page, "Component")).toBe("Greeting")
-    // The "Selected" panel's Element row is tag+classes only, no id (view.ts
-    // `describeSelected`) — unlike the hover badge's `describeElement`.
-    expect(await shadowDetailRow(page, "Element")).toBe("h1.greeting")
+    await waitForShadowPresence(page, ".mi-breadcrumb", true)
+    expect(await shadowText(page, ".mi-crumb-current")).toBe("Greeting")
+    // The detail-meta line is tag+classes then source file:line (view.ts
+    // `describeSelected`) — unlike the hover badge's `describeElement`, no id.
+    const meta = await shadowTextAll(page, ".mi-detail-meta .mi-mono")
+    expect(meta[0]).toBe("h1.greeting")
 
     const { line, column } = positionOf(join(scenario.fixture.root, "src", "Greeting.ts"), 'm("h1#greeting')
-    expect(await shadowDetailRow(page, "Source")).toBe(`src/Greeting.ts:${line}:${column}`)
+    expect(meta[1]).toBe(`src/Greeting.ts:${line}:${column}`)
   })
 
   it("selecting a list item resolves its nearest owning component (assertion 6)", async () => {
@@ -55,32 +57,27 @@ describe("click selects the correct source (§19.2 assertion 4)", () => {
     await page.hover("#item-apple")
     await page.click("#item-apple")
 
-    await waitForShadowPresence(page, ".mi-section-title", true)
-    expect(await shadowDetailRow(page, "Component")).toBe("ListScene")
+    await waitForShadowPresence(page, ".mi-breadcrumb", true)
+    expect(await shadowText(page, ".mi-crumb-current")).toBe("ListScene")
   })
 
   it("reports the full multi-level ancestry chain, root-first (§19.2 assertion 6, task 0019)", async () => {
     const page = scenario.page()
     await page.hover("#item-apple")
     await page.click("#item-apple")
-    await waitForShadowPresence(page, ".mi-ancestry-name", true)
+    await waitForShadowPresence(page, ".mi-crumb", true)
 
-    const names = await shadowTextAll(page, ".mi-ancestry-name")
+    const names = await shadowTextAll(page, ".mi-crumb")
     expect(names).toEqual(["Layout", "ListScene"])
   })
 
-  it("clicking an ancestor highlights its own DOM range and 'Open in editor' opens its most-precise source (§9.3, task 0019)", async () => {
+  it("clicking an ancestor highlights its own DOM range and surfaces its own 'Rendered element' action (§9.3, task 0019)", async () => {
     const page = scenario.page()
     await page.hover("#item-apple")
     await page.click("#item-apple")
-    // openOnClick (default true) fires this selection's own editor invocation
-    // asynchronously (a POST round-trip + process spawn) — wait for it to
-    // actually land before establishing the "before" baseline below, or under
-    // load its write can arrive late and be mistaken for the ancestor-reveal
-    // invocation the second half of this test waits for (task 0022 found this
-    // while adding a browser-test file that increases parallel load).
-    await scenario.editorStub.waitForInvocation(5_000)
-    await waitForShadowPresence(page, ".mi-ancestry-name", true)
+    // openOnClick defaults to false now — a pick never auto-opens the editor,
+    // so there's no earlier invocation to baseline past here.
+    await waitForShadowPresence(page, ".mi-crumb", true)
 
     const layoutRect = await page.evaluate(() => {
       const box = document.getElementById("layout")!.getBoundingClientRect()
@@ -91,7 +88,7 @@ describe("click selects the correct source (§19.2 assertion 4)", () => {
     // already-selected ListScene (index 1). The redraw this triggers is not
     // necessarily synchronous with the click, so wait on the resulting style
     // rather than reading it immediately.
-    await shadowClick(page, ".mi-ancestry-name", 0)
+    await shadowClick(page, ".mi-crumb", 0)
     await page.waitForFunction(
       (hostId, expectedLeft) => {
         const host = document.getElementById(hostId)
@@ -109,15 +106,11 @@ describe("click selects the correct source (§19.2 assertion 4)", () => {
     }, HOST_ID)
     expect(frozenTop).toBe(layoutRect.top)
 
-    // openOnClick (default true) already opened the editor once for the
-    // initial #item-apple selection above — baseline the count so this wait
-    // can't be satisfied by that earlier, unrelated invocation.
-    const before = scenario.editorStub.invocationCount()
-    // The first button inside an ancestry row's actions is always "Reveal
-    // component" (the default, most-precise choice) — the rendered element's
-    // own exact mapping for a still-mounted node (§9.3).
-    await shadowClick(page, ".mi-ancestry-actions button", 0)
-    const invocation = await scenario.editorStub.waitForInvocation(5_000, before)
+    // Focusing an ancestor other than the selected component (ListScene)
+    // surfaces its own "Rendered element" toolbar action (§9.3, task 0019) —
+    // "Open in editor" alone only ever covers the originally clicked node.
+    await page.click(mi('.mi-toolbar [aria-label="Rendered element (Layout)"]'))
+    const invocation = await scenario.editorStub.waitForInvocation(5_000)
     const { line, column } = positionOf(join(scenario.fixture.root, "src", "Layout.ts"), 'm("main#layout"')
     expect(invocation.file).toBe(join(scenario.fixture.root, "src", "Layout.ts"))
     expect(invocation.line).toBe(line)

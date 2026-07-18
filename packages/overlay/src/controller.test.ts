@@ -81,6 +81,7 @@ function setup(opts?: {
   options?: OverlayOptionsInput
   hits?: Element[]
   openInEditor?: OverlayControllerDeps["openInEditor"]
+  storage?: OverlayControllerDeps["storage"]
 }) {
   const redraw = vi.fn()
   let hits: Element[] = opts?.hits ?? []
@@ -90,7 +91,7 @@ function setup(opts?: {
     options: resolveOverlayOptions(opts?.options),
     doc,
     redraw,
-    storage: null,
+    storage: opts?.storage === undefined ? null : opts.storage,
     ...(opts?.openInEditor ? { openInEditor: opts.openInEditor } : {}),
   })
   return {
@@ -781,5 +782,30 @@ describe("Components tab: tree/search/pin/attrs+state (task 0022)", () => {
     const { controller } = setup({ hook })
     controller.dispose()
     expect(unsubscribe).toHaveBeenCalledOnce()
+  })
+})
+
+describe("persistence across a reload (task 0022 follow-up)", () => {
+  function memoryStorage(): NonNullable<OverlayControllerDeps["storage"]> {
+    const data = new Map<string, string>()
+    return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) }
+  }
+
+  it("survives a Vite full-reload's fresh controller construction: activeTab and Components-tab search are restored from the same storage", () => {
+    const storage = memoryStorage()
+    // "Before the reload": open the Components tab and type a search query.
+    const before = setup({ storage })
+    before.controller.setActiveTab("components")
+    before.controller.setTreeSearch("UserCard")
+    expect(before.controller.getState().activeTab).toBe("components")
+
+    // "After the reload": a brand-new controller reading the same storage
+    // (exactly what a Vite ws-disconnect -> location.reload() produces —
+    // §8.1's existing collapsed/offset persistence uses the identical
+    // mechanism, this just extends what's saved).
+    const after = setup({ storage })
+    const state = after.controller.getState()
+    expect(state.activeTab).toBe("components")
+    expect(state.componentTree.search).toBe("UserCard")
   })
 })

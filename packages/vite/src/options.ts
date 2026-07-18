@@ -160,6 +160,7 @@ export function resolveInspectorOptions(
   const componentTree = options.componentTree ?? {}
   const source = options.source ?? {}
   const redact = options.redact ?? {}
+  const mode = options.mode ?? "source"
 
   return {
     enabled: options.enabled ?? env.NODE_ENV !== "production",
@@ -170,7 +171,7 @@ export function resolveInspectorOptions(
     projectRoots: options.projectRoots ?? [],
     ...(options.editor !== undefined ? { editor: options.editor } : {}),
     pathMappings: options.pathMappings ?? [],
-    mode: options.mode ?? "source",
+    mode,
     debug: options.debug ?? false,
     ui: {
       enabled: ui.enabled ?? true,
@@ -188,8 +189,11 @@ export function resolveInspectorOptions(
     },
     componentTree: {
       enabled: componentTree.enabled ?? false,
-      captureAttrs: componentTree.captureAttrs ?? false,
-      captureState: componentTree.captureState ?? false,
+      // §17 defines "full" mode itself as including attrs/state, so both
+      // default to on once mode resolves to "full" — still overridable
+      // explicitly (e.g. full mode's other diagnostics without attrs/state).
+      captureAttrs: componentTree.captureAttrs ?? mode === "full",
+      captureState: componentTree.captureState ?? mode === "full",
     },
     source: {
       elements: source.elements ?? true,

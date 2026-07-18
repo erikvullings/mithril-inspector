@@ -356,7 +356,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   const persisted = loadOverlayState(storage)
   let collapsed = persisted.collapsed ?? !options.defaultOpen
   let offset: { x: number; y: number } | null = persisted.offset ?? null
-  let activeTab: OverlayTab = "inspector"
+  let activeTab: OverlayTab = persisted.activeTab ?? "inspector"
   let hover: HoverInfo | null = null
   let hoverRects: readonly HighlightRect[] = []
   let frozenRects: readonly HighlightRect[] = []
@@ -370,6 +370,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   // the feature is actually enabled (§11.1 componentTree.enabled), so a host
   // that hasn't opted in pays no subscription/seeding cost at all (§17).
   const treeStore: ComponentTreeStore = createComponentTreeStore()
+  if (persisted.treeSearch !== undefined) treeStore.setSearch(persisted.treeSearch)
   let unsubscribeTree: (() => void) | null = null
   if (options.componentTree.enabled && hook !== null && hook !== undefined) {
     diagnostics.guard(
@@ -403,7 +404,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   }
 
   const persist = (): void => {
-    saveOverlayState({ collapsed, offset }, storage)
+    saveOverlayState({ collapsed, offset, activeTab, treeSearch: treeStore.getSearch() }, storage)
   }
 
   const clearHover = (): void => {
@@ -496,6 +497,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     },
     setActiveTab(tab) {
       activeTab = tab
+      persist()
       redraw()
     },
     setOffset(next) {
@@ -714,6 +716,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     // --- Components tab: tree/search/pin/attrs+state (task 0022) -----------
     setTreeSearch(query) {
       treeStore.setSearch(query)
+      persist()
       redraw()
     },
     toggleTreeNode(id) {

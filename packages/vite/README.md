@@ -52,12 +52,15 @@ mithrilInspector({
 })
 ```
 
-`componentTree` (default `{ enabled: false, captureAttrs: false, captureState:
-false }`) is passed straight through to the overlay's Components tab (task
-0022): `enabled` gates the full component tree UI itself, while
-`captureAttrs`/`captureState` additionally gate the attrs/state preview panels
-— which also require `mode: "full"` regardless of these two flags (§17: attrs,
-state and diagnostics are a `"full"`-mode capability).
+`componentTree` is passed straight through to the overlay's Components tab
+(task 0022): `enabled` (default `false`) gates the full component tree UI
+itself. `captureAttrs`/`captureState` gate the attrs/state preview panels
+specifically; both **default to `true` once `mode` resolves to `"full"`**
+(and to `false` otherwise) — §17 defines `"full"` mode itself as including
+attrs/state, so `mode: "full"` alone is enough to see them without also
+opting into two more flags. Set either explicitly (e.g. `captureState:
+false`) to keep `"full"` mode's other diagnostics while still suppressing
+one of the preview panels.
 
 ## Virtual modules (§11.2)
 

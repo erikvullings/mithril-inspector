@@ -51,6 +51,19 @@ describe("overlay persistence", () => {
     expect(loadOverlayState(nan)).toEqual({})
   })
 
+  it("round-trips activeTab and treeSearch (task 0022 follow-up: survive a Vite full-reload)", () => {
+    const storage = memoryStorage()
+    saveOverlayState({ activeTab: "components", treeSearch: "UserCard" }, storage)
+    expect(loadOverlayState(storage)).toEqual({ activeTab: "components", treeSearch: "UserCard" })
+  })
+
+  it("ignores an unknown activeTab value and a non-string treeSearch", () => {
+    const storage = memoryStorage({
+      [OVERLAY_STORAGE_KEY]: JSON.stringify({ activeTab: "bogus", treeSearch: 42 }),
+    })
+    expect(loadOverlayState(storage)).toEqual({})
+  })
+
   it("degrades to {} and does not throw when storage access throws (§16)", () => {
     const throwing: StorageLike = {
       getItem: vi.fn(() => {

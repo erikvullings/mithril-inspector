@@ -5,11 +5,29 @@
  * failure degrades to in-memory defaults.
  */
 
+/**
+ * Local mirror of `OverlayTab` (`./controller.js`) — not imported, to avoid a
+ * circular dependency (the controller already imports this module).
+ */
+type PersistedTab = "inspector" | "components" | "settings"
+
+const PERSISTED_TABS: ReadonlySet<string> = new Set<PersistedTab>(["inspector", "components", "settings"])
+
 export interface OverlayPersistedState {
   /** Whether the panel is collapsed to the bottom tab. */
   collapsed?: boolean
   /** Absolute drag offset from the configured corner, or `null` if unmoved. */
   offset?: { x: number; y: number } | null
+  /**
+   * The last active panel tab (task 0022 follow-up): a Vite dev-server
+   * WebSocket reconnect (e.g. after "Reveal component" backgrounds the tab
+   * long enough for the browser to drop it) triggers a full page reload —
+   * Vite's own behavior, not the overlay's — which would otherwise silently
+   * reset back to the Inspector tab.
+   */
+  activeTab?: PersistedTab
+  /** The Components tab's search query; see {@link activeTab}. */
+  treeSearch?: string
 }
 
 export const OVERLAY_STORAGE_KEY = "__mithril-inspector-overlay"
@@ -66,6 +84,12 @@ export function loadOverlayState(storage: StorageLike | null = defaultStorage())
       state.offset = { x: point.x, y: point.y }
     }
   }
+
+  if (typeof record.activeTab === "string" && PERSISTED_TABS.has(record.activeTab)) {
+    state.activeTab = record.activeTab as PersistedTab
+  }
+  if (typeof record.treeSearch === "string") state.treeSearch = record.treeSearch
+
   return state
 }
 

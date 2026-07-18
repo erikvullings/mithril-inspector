@@ -43,6 +43,32 @@ describe("resolveInspectorOptions", () => {
     expect(resolved.pathMappings).toEqual([])
   })
 
+  it("defaults componentTree.captureAttrs/captureState to true when mode is \"full\" (§17, \"full\" itself means attrs/state)", () => {
+    const resolved = resolveInspectorOptions({ mode: "full", componentTree: { enabled: true } }, { NODE_ENV: "development" })
+    expect(resolved.componentTree).toEqual({ enabled: true, captureAttrs: true, captureState: true })
+  })
+
+  it("does not default captureAttrs/captureState to true for \"source\"/\"components\" modes", () => {
+    expect(resolveInspectorOptions({ mode: "source" }, { NODE_ENV: "development" }).componentTree).toEqual({
+      enabled: false,
+      captureAttrs: false,
+      captureState: false,
+    })
+    expect(resolveInspectorOptions({ mode: "components" }, { NODE_ENV: "development" }).componentTree).toEqual({
+      enabled: false,
+      captureAttrs: false,
+      captureState: false,
+    })
+  })
+
+  it("lets an explicit captureAttrs/captureState override the mode: \"full\" default", () => {
+    const resolved = resolveInspectorOptions(
+      { mode: "full", componentTree: { captureState: false } },
+      { NODE_ENV: "development" },
+    )
+    expect(resolved.componentTree).toEqual({ enabled: false, captureAttrs: true, captureState: false })
+  })
+
   it("defaults `enabled` off in production (§2.1)", () => {
     expect(resolveInspectorOptions({}, { NODE_ENV: "production" }).enabled).toBe(false)
   })

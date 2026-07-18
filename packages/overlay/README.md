@@ -35,8 +35,13 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
 ## Behavior
 
 - **Tab & panel (§8.1, §8.3):** collapsed tab fixed to a configurable corner;
-  drag it (or the panel header) to move it. Position and collapsed state persist
-  in `localStorage`. Expanded tabs are `[ Inspector ] [ Components ] [ Settings ]`.
+  drag it (or the panel header) to move it. Position, collapsed state, the
+  active tab, and the Components tab's search query all persist in
+  `localStorage` — deliberately, since a Vite dev-server WebSocket reconnect
+  (e.g. after "Reveal component" backgrounds the browser tab long enough for
+  it to drop) triggers a full page reload (Vite's own behavior, not this
+  package's), which would otherwise silently reset the panel back to the
+  Inspector tab. Expanded tabs are `[ Inspector ] [ Components ] [ Settings ]`.
 - **Picker (§8.4):** toggle with `Alt+Shift+M`, momentary hold with `Alt+Shift`,
   `Enter` opens the current source, `Escape` cancels. Every shortcut is
   remappable and can be disabled (`"none"`). Plain `Alt+Click` is never bound.
@@ -153,6 +158,13 @@ CSS, which conflicts with the shadow-root / no-global-styles constraint (§8.1,
   contract, task 0020) instead of appending to what's already shown — simpler
   and still fully "paginated" per the acceptance criteria, but not an
   infinite-scroll accumulation.
+- **The selected component itself does not survive a Vite full-reload** (only
+  the active tab and Components-tab search query do, both via `localStorage`
+  — see "Tab & panel" above). A `ComponentId` is only valid for the page load
+  that assigned it, so after a reload the previous selection can't be
+  re-applied directly; re-resolving the nearest matching component by its old
+  source location was considered and deferred as a larger, separate piece of
+  work.
 - Highlight margins/padding visualization is deferred (§8.6, "later release").
 - Real-browser integration (playground, Chromium/Firefox/Safari) is exercised by
   the Vite playground (0014) and browser tests (0015); this package is unit- and

@@ -219,13 +219,21 @@ export function overlayCss(): string {
 }
 .mi-sidebar-btn:hover { background: var(--mi-surface); color: var(--mi-fg); }
 .mi-sidebar-btn[aria-pressed="true"] { background: var(--mi-highlight-fill); color: var(--mi-accent); }
-/* Themed hover tooltip (task 0028): faster and theme-matched, unlike the native title popup it supplements. */
-.mi-sidebar-btn[data-tooltip]::after {
+/*
+ * Themed hover tooltip (task 0028, generalized beyond the sidebar): faster
+ * and theme-matched, unlike the native "title" popup it supplements (kept
+ * alongside for assistive tech / non-hover input). Any element with a
+ * "data-tooltip" attribute gets one — default placement is below, centered;
+ * the left-edge sidebar's vertical icon strip overrides to the right instead
+ * (below would run off the bottom of the dock for icons stacked in a column).
+ */
+[data-tooltip] { position: relative; }
+[data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
-  transform: translateY(-50%);
+  left: 50%;
+  top: calc(100% + 6px);
+  transform: translateX(-50%);
   background: var(--mi-bg);
   color: var(--mi-fg);
   border: 1px solid var(--mi-border);
@@ -241,10 +249,31 @@ export function overlayCss(): string {
   transition: opacity 120ms;
   z-index: 5;
 }
-.mi-sidebar-btn[data-tooltip]:hover::after,
-.mi-sidebar-btn[data-tooltip]:focus-visible::after {
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
   opacity: 1;
   visibility: visible;
+}
+.mi-sidebar-btn[data-tooltip]::after {
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+/*
+ * The detail toolbar sits flush against the scrollable detail pane's left
+ * edge (overflow: auto), which clips a centered tooltip's left half on the
+ * row's first icons. Left-aligning to the button instead keeps the tooltip
+ * growing rightward, into the pane's open space. Icons after the divider
+ * (pin/focus/close) sit close to the *other* edge instead, so they get the
+ * mirror-image fix: right-anchored, growing leftward.
+ */
+.mi-toolbar [data-tooltip]::after {
+  left: 0;
+  transform: none;
+}
+.mi-toolbar-divider ~ [data-tooltip]::after {
+  left: auto;
+  right: 0;
 }
 
 .mi-main { flex: 1; display: flex; min-width: 0; }
@@ -338,7 +367,7 @@ export function overlayCss(): string {
   font-size: 11px;
   font-weight: 700;
 }
-.mi-precision-exact { background: var(--mi-exact); color: #fff; }
+.mi-precision-exact { background: var(--mi-exact); color: #1b1b1f; }
 .mi-precision-inferred { background: var(--mi-inferred); color: #1b1b1f; }
 .mi-precision-none { background: var(--mi-border); color: var(--mi-fg); }
 
@@ -479,8 +508,26 @@ export function overlayCss(): string {
 }
 .mi-pin-btn:hover { background: var(--mi-surface); color: var(--mi-fg); }
 .mi-pin-btn[aria-pressed="true"] { color: var(--mi-accent); }
+/* Pulls the pinned-row pin button 5px left so it lines up with the tree row's, which sits flush against a narrower right inset. */
+.mi-pinned .mi-pin-btn { margin-right: 5px; }
+/* Every pin button sits at the tree pane's right edge (overflow: auto), so a centered tooltip bleeds off past it — right-anchor instead, growing leftward. */
+.mi-pin-btn[data-tooltip]::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
 .mi-pinned { list-style: none; padding: 0; margin: 0 0 8px; }
 .mi-pinned li { display: flex; align-items: center; gap: 4px; padding: 2px 0; font-family: var(--mi-mono); }
+.mi-pinned-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* --- Attrs/state preview tree (§7.4, task 0020/0022) -------------------- */
 .mi-preview-node { font-family: var(--mi-mono); font-size: 12px; }
@@ -510,7 +557,22 @@ export function overlayCss(): string {
  * preview had, rather than a separate one-field-per-row block underneath.
  */
 .mi-preview-entry { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
-.mi-preview-entry + .mi-preview-entry::before { content: ","; color: var(--mi-muted); margin-right: 4px; }
+/*
+ * Comma separator between flowing (same-line) entries. Attached via ::after
+ * on the entry *before* the gap, not ::before on the one after — so when the
+ * flex-wrap row breaks between two entries, the comma stays glued to the end
+ * of the previous line instead of starting the new line orphaned. A
+ * .mi-preview-row (below) is excluded on the left: it already sits on its own
+ * full-width line, so it neither gets nor needs a comma of its own.
+ */
+.mi-preview-entry:not(.mi-preview-row):has(+ .mi-preview-entry)::after { content: ","; color: var(--mi-muted); }
+/*
+ * An array/map/set item that is itself a container (view.ts's previewEntries):
+ * forced onto its own line within the parent's flex-wrap row via
+ * flex-basis: 100% and indented, so sibling items line up in a column below
+ * the parent key instead of wrapping back to the row's own left edge mid-item.
+ */
+.mi-preview-row { flex-basis: 100%; padding-left: 14px; margin-top: 2px; }
 .mi-preview-getter { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mi-mono); }
 .mi-preview-value { font-family: var(--mi-mono); word-break: break-word; }
 .mi-preview-component-link {

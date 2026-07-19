@@ -1,7 +1,15 @@
 import type { PreviewNode } from "@mithril-inspector/protocol"
 import { describe, expect, it } from "vitest"
 
-import { compactContainerPreview, isExpandable, pathKey, summarizeNode } from "./preview.js"
+import {
+  compactContainerPreview,
+  fitsExpandedInline,
+  formatIndexLabel,
+  isExpandable,
+  isNullOrUndefinedNode,
+  pathKey,
+  summarizeNode,
+} from "./preview.js"
 import type { ContainerNode } from "./preview.js"
 
 describe("summarizeNode (§7.4 preview tree, task 0022)", () => {
@@ -115,10 +123,10 @@ describe("compactContainerPreview (devtools-style one-line preview)", () => {
     const object: ContainerNode = { kind: "object", className: "Object", size: 0, entries: [], offset: 0, truncated: false, path: [] }
     const array: ContainerNode = { kind: "array", length: 0, items: [], offset: 0, truncated: false, path: [] }
     expect(compactContainerPreview(object)).toBe("{}")
-    expect(compactContainerPreview(array)).toBe("[]")
+    expect(compactContainerPreview(array)).toBe("Array(0) []")
   })
 
-  it("inlines array items positionally, one level deep only", () => {
+  it("inlines array items positionally, one level deep only, prefixed with an Array(N) count", () => {
     const node: ContainerNode = {
       kind: "array",
       length: 2,
@@ -130,7 +138,7 @@ describe("compactContainerPreview (devtools-style one-line preview)", () => {
       truncated: false,
       path: [],
     }
-    expect(compactContainerPreview(node)).toBe("[ 1, Object ]")
+    expect(compactContainerPreview(node)).toBe("Array(2) [ 1, Object ]")
   })
 
   it("caps at 5 entries and trails with an ellipsis when more remain", () => {
@@ -142,7 +150,7 @@ describe("compactContainerPreview (devtools-style one-line preview)", () => {
       truncated: false,
       path: [],
     }
-    expect(compactContainerPreview(node)).toBe("[ 0, 1, 2, 3, 4, … ]")
+    expect(compactContainerPreview(node)).toBe("Array(7) [ 0, 1, 2, 3, 4, … ]")
   })
 
   it("trails with an ellipsis for a truncated container even under the cap", () => {
@@ -154,7 +162,7 @@ describe("compactContainerPreview (devtools-style one-line preview)", () => {
       truncated: true,
       path: [],
     }
-    expect(compactContainerPreview(node)).toBe("[ 0, … ]")
+    expect(compactContainerPreview(node)).toBe("Array(100) [ 0, … ]")
   })
 
   it("formats map and set entries", () => {
@@ -182,6 +190,82 @@ describe("compactContainerPreview (devtools-style one-line preview)", () => {
   })
 })
 
+describe("fitsExpandedInline (auto-expand-without-toggle, no-space-cost follow-up)", () => {
+  it("is true for a plain object with only primitive-leaf fields", () => {
+    const node: ContainerNode = {
+      kind: "object",
+      className: "Object",
+      size: 3,
+      entries: [
+        { key: "id", node: { kind: "primitive", type: "number", value: 1 } },
+        { key: "label", node: { kind: "primitive", type: "string", value: "Write the changelog" } },
+        { key: "done", node: { kind: "primitive", type: "boolean", value: false } },
+      ],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(fitsExpandedInline(node)).toBe(true)
+  })
+
+  it("is false for a non-object container (array/map/set), whose compact form omits index/key labels", () => {
+    const array: ContainerNode = {
+      kind: "array",
+      length: 1,
+      items: [{ kind: "primitive", type: "number", value: 1 }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(fitsExpandedInline(array)).toBe(false)
+  })
+
+  it("is false for a truncated object, a class instance, or one with a nested/expandable field", () => {
+    const truncated: ContainerNode = {
+      kind: "object",
+      className: "Object",
+      size: 100,
+      entries: [{ key: "id", node: { kind: "primitive", type: "number", value: 1 } }],
+      offset: 0,
+      truncated: true,
+      path: [],
+    }
+    const classInstance: ContainerNode = {
+      kind: "object",
+      className: "User",
+      size: 1,
+      entries: [{ key: "name", node: { kind: "primitive", type: "string", value: "Ada" } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    const nested: ContainerNode = {
+      kind: "object",
+      className: "Object",
+      size: 1,
+      entries: [
+        { key: "meta", node: { kind: "object", className: "Object", size: 0, entries: [], offset: 0, truncated: false, path: [] } },
+      ],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    const getter: ContainerNode = {
+      kind: "object",
+      className: "Object",
+      size: 1,
+      entries: [{ key: "value", node: { kind: "getter", path: [] } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(fitsExpandedInline(truncated)).toBe(false)
+    expect(fitsExpandedInline(classInstance)).toBe(false)
+    expect(fitsExpandedInline(nested)).toBe(false)
+    expect(fitsExpandedInline(getter)).toBe(false)
+  })
+})
+
 describe("pathKey", () => {
   it("is stable and unique per path shape", () => {
     expect(pathKey([])).toBe("")
@@ -189,5 +273,50 @@ describe("pathKey", () => {
     expect(pathKey([{ kind: "prop", key: "a" }])).not.toBe(pathKey([{ kind: "prop", key: "b" }]))
     expect(pathKey([{ kind: "index", index: 0 }])).not.toBe(pathKey([{ kind: "map-key", index: 0 }]))
     expect(pathKey([{ kind: "prop", key: "a" }, { kind: "index", index: 2 }])).toBe("prop:a/index:2")
+  })
+})
+
+describe("isNullOrUndefinedNode (hide-empty-attrs/state follow-up)", () => {
+  it("is true for serialized null and undefined values", () => {
+    expect(isNullOrUndefinedNode({ kind: "primitive", type: "null", value: null })).toBe(true)
+    expect(isNullOrUndefinedNode({ kind: "primitive", type: "undefined", value: null })).toBe(true)
+  })
+
+  it("is false for other primitives and containers", () => {
+    expect(isNullOrUndefinedNode({ kind: "primitive", type: "boolean", value: false })).toBe(false)
+    expect(isNullOrUndefinedNode({ kind: "primitive", type: "number", value: 0 })).toBe(false)
+    expect(isNullOrUndefinedNode({ kind: "primitive", type: "string", value: "" })).toBe(false)
+    expect(
+      isNullOrUndefinedNode({
+        kind: "object",
+        className: "Object",
+        entries: [],
+        truncated: false,
+        offset: 0,
+        size: 0,
+        path: [],
+      }),
+    ).toBe(false)
+  })
+})
+
+describe("formatIndexLabel (zero-padded array index labels follow-up)", () => {
+  it("leaves labels unpadded at or below 10 items", () => {
+    expect(formatIndexLabel(0, 1)).toBe("0")
+    expect(formatIndexLabel(9, 10)).toBe("9")
+  })
+
+  it("pads to 2 digits once the array holds more than 10 items", () => {
+    expect(formatIndexLabel(0, 11)).toBe("00")
+    expect(formatIndexLabel(1, 11)).toBe("01")
+    expect(formatIndexLabel(9, 11)).toBe("09")
+    expect(formatIndexLabel(10, 11)).toBe("10")
+  })
+
+  it("pads to 3 digits once the array holds more than 100 items", () => {
+    expect(formatIndexLabel(0, 101)).toBe("000")
+    expect(formatIndexLabel(7, 101)).toBe("007")
+    expect(formatIndexLabel(99, 101)).toBe("099")
+    expect(formatIndexLabel(100, 101)).toBe("100")
   })
 })

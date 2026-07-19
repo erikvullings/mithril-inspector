@@ -32,6 +32,11 @@ export function isExpandable(node: PreviewNode): boolean {
   return "truncated" in node && node.truncated
 }
 
+/** Whether `node` is the serialized form of a JS `null`/`undefined` value, e.g. a component with no state field. */
+export function isNullOrUndefinedNode(node: PreviewNode): boolean {
+  return node.kind === "primitive" && (node.type === "null" || node.type === "undefined")
+}
+
 export type ContainerNode = Extract<PreviewNode, { kind: "object" | "array" | "map" | "set" | "typed-array" }>
 
 export function isContainerNode(node: PreviewNode): node is ContainerNode {
@@ -47,6 +52,22 @@ export function isContainerNode(node: PreviewNode): node is ContainerNode {
   }
 }
 
+/**
+ * Whether a container's own fields are simple enough that rendering them
+ * expanded — flat key/value pairs, no braces, no toggle button — is strictly
+ * more compact than the "+ { ... }" collapsed summary it would otherwise
+ * replace. Restricted to plain objects with only primitive-leaf fields: an
+ * object's compact preview already spells out every key (`{ id: 1, ... }`),
+ * so dropping the braces/button on expansion only removes text. An
+ * array/map/set's compact preview omits its index/key labels, so expanding
+ * one adds text (`0: 1, 1: 2, …`) rather than removing it — those keep the
+ * regular click-to-expand toggle.
+ */
+export function fitsExpandedInline(node: ContainerNode): boolean {
+  if (node.truncated || node.kind !== "object" || node.className !== "Object") return false
+  return node.entries.every((entry) => !isContainerNode(entry.node) && !isExpandable(entry.node))
+}
+
 /** How many entries/items a container has already fetched, for the "N more" pagination label. */
 export function shownCountOf(node: ContainerNode): number {
   if (node.kind === "object" || node.kind === "map") return node.entries.length
@@ -56,6 +77,18 @@ export function shownCountOf(node: ContainerNode): number {
 export function totalCountOf(node: ContainerNode): number {
   if (node.kind === "object" || node.kind === "map" || node.kind === "set") return node.size
   return node.length
+}
+
+/**
+ * Zero-padded index label for an array/typed-array item, e.g. "07" instead
+ * of "7" once the array holds more than 10 items, so labels stay aligned as
+ * a column once the entries wrap onto their own lines. `total` is the
+ * container's full length (not just what's been fetched so far), so the
+ * padding width doesn't shift as more items are paged in.
+ */
+export function formatIndexLabel(index: number, total: number): string {
+  const width = total > 100 ? 3 : total > 10 ? 2 : 0
+  return width === 0 ? `${index}` : String(index).padStart(width, "0")
 }
 
 /** How many entries/items {@link compactContainerPreview} inlines before falling back to a trailing "…". */
@@ -91,7 +124,8 @@ export function compactContainerPreview(node: ContainerNode): string {
     case "typed-array": {
       const shown = node.items.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
       const body = joinCompact(shown.map((item) => summarizeNode(item)), shownMore(node.items.length, shown.length))
-      return body === "" ? "[]" : `[ ${body} ]`
+      const prefix = `${summarizeNode(node)} `
+      return body === "" ? `${prefix}[]` : `${prefix}[ ${body} ]`
     }
     case "map": {
       const shown = node.entries.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)

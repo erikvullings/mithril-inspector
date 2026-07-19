@@ -83,11 +83,20 @@ export function iconFileText(): Vnode {
   ])
 }
 
-/** Pin/unpin a component (§3.2) — a map-pin glyph, replacing the former emoji for a consistent icon language. */
+/** Pin a component (§3.2) — a map-pin glyph, replacing the former emoji for a consistent icon language. */
 export function iconPin(): Vnode {
   return icon([
     m("path", { d: "M12 22s7-7.58 7-12a7 7 0 1 0-14 0c0 4.42 7 12 7 12Z" }),
     m("circle", { cx: 12, cy: 10, r: 2.5 }),
+  ])
+}
+
+/** Unpin an already-pinned component — the same map-pin glyph struck through, distinct at a glance from `iconPin`. */
+export function iconPinOff(): Vnode {
+  return icon([
+    m("path", { d: "M12 22s7-7.58 7-12a7 7 0 1 0-14 0c0 4.42 7 12 7 12Z" }),
+    m("circle", { cx: 12, cy: 10, r: 2.5 }),
+    m("line", { x1: 4, y1: 20, x2: 20, y2: 4 }),
   ])
 }
 

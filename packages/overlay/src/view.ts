@@ -27,13 +27,24 @@ import {
   iconFocus,
   iconHistory,
   iconPin,
+  iconPinOff,
   iconSearch,
   iconSettings,
   iconTarget,
 } from "./icons.js"
 import type { MappingInfo, MappingPrecision } from "./mapping.js"
 import type { OverlayTheme } from "./options.js"
-import { compactContainerPreview, isContainerNode, pathKey, shownCountOf, summarizeNode, totalCountOf } from "./preview.js"
+import {
+  compactContainerPreview,
+  fitsExpandedInline,
+  formatIndexLabel,
+  isContainerNode,
+  isNullOrUndefinedNode,
+  pathKey,
+  shownCountOf,
+  summarizeNode,
+  totalCountOf,
+} from "./preview.js"
 import type { ContainerNode } from "./preview.js"
 import { parseShortcut, PICKER_SHORTCUT_KEYS, type PickerShortcutKey, type PickerShortcutSetting } from "./shortcuts.js"
 import type { PinnedRow, TreeRow } from "./tree.js"
@@ -57,24 +68,32 @@ const PRECISION_LABEL: Record<MappingPrecision, string> = {
   none: "None",
 }
 
+/** What each §2.4 mapping-precision tier means, shown as the badge's tooltip. */
+const PRECISION_TOOLTIP: Record<MappingPrecision, string> = {
+  exact: "Mapped directly from this element's own source location",
+  inferred: "Guessed from the component's view or declaration — not the exact call site",
+  none: "No source location could be resolved",
+}
+
 function rectStyle(rect: HighlightRect): string {
   return `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;`
 }
 
 function precisionBadge(mapping: MappingInfo): Vnode {
-  return m(`span.mi-badge-precision.mi-precision-${mapping.precision}`, PRECISION_LABEL[mapping.precision])
+  return m(
+    `span.mi-badge-precision.mi-precision-${mapping.precision}`,
+    { title: PRECISION_TOOLTIP[mapping.precision], "data-tooltip": PRECISION_TOOLTIP[mapping.precision] },
+    PRECISION_LABEL[mapping.precision],
+  )
 }
 
 /** Marks a component display name resolved via a §9.2 fallback tier (§2.4). */
 function inferredNameBadge(): Vnode {
-  return m(
-    "span.mi-badge-precision.mi-precision-inferred",
-    { title: "Inferred from the filename or a generic fallback — not an explicit or declared name" },
-    "Inferred",
-  )
+  const tooltip = "Inferred from the filename or a generic fallback — not an explicit or declared name"
+  return m("span.mi-badge-precision.mi-precision-inferred", { title: tooltip, "data-tooltip": tooltip }, "Inferred")
 }
 
-/** A small icon button with the action's name as its only visible label — a native tooltip on hover/focus. */
+/** A small icon button with the action's name as its only visible label — the themed hover tooltip (task 0028) plus a native title for assistive tech/non-hover input. */
 function iconButton(
   icon: Vnode,
   options: {
@@ -95,6 +114,7 @@ function iconButton(
       type: "button",
       title: options.label,
       "aria-label": options.label,
+      "data-tooltip": options.label,
       disabled: options.disabled === true,
       ...(options.pressed !== undefined ? { "aria-pressed": options.pressed ? "true" : "false" } : {}),
       onclick: options.onclick,
@@ -321,19 +341,21 @@ function updateCountBadge(record: TreeRow["record"]): Children {
 }
 
 function pinButton(controller: OverlayController, id: ComponentId, pinned: boolean): Vnode {
+  const label = pinned ? "Unpin component" : "Pin component"
   return m(
     "button.mi-btn-small.mi-pin-btn",
     {
       type: "button",
       "aria-pressed": pinned ? "true" : "false",
-      "aria-label": pinned ? "Unpin component" : "Pin component",
-      title: pinned ? "Unpin component" : "Pin component",
+      "aria-label": label,
+      title: label,
+      "data-tooltip": label,
       onclick: (event: Event) => {
         event.stopPropagation()
         controller.togglePinned(id)
       },
     },
-    iconPin(),
+    pinned ? iconPinOff() : iconPin(),
   )
 }
 
@@ -461,13 +483,15 @@ function treeList(controller: OverlayController, state: OverlayViewState): Vnode
 function pinnedRow(controller: OverlayController, pinned: PinnedRow): Vnode {
   const { record } = pinned
   return m("li", { key: record.id }, [
-    m(
-      "button.mi-crumb",
-      { type: "button", disabled: !pinned.mounted, onclick: () => controller.selectComponent(record.id) },
-      record.displayName,
-    ),
-    treeKeyBadge(record),
-    !pinned.mounted ? [" ", m("span.mi-muted", "(not mounted)")] : null,
+    m("span.mi-pinned-name", [
+      m(
+        "button.mi-crumb",
+        { type: "button", disabled: !pinned.mounted, onclick: () => controller.selectComponent(record.id) },
+        record.displayName,
+      ),
+      treeKeyBadge(record),
+      !pinned.mounted ? [" ", m("span.mi-muted", "(not mounted)")] : null,
+    ]),
     pinButton(controller, record.id, true),
   ])
 }
@@ -531,10 +555,16 @@ interface PreviewContext {
  * `span.mi-preview-entry` (comma-separated via CSS, styles.ts) so the whole
  * expanded entry — its "key:"/index label, toggle, and fields — reads as one
  * flowing, wrapping line, the same as the collapsed compact preview it
- * replaces, rather than a rigid one-field-per-row list.
+ * replaces, rather than a rigid one-field-per-row list — *except* an
+ * array/map/set/typed-array item that is itself a container: that item's own
+ * fields can span the full width once expanded, so it gets `.mi-preview-row`
+ * added (still a `.mi-preview-entry` for the comma separator, but
+ * `flex-basis: 100%` in styles.ts forces it onto its own indented line
+ * instead of wrapping mid-row like a same-length primitive would).
  */
 function previewEntries(ctx: PreviewContext, node: PreviewNode, flow: boolean): Children {
   const tag = flow ? "span.mi-preview-entry" : "li"
+  const entryTag = (child: PreviewNode): string => (flow && isContainerNode(child) ? "div.mi-preview-entry.mi-preview-row" : tag)
   switch (node.kind) {
     case "object":
       return node.entries.map((entry) =>
@@ -542,19 +572,24 @@ function previewEntries(ctx: PreviewContext, node: PreviewNode, flow: boolean): 
       )
     case "map":
       return node.entries.map((entry, i) =>
-        m(tag, { key: node.offset + i }, [
+        m(entryTag(entry.value), { key: node.offset + i }, [
           previewNodeView(ctx, entry.key),
           m("span.mi-preview-key", " => "),
           previewNodeView(ctx, entry.value),
         ]),
       )
     case "array":
-    case "typed-array":
+    case "typed-array": {
+      const total = totalCountOf(node)
       return node.items.map((item, i) =>
-        m(tag, { key: node.offset + i }, [m("span.mi-preview-key", `${node.offset + i}: `), previewNodeView(ctx, item)]),
+        m(entryTag(item), { key: node.offset + i }, [
+          m("span.mi-preview-key", `${formatIndexLabel(node.offset + i, total)}: `),
+          previewNodeView(ctx, item),
+        ]),
       )
+    }
     case "set":
-      return node.items.map((item, i) => m(tag, { key: node.offset + i }, previewNodeView(ctx, item)))
+      return node.items.map((item, i) => m(entryTag(item), { key: node.offset + i }, previewNodeView(ctx, item)))
     default:
       return null
   }
@@ -631,11 +666,18 @@ function collapseToggleButton(ctx: PreviewContext, node: ContainerNode): Vnode {
  * once the user has explicitly toggled it open.
  *
  * Returns `Children` rather than a single `Vnode`: an expanded non-root
- * container's toggle button and its `<ul>` of rows are returned as sibling
- * items (not one wrapping element) so they land directly in the entry's own
- * `<li>` — a flex row — letting the toggle stay put right after "key: " while
- * the `<ul>` wraps onto its own indented line below (§7.4's `flex-basis: 100%`
- * on `.mi-preview-entries`, see styles.ts).
+ * container's toggle button and its entries are returned as sibling items
+ * (not one wrapping element) so they land directly in the entry's own
+ * `<li>`/`.mi-preview-entry` — a flex row — letting the toggle stay put right
+ * after "key: " while a container-valued item forces itself onto its own
+ * indented line below via `.mi-preview-row`'s `flex-basis: 100%` (§7.4, see
+ * styles.ts and `previewEntries` above).
+ *
+ * A plain object whose fields are all primitive (`fitsExpandedInline`, no
+ * `maxDepth`/pagination round-trip needed) skips the collapsed state and its
+ * toggle entirely: its flat field list is already no wider than the "+ { ...
+ * }" summary it would otherwise show, so the toggle would only cost a click
+ * for no space saved.
  */
 function previewNodeView(ctx: PreviewContext, node: PreviewNode, isRoot = false): Children {
   if (node.kind === "getter" || node.kind === "max-depth") {
@@ -653,13 +695,15 @@ function previewNodeView(ctx: PreviewContext, node: PreviewNode, isRoot = false)
   if (isContainerNode(node)) {
     const paged = node.truncated ? ctx.overrides.get(pathKey(node.path)) : undefined
     const effective = paged !== undefined && isContainerNode(paged) ? paged : node
-    if (!isRoot && !ctx.expandedPaths.has(pathKey(node.path))) {
+    const autoExpand = fitsExpandedInline(effective)
+    if (!isRoot && !autoExpand && !ctx.expandedPaths.has(pathKey(node.path))) {
       return collapsedContainerPreview(ctx, node, effective)
     }
     if (isRoot) {
       const entriesList = m("ul.mi-preview-entries.mi-preview-root", previewEntries(ctx, effective, false))
       return m("div.mi-preview-node", [entriesList, showMoreButton(ctx, node, effective)])
     }
+    if (autoExpand) return previewEntries(ctx, effective, true)
     return [collapseToggleButton(ctx, node), previewEntries(ctx, effective, true), showMoreButton(ctx, node, effective)]
   }
   if (node.kind === "component" && node.location !== null) {
@@ -681,6 +725,15 @@ function previewGateMessage(gating: ComponentTreeGating, label: string): string 
   return null
 }
 
+/**
+ * Content for the Attrs/State section, or `null` when there is nothing worth
+ * showing: unavailable, a JS `null`/`undefined` value (e.g. a component with
+ * no `state` field), or an empty container with no props/fields at all —
+ * callers hide the section's title along with a `null` result so an absent
+ * or empty value doesn't leave a bare heading behind. Gate messages (capture
+ * disabled, wrong mode) stay visible since they explain an actionable
+ * configuration issue rather than "this component has none".
+ */
 function previewSection(controller: OverlayController, state: OverlayViewState, target: "attrs" | "state"): Children {
   const { componentTree } = state
   const label = target === "attrs" ? "attrs" : "state"
@@ -689,13 +742,16 @@ function previewSection(controller: OverlayController, state: OverlayViewState, 
   const node = target === "attrs" ? componentTree.attrsPreview : componentTree.statePreview
   const overrides = target === "attrs" ? componentTree.attrsOverrides : componentTree.stateOverrides
   const expandedPaths = target === "attrs" ? componentTree.expandedAttrsPaths : componentTree.expandedStatePaths
-  if (node === null) return m("p.mi-muted", `No ${label} available.`)
-  // An empty, non-truncated container (no props/fields at all) reads more
-  // clearly as an explicit "none" than as a bare, content-free "Object".
-  if (isContainerNode(node) && !node.truncated && shownCountOf(node) === 0) {
-    return m("p.mi-muted", `No ${label}.`)
-  }
+  if (node === null || isNullOrUndefinedNode(node)) return null
+  if (isContainerNode(node) && !node.truncated && shownCountOf(node) === 0) return null
   return previewNodeView({ controller, target, overrides, expandedPaths }, node, true)
+}
+
+/** Wraps `previewSection` with its title, suppressing both when there's nothing to show (see `previewSection`). */
+function previewSectionBlock(controller: OverlayController, state: OverlayViewState, target: "attrs" | "state"): Children {
+  const content = previewSection(controller, state, target)
+  if (content === null) return null
+  return [m("div.mi-section-title", target === "attrs" ? "Attrs" : "State"), content]
 }
 
 /** The left pane: search, pinned, and the component tree — independent of whether a component is selected. */
@@ -746,12 +802,7 @@ function detailPane(controller: OverlayController, state: OverlayViewState): Vno
             ? detailToolbar(controller, state, componentId, sourceEntry)
             : null,
           state.componentTree.gating.enabled
-            ? [
-                m("div.mi-section-title", "Attrs"),
-                previewSection(controller, state, "attrs"),
-                m("div.mi-section-title", "State"),
-                previewSection(controller, state, "state"),
-              ]
+            ? [previewSectionBlock(controller, state, "attrs"), previewSectionBlock(controller, state, "state")]
             : null,
         ],
   ])

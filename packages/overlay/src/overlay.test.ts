@@ -129,14 +129,14 @@ describe("mountInspectorOverlay — host & isolation", () => {
 })
 
 describe("mountInspectorOverlay — panel (§8.3)", () => {
-  it("expands to a docked panel with a Components/Settings sidebar", () => {
+  it("expands to a docked panel with a Components/State History/Settings sidebar", () => {
     handle = mountInspectorOverlay({}, { hook: fakeHook() })
     handle!.controller.setCollapsed(false)
     render()
     const sidebarLabels = Array.from(handle!.shadowRoot.querySelectorAll(".mi-sidebar-btn")).map((b) =>
       b.getAttribute("aria-label"),
     )
-    expect(sidebarLabels).toEqual(["Components", "Settings"])
+    expect(sidebarLabels).toEqual(["Components", "State History", "Settings"])
     expect(handle!.shadowRoot.querySelector('[role="dialog"]')).not.toBeNull()
   })
 
@@ -650,6 +650,88 @@ describe("mountInspectorOverlay — Components tab tree (§9, §9.3, §9.4, task
     render()
 
     expect(handle!.shadowRoot.textContent).toContain("Component is no longer tracked.")
+  })
+})
+
+describe("mountInspectorOverlay — State History tab (task 0027)", () => {
+  function snapshotOf(records: ComponentRecord[]) {
+    return {
+      components: new Map(records.map((r) => [r.id, r] as const)),
+      vnodes: new Map(),
+      modules: new Map(),
+      domAssociations: new Map(),
+    }
+  }
+
+  it("shows the gate message instead of a timeline until mode is full and captureState is on", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: el, last: el } })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app]), componentRecord: () => app })
+    handle = mountInspectorOverlay({}, { hook }) // mode defaults to "source" in the fake hook
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("history")
+    render()
+
+    expect(handle!.shadowRoot.textContent).toContain('Enable mode: "full"')
+    expect(handle!.shadowRoot.querySelectorAll(".mi-history-list li").length).toBe(0)
+  })
+
+  it("accumulates a snapshot per components-updated event for the watched component and diffs it against its predecessor", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: el, last: el } })
+    let listener: ((event: RuntimeEvent) => void) | null = null
+    const countState = (value: number) => ({
+      kind: "object" as const,
+      className: "Object",
+      size: 1,
+      entries: [{ key: "count", node: { kind: "primitive" as const, type: "number" as const, value } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    })
+    // `statePreview` always reflects the *current* live value (like the real
+    // hook) — set explicitly before each event, not an auto-advancing
+    // sequence, since getState() itself also reads statePreview() on every
+    // redraw (for the Components tab's own preview) regardless of which tab
+    // is active.
+    let current = countState(1)
+    const hook = fakeHook({
+      getSnapshot: () => snapshotOf([app]),
+      componentRecord: () => app,
+      getMode: () => "full",
+      statePreview: () => current,
+      subscribe: (fn) => {
+        listener = fn
+        return () => {}
+      },
+    })
+    handle = mountInspectorOverlay({ componentTree: { captureState: true } }, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("history")
+    render()
+    expect(handle!.shadowRoot.querySelectorAll(".mi-history-list li").length).toBe(0)
+
+    listener!({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    render()
+    current = countState(2)
+    listener!({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 2 }] })
+    render()
+
+    const rows = handle!.shadowRoot.querySelectorAll(".mi-history-list li")
+    expect(rows.length).toBe(2)
+    // Each row shows its own compact "what changed" preview inline, not just
+    // the selected entry's diff panel below.
+    expect(rows[0]?.textContent).toContain("initial snapshot")
+    expect(rows[1]?.textContent).toContain("count: 1 → 2")
+
+    const diffText = handle!.shadowRoot.querySelector(".mi-history-diff")?.textContent ?? ""
+    expect(diffText).toContain("count")
+    expect(diffText).toContain("1")
+    expect(diffText).toContain("2")
   })
 })
 

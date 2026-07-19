@@ -9,6 +9,7 @@ import type {
   OverlayTab,
   OverlayViewState,
 } from "./controller.js"
+import { diffPreviewNodes, type HistoryDiffEntry, type HistoryEntry } from "./history.js"
 import type { HighlightRect } from "./highlight.js"
 import {
   iconClose,
@@ -17,6 +18,7 @@ import {
   iconEye,
   iconFileText,
   iconFocus,
+  iconHistory,
   iconPin,
   iconSearch,
   iconSettings,
@@ -833,6 +835,103 @@ function diagnosticsView(state: OverlayViewState): Vnode {
   )
 }
 
+/**
+ * The State History tab (task 0027): a read-only timeline of the currently
+ * selected component's state preview, recorded on each redraw, plus a diff
+ * of the selected entry against its own immediate predecessor. Gated
+ * identically to the Components tab's Attrs/State sections via the shared
+ * `previewGateMessage` — no separate gate is invented here. There is
+ * deliberately no rewind/replay affordance (REQUIREMENTS.md §3.3 lists
+ * time-travel debugging as an explicit non-goal); this only ever reads.
+ */
+/** A short one-line label for one diff entry, e.g. `count: 1 → 2`, `+added`, `-removed`. */
+function historyDiffEntryLabel(entry: HistoryDiffEntry): string {
+  if (entry.kind === "added") return `+${entry.key}`
+  if (entry.kind === "removed") return `-${entry.key}`
+  return `${entry.key}: ${summarizeNode(entry.before!)} → ${summarizeNode(entry.after!)}`
+}
+
+/** The list row's own compact "what changed" preview (first sub-bullet of task 0027's acceptance criteria) — up to 3 changed keys, comma-joined, with a trailing "…" once truncated. */
+function compactHistoryDiffSummary(diff: readonly HistoryDiffEntry[]): string {
+  if (diff.length === 0) return "no change"
+  const shown = diff.slice(0, 3).map(historyDiffEntryLabel)
+  return diff.length > shown.length ? `${shown.join(", ")}, …` : shown.join(", ")
+}
+
+function historyEntryRow(
+  controller: OverlayController,
+  entry: HistoryEntry,
+  index: number,
+  selected: boolean,
+  changeSummary: string,
+): Vnode {
+  return m(
+    "li",
+    { key: entry.id },
+    m(
+      "button.mi-history-entry",
+      {
+        type: "button",
+        class: selected ? "mi-crumb-current" : undefined,
+        onclick: () => controller.selectHistoryEntry(entry.id),
+      },
+      [
+        m("span.mi-mono", `#${index + 1}`),
+        m("span.mi-mono.mi-muted", new Date(entry.timestamp).toLocaleTimeString()),
+        m("span.mi-history-entry-summary", changeSummary),
+      ],
+    ),
+  )
+}
+
+function historyDiffRow(entry: HistoryDiffEntry): Vnode {
+  return m(`li.mi-history-diff-${entry.kind}`, { key: entry.key }, [
+    m("span.mi-preview-key", `${entry.key}: `),
+    entry.before !== null ? m("span.mi-mono", summarizeNode(entry.before)) : null,
+    entry.kind === "changed" ? m("span.mi-muted", " → ") : null,
+    entry.after !== null ? m("span.mi-mono", summarizeNode(entry.after)) : null,
+  ])
+}
+
+function historyView(controller: OverlayController, state: OverlayViewState): Vnode {
+  const { history } = state
+  if (history.watchedComponentId === null) {
+    return m("div.mi-history", [
+      m("p.mi-muted", "No component selected."),
+      m("p.mi-muted", "Pick an element on the page, or choose a component from the tree, then reopen this tab to watch its state over time."),
+    ])
+  }
+  const gateMessage = previewGateMessage(history.gating, "state")
+  if (gateMessage !== null) return m("div.mi-history", [m("p.mi-muted", gateMessage)])
+  if (history.entries.length === 0) {
+    return m("div.mi-history", [
+      m("p.mi-muted", "No state changes recorded yet for this component."),
+      m(
+        "p.mi-muted",
+        "Most useful pointed at a root/layout component that receives a Meiosis cell().state as its state — trigger an action in the app to see snapshots accumulate here.",
+      ),
+    ])
+  }
+  const selectedId = history.selectedEntryId ?? history.entries[history.entries.length - 1]!.id
+  return m("div.mi-history", [
+    m("div.mi-section-title", `State history (${history.entries.length})`),
+    m(
+      "ul.mi-history-list",
+      history.entries.map((entry, index) => {
+        const summary =
+          index === 0
+            ? "initial snapshot"
+            : compactHistoryDiffSummary(diffPreviewNodes(history.entries[index - 1]!.state, entry.state))
+        return historyEntryRow(controller, entry, index, entry.id === selectedId, summary)
+      }),
+    ),
+    m("div.mi-section-title", "Changes from previous snapshot"),
+    history.diff.length === 0
+      ? m("p.mi-muted", "No changes from the previous snapshot.")
+      : m("ul.mi-history-diff", history.diff.map((entry) => historyDiffRow(entry))),
+  ])
+}
+
 function sidebarButton(icon: Vnode, options: { readonly label: string; readonly active?: boolean; readonly onclick: () => void }): Vnode {
   return m(
     "button.mi-sidebar-btn",
@@ -856,6 +955,7 @@ function sidebar(controller: OverlayController, tab: OverlayTab, setTab: (tab: O
       "M",
     ),
     sidebarButton(iconComponents(), { label: "Components", active: tab === "components", onclick: () => setTab("components") }),
+    sidebarButton(iconHistory(), { label: "State History", active: tab === "history", onclick: () => setTab("history") }),
     m("div.mi-sidebar-spacer"),
     sidebarButton(iconSettings(), { label: "Settings", active: tab === "settings", onclick: () => setTab("settings") }),
   ])
@@ -865,7 +965,9 @@ function dockedPanel(controller: OverlayController, state: OverlayViewState): Vn
   const body =
     state.activeTab === "settings"
       ? settingsView(controller, state)
-      : m("div.mi-main", [treePane(controller, state), detailPane(controller, state)])
+      : state.activeTab === "history"
+        ? historyView(controller, state)
+        : m("div.mi-main", [treePane(controller, state), detailPane(controller, state)])
 
   return m(
     "section.mi-dock",

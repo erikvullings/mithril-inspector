@@ -5,12 +5,14 @@ import type {
   EditorRequest,
   PreviewNode,
   PreviewPath,
+  RuntimeEvent,
   SourceLocation,
 } from "@mithril-inspector/protocol"
 
 import { createDiagnostics, type Diagnostic, type DiagnosticsLog } from "./diagnostics.js"
 import { describeElement, eligibleElementAt, isWithinHost } from "./element-info.js"
 import { createEditorClient, type OpenInEditor } from "./editor.js"
+import { createHistoryStore, type HistoryDiffEntry, type HistoryEntry, type HistoryStore } from "./history.js"
 import { rectOfElement, rectsOfDomRange, type HighlightRect } from "./highlight.js"
 import type { ExpandPreviewOptions, OverlayHook } from "./hook.js"
 import { describeMapping, type MappingInfo } from "./mapping.js"
@@ -36,7 +38,7 @@ import {
 } from "./shortcuts.js"
 import { createComponentTreeStore, type ComponentTreeStore, type PinnedRow, type TreeRow } from "./tree.js"
 
-export type OverlayTab = "components" | "settings"
+export type OverlayTab = "components" | "history" | "settings"
 
 /**
  * A resolved component display name plus whether it's a §9.2 fallback tier
@@ -121,6 +123,22 @@ export interface ComponentTreeViewState {
   readonly expandedStatePaths: ReadonlySet<string>
 }
 
+/**
+ * The State History tab's state (task 0027) — a read-only timeline of a
+ * watched component's state preview, recorded on each redraw, plus a diff
+ * against the selected entry's own predecessor. Gated identically to the
+ * Components tab's attrs/state sections ({@link ComponentTreeGating}): no
+ * separate gate is invented for this feature.
+ */
+export interface HistoryViewState {
+  readonly gating: ComponentTreeGating
+  /** The component whose state is being recorded — the current selection, or `null` if none. */
+  readonly watchedComponentId: ComponentId | null
+  readonly entries: readonly HistoryEntry[]
+  readonly selectedEntryId: number | null
+  readonly diff: readonly HistoryDiffEntry[]
+}
+
 /** Everything the Mithril views render from — a pull-based snapshot. */
 export interface OverlayViewState {
   readonly picker: PickerState
@@ -142,6 +160,8 @@ export interface OverlayViewState {
   readonly diagnostics: readonly Diagnostic[]
   /** The Components tab's tree/attrs/state state (task 0022). */
   readonly componentTree: ComponentTreeViewState
+  /** The State History tab's state (task 0027). */
+  readonly history: HistoryViewState
   /** The picker's current shortcut/modifier settings — app-configured defaults, live-overridable from the Settings tab. */
   readonly pickerShortcuts: PickerShortcutSettings
   /** The user's live on/off preference for the picking banner (§18, Settings tab checkbox) — independent of its momentary auto-hide timing. */
@@ -215,6 +235,10 @@ export interface OverlayController {
   expandComponentPreview(target: "attrs" | "state", path: PreviewPath, options?: ExpandPreviewOptions): void
   /** Toggle the local (already-loaded) collapsed/expanded UI state of a nested attrs/state container. */
   togglePreviewExpanded(target: "attrs" | "state", path: PreviewPath): void
+
+  // --- History tab: state-history panel (task 0027) -----------------------
+  /** Select an entry to view/diff, or `null` to fall back to the latest one — local UI state only. */
+  selectHistoryEntry(id: number | null): void
 
   // --- Settings tab: live picker shortcut editing --------------------------
   /** Rebind a picker shortcut/modifier to a new raw string (e.g. "Alt+Shift"); persists and takes effect immediately. */
@@ -451,6 +475,37 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   // that hasn't opted in pays no subscription/seeding cost at all (§17).
   const treeStore: ComponentTreeStore = createComponentTreeStore()
   if (persisted.treeSearch !== undefined) treeStore.setSearch(persisted.treeSearch)
+
+  // The State History tab's store (task 0027) — cheap to create unconditionally
+  // (an empty buffer); only actually populated once something is watched and
+  // `computeGating()` allows it, same as the componentTree.enabled-gated
+  // subscription below that drives it.
+  const historyStore: HistoryStore = createHistoryStore({ limit: options.historyLimit })
+
+  // The Components tab's gating (§11.1, §17) — also what the History tab
+  // reuses (task 0027): both require componentTree.enabled + mode "full" +
+  // captureState, so this is computed once and shared rather than duplicated.
+  const computeGating = (): ComponentTreeGating => ({
+    enabled: options.componentTree.enabled,
+    fullMode: (hook?.getMode() ?? "source") === "full",
+    captureAttrs: options.componentTree.captureAttrs,
+    captureState: options.componentTree.captureState,
+  })
+
+  // Record a new state-history snapshot for the watched component when a
+  // batched components-updated event (§9.4) reports it redrew — pulled fresh
+  // via `hook.statePreview` rather than read off the patch, since the runtime
+  // never puts attrs/state on the patch itself (task 0027).
+  const recordHistoryFromEvent = (event: RuntimeEvent): void => {
+    if (event.type !== "components-updated") return
+    const watchedId = historyStore.getWatchedComponent()
+    if (watchedId === null) return
+    if (!event.records.some((patch) => patch.id === watchedId)) return
+    const gating = computeGating()
+    if (!gating.enabled || !gating.fullMode || !gating.captureState) return
+    historyStore.record(watchedId, hook?.statePreview(watchedId) ?? null, Date.now())
+  }
+
   let unsubscribeTree: (() => void) | null = null
   if (options.componentTree.enabled && hook !== null && hook !== undefined) {
     diagnostics.guard(
@@ -466,6 +521,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         "tree",
         () => {
           treeStore.applyEvent(event)
+          recordHistoryFromEvent(event)
           redraw()
           return undefined
         },
@@ -530,12 +586,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       }))
       const selectedComponentChoices = ancestry.length > 0 ? ancestry[ancestry.length - 1]!.choices : []
 
-      const gating: ComponentTreeGating = {
-        enabled: options.componentTree.enabled,
-        fullMode: (hook?.getMode() ?? "source") === "full",
-        captureAttrs: options.componentTree.captureAttrs,
-        captureState: options.componentTree.captureState,
-      }
+      const gating: ComponentTreeGating = computeGating()
       const selectedId = snapshot.componentId
       const attrsAvailable = gating.enabled && gating.fullMode && gating.captureAttrs && selectedId !== null
       const stateAvailable = gating.enabled && gating.fullMode && gating.captureState && selectedId !== null
@@ -550,6 +601,13 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         stateOverrides,
         expandedAttrsPaths,
         expandedStatePaths,
+      }
+      const history: HistoryViewState = {
+        gating,
+        watchedComponentId: historyStore.getWatchedComponent(),
+        entries: historyStore.entries(),
+        selectedEntryId: historyStore.getSelectedEntryId(),
+        diff: historyStore.selectedDiff(),
       }
 
       return {
@@ -567,6 +625,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         frozenRects,
         diagnostics: diagnostics.list(),
         componentTree,
+        history,
         pickerShortcuts: shortcutSettings,
         showPickingBanner: showBanner,
         pickingBannerVisible: picker.isPicking() && showBanner && !bannerDismissed,
@@ -670,6 +729,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           focusedAncestorId = null // a new selection starts with no ancestor focused
           frozenRects = [rectOfElement(target)]
           resetPreviewOverrides()
+          historyStore.setWatchedComponent(data.componentId)
           collapsed = false // show the details panel (§8.7)
           activeTab = "components" // the merged tree/detail view is where a pick's result shows (§8.3)
           persist()
@@ -764,6 +824,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       focusedAncestorId = null
       frozenRects = []
       resetPreviewOverrides()
+      historyStore.setWatchedComponent(null)
       redraw()
     },
 
@@ -771,6 +832,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       focusedAncestorId = null
       resetPreviewOverrides()
       if (selection.promoteToNearestAncestor()) {
+        historyStore.setWatchedComponent(selection.snapshot().componentId)
         recomputeFrozen()
         redraw()
       }
@@ -841,6 +903,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           focusedAncestorId = null
           frozenRects = record.domRange !== null ? rectsOfDomRange(record.domRange) : [rectOfElement(element)]
           resetPreviewOverrides()
+          historyStore.setWatchedComponent(id)
           redraw()
         },
         undefined,
@@ -900,6 +963,12 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       const set = target === "attrs" ? expandedAttrsPaths : expandedStatePaths
       if (set.has(key)) set.delete(key)
       else set.add(key)
+      redraw()
+    },
+
+    // --- History tab: state-history panel (task 0027) -----------------------
+    selectHistoryEntry(id) {
+      historyStore.selectEntry(id)
       redraw()
     },
 

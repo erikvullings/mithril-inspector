@@ -12,9 +12,9 @@ import { PICKER_SHORTCUT_KEYS, type PickerShortcutKey, type PickerShortcutSettin
  * Local mirror of `OverlayTab` (`./controller.js`) — not imported, to avoid a
  * circular dependency (the controller already imports this module).
  */
-type PersistedTab = "components" | "settings"
+type PersistedTab = "components" | "history" | "settings"
 
-const PERSISTED_TABS: ReadonlySet<string> = new Set<PersistedTab>(["components", "settings"])
+const PERSISTED_TABS: ReadonlySet<string> = new Set<PersistedTab>(["components", "history", "settings"])
 const PICKER_SHORTCUT_KEY_SET: ReadonlySet<string> = new Set(PICKER_SHORTCUT_KEYS)
 
 export interface OverlayPersistedState {

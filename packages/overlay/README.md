@@ -42,8 +42,8 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   to it — a glowing halo appears — that starts picking directly without
   opening the panel. Expanded, the overlay docks a panel to the bottom of the
   viewport spanning the full width, with a left icon sidebar (Components, then
-  Settings at the bottom; click the "M" mark at the top of the sidebar to
-  collapse back to the toggle). Collapsed state, the active sidebar section,
+  State History, then Settings at the bottom; click the "M" mark at the top of
+  the sidebar to collapse back to the toggle). Collapsed state, the active sidebar section,
   and the component tree's search query all persist in `localStorage` —
   deliberately, since a Vite dev-server WebSocket reconnect (e.g. after "Open
   in editor" backgrounds the browser tab long enough for it to drop) triggers
@@ -123,6 +123,23 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   evaluated only on that explicit action, §7.4), and a redacted value always
   renders its configured replacement text (default `[redacted]`, §15) — the
   redaction itself happens in the runtime, never in this package.
+- **State History (task 0027):** a read-only timeline of the currently
+  selected component's state preview, recorded each time it redraws (driven
+  by the same batched `RuntimeEvent`s as the Components tab, §9.4 — no
+  separate polling), plus a diff of the selected snapshot against its own
+  immediate predecessor. Gated identically to the Components tab's Attrs/State
+  sections (`mode: "full"` + `componentTree.captureState`). Built entirely
+  from data the runtime hook already exposes for any component's `state` —
+  most useful pointed at a root/layout component that receives a
+  [Meiosis](https://meiosis.js.org) `cell().state` as its own state, the
+  closest read-only analog to
+  [meiosis-tracer](https://github.com/foxdonut/meiosis-tracer)'s timeline this
+  package offers. There is deliberately no rewind/replay: pushing a historical
+  snapshot back into a live app is out of scope (REQUIREMENTS.md §3.3 lists
+  time-travel debugging as an explicit non-goal), and unlike this package's
+  other instrumentation, meiosis-tracer's own time-travel needs a live
+  reference to the app's actual state stream handed to it — something no
+  zero-app-code-change strategy this project uses can obtain on its own.
 - **Accessibility (§18):** semantic controls, ARIA roles (`dialog`, `status`,
   `tree`, `treeitem`), visible focus indicators, WCAG AA contrast,
   reduced-motion support (also respected by "Scroll into view", via
@@ -138,9 +155,10 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
 exported for tooling and tests: `createOverlayController`, `OverlayRoot` (the
 Mithril component), `resolveOverlayOptions`, `getOverlayHook`, `describeMapping`,
 `createPickerMachine`, `createSelectionModel`, `createFrameScheduler`,
-`createEditorClient`, `parseShortcut`, the persistence helpers, and (task 0022)
+`createEditorClient`, `parseShortcut`, the persistence helpers, (task 0022)
 `createComponentTreeStore` plus the preview-tree formatters `summarizeNode`,
-`isExpandable` and `pathKey`.
+`isExpandable` and `pathKey`, and (task 0027) `createHistoryStore` plus
+`diffPreviewNodes`.
 
 ## Editor endpoint
 

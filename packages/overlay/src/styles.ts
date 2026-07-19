@@ -525,6 +525,34 @@ export function overlayCss(): string {
 .mi-diag-feature { font-weight: 700; }
 .mi-empty { color: var(--mi-muted); font-style: italic; }
 
+/* --- State History (task 0027) ------------------------------------------- */
+.mi-history { flex: 1; min-width: 0; padding: 10px 14px; overflow: auto; }
+.mi-history-list { list-style: none; padding: 0; margin: 0 0 10px; max-height: 40%; overflow: auto; }
+.mi-history-entry {
+  appearance: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mi-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+.mi-history-entry:hover { background: var(--mi-surface); }
+.mi-history-entry.mi-crumb-current { background: var(--mi-highlight-fill); color: var(--mi-accent); }
+.mi-history-entry-summary { color: var(--mi-muted); font-family: var(--mi-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mi-history-diff { list-style: none; padding: 0; margin: 0; font-family: var(--mi-mono); font-size: 12px; }
+.mi-history-diff li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; padding: 4px 0; border-bottom: 1px solid var(--mi-border); }
+.mi-history-diff li:last-child { border-bottom: 0; }
+.mi-history-diff-added { border-left: 3px solid var(--mi-exact); padding-left: 6px; }
+.mi-history-diff-removed { border-left: 3px solid var(--mi-danger); padding-left: 6px; }
+.mi-history-diff-changed { border-left: 3px solid var(--mi-inferred); padding-left: 6px; }
+
 @media (prefers-reduced-motion: reduce) {
   .mi-root *, .mi-root *::before, .mi-root *::after {
     transition: none !important;

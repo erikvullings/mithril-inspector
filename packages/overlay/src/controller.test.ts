@@ -1016,6 +1016,175 @@ describe("Components tab: tree/search/pin/attrs+state (task 0022)", () => {
   })
 })
 
+describe("State History tab (task 0027)", () => {
+  const el = (): HTMLElement => {
+    const node = document.createElement("div")
+    document.body.appendChild(node)
+    return node
+  }
+
+  function historyHook(overrides: Partial<OverlayHook> = {}, statePreviewValues: PreviewNode[] = []): {
+    hook: FakeHook
+    listeners: Array<(event: RuntimeEvent) => void>
+  } {
+    const listeners: Array<(event: RuntimeEvent) => void> = []
+    let call = 0
+    // selectComponent() needs a representative DOM element to resolve
+    // (representativeElementOf(record.domRange)) or it bails before ever
+    // watching the component — every fake record gets one by default.
+    const domNode = el()
+    const hook = fakeHook({
+      getMode: () => "full",
+      resolveDomComponent: () => "c:1" as ComponentId,
+      componentRecord: (id) => componentRecord({ id, domRange: { first: domNode, last: domNode } }),
+      subscribe: (fn) => {
+        listeners.push(fn)
+        return () => {}
+      },
+      statePreview: () => statePreviewValues[Math.min(call++, statePreviewValues.length - 1)] ?? null,
+      ...overrides,
+    })
+    return { hook, listeners }
+  }
+
+  const num = (value: number): PreviewNode => ({ kind: "primitive", type: "number", value })
+
+  it("records a snapshot when the watched component reports components-updated, gated by mode:full + captureState", () => {
+    const { hook, listeners } = historyHook({}, [num(1)])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+    expect(controller.getState().history.entries).toEqual([])
+
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+
+    const entries = controller.getState().history.entries
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.state).toEqual(num(1))
+  })
+
+  it("does not record when mode isn't full, even if a components-updated event fires for the watched component", () => {
+    const { hook, listeners } = historyHook({ getMode: () => "source" }, [num(1)])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    expect(controller.getState().history.entries).toEqual([])
+    expect(controller.getState().history.gating.fullMode).toBe(false)
+  })
+
+  it("does not record when componentTree.captureState is off", () => {
+    const { hook, listeners } = historyHook({}, [num(1)])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: false } } })
+    controller.selectComponent("c:1" as ComponentId)
+
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    expect(controller.getState().history.entries).toEqual([])
+  })
+
+  it("ignores a components-updated event for a component other than the one being watched", () => {
+    const { hook, listeners } = historyHook({}, [num(1)])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:99" as ComponentId, updateCount: 1 }] })
+    expect(controller.getState().history.entries).toEqual([])
+  })
+
+  it("resets the buffer when selectComponent() switches to a different component", () => {
+    const { hook, listeners } = historyHook({}, [num(1), num(2)])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    expect(controller.getState().history.entries).toHaveLength(1)
+
+    controller.selectComponent("c:2" as ComponentId)
+    expect(controller.getState().history.entries).toEqual([])
+    expect(controller.getState().history.watchedComponentId).toBe("c:2")
+  })
+
+  it("resets the buffer and stops watching on clearSelection()", () => {
+    const { hook, listeners } = historyHook({}, [num(1)])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    expect(controller.getState().history.entries).toHaveLength(1)
+
+    controller.clearSelection()
+    expect(controller.getState().history.entries).toEqual([])
+    expect(controller.getState().history.watchedComponentId).toBeNull()
+  })
+
+  it("re-watches whatever promoteStaleSelection() resolves to, clearing the prior component's buffer", () => {
+    const parent = document.createElement("section")
+    const child = document.createElement("article")
+    parent.appendChild(child)
+    document.body.appendChild(parent)
+    stubRect(parent, { left: 0, top: 0, width: 100, height: 100 })
+    stubRect(child, { left: 5, top: 5, width: 10, height: 10 })
+
+    const { hook, listeners } = historyHook(
+      { resolveDomComponent: (node) => (node === child ? ("c:1" as ComponentId) : ("c:2" as ComponentId)) },
+      [num(1)],
+    )
+    const { controller, setHits } = setup({ hook, options: { componentTree: { enabled: true, captureState: true } } })
+
+    controller.startPicker()
+    setHits([child])
+    controller.handlePointerMove(6, 6)
+    controller.handleClick(clickEvent())
+    expect(controller.getState().history.watchedComponentId).toBe("c:1")
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    expect(controller.getState().history.entries).toHaveLength(1)
+
+    parent.removeChild(child) // the selection goes stale (§8.8)
+    expect(controller.getState().selection.stale).toBe(true)
+
+    controller.promoteStaleSelection() // promotes to `parent`, which resolves to c:2
+    expect(controller.getState().history.watchedComponentId).toBe("c:2")
+    expect(controller.getState().history.entries).toEqual([])
+  })
+
+  it("watches whatever a picker click resolves to, keyed off the click's own componentId", () => {
+    const other = el()
+    const { hook, listeners } = historyHook(
+      { resolveDomComponent: (node) => (node === other ? ("c:2" as ComponentId) : ("c:1" as ComponentId)) },
+      [num(1), num(2)],
+    )
+    const { controller, setHits } = setup({ hook, options: { componentTree: { enabled: true, captureState: true } } })
+
+    controller.startPicker()
+    setHits([other])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+    expect(controller.getState().history.watchedComponentId).toBe("c:2")
+
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:2" as ComponentId, updateCount: 1 }] })
+    expect(controller.getState().history.entries).toHaveLength(1)
+    // A patch for the component that's no longer watched must not leak in.
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    expect(controller.getState().history.entries).toHaveLength(1)
+  })
+
+  it("selectHistoryEntry() picks which entry selectedDiff() compares, defaulting to the latest", () => {
+    const { hook, listeners } = historyHook({}, [num(1), num(2), num(5)])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+    for (let i = 0; i < 3; i += 1) {
+      listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: i + 1 }] })
+    }
+    const entries = controller.getState().history.entries
+    expect(entries).toHaveLength(3)
+
+    // Default (nothing selected): diffs the latest entry against its predecessor (2 -> 5).
+    expect(controller.getState().history.diff).toEqual([{ key: "(value)", kind: "changed", before: num(2), after: num(5) }])
+
+    // Explicitly selecting the first entry: no predecessor, whole-value "added".
+    controller.selectHistoryEntry(entries[0]!.id)
+    expect(controller.getState().history.selectedEntryId).toBe(entries[0]!.id)
+    expect(controller.getState().history.diff).toEqual([{ key: "(value)", kind: "added", before: null, after: num(1) }])
+  })
+})
+
 describe("persistence across a reload (task 0022 follow-up)", () => {
   it("survives a Vite full-reload's fresh controller construction: activeTab and Components-tab search are restored from the same storage", () => {
     const storage = memoryStorage()

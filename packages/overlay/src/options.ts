@@ -79,6 +79,8 @@ export interface OverlayOptions {
   readonly closedShadowRoot: boolean
   readonly picker: PickerOptions
   readonly componentTree: ComponentTreeOptions
+  /** Rolling buffer size for the State History tab (task 0027) — oldest snapshots drop once exceeded. */
+  readonly historyLimit: number
 }
 
 export type DeepPartial<T> = {
@@ -120,6 +122,7 @@ export const DEFAULT_OVERLAY_OPTIONS: OverlayOptions = {
   closedShadowRoot: false,
   picker: DEFAULT_PICKER_OPTIONS,
   componentTree: DEFAULT_COMPONENT_TREE_OPTIONS,
+  historyLimit: 50,
 }
 
 /** Merge partial input over the defaults, resolving the nested picker/componentTree blocks. */

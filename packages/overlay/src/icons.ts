@@ -125,3 +125,8 @@ export function iconComponents(): Vnode {
     m("path", { d: "M6 12H12V9" }),
   ])
 }
+
+/** The "State History" sidebar entry (task 0027) — a clock face, distinct from Settings' equalizer glyph. */
+export function iconHistory(): Vnode {
+  return icon([m("circle", { cx: 12, cy: 12, r: 9 }), m("polyline", { points: "12,7 12,12 16,14" })])
+}

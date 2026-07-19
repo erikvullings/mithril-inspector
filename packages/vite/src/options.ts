@@ -180,7 +180,7 @@ export function resolveInspectorOptions(
     picker: {
       enabled: picker.enabled ?? true,
       toggleShortcut: picker.toggleShortcut ?? "Alt+Shift+M",
-      holdShortcut: picker.holdShortcut ?? "Alt+Shift",
+      holdShortcut: picker.holdShortcut ?? "Alt",
       openOnClick: picker.openOnClick ?? false,
       continuous: picker.continuous ?? false,
     },

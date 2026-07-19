@@ -17,6 +17,7 @@ import { describeMapping, type MappingInfo } from "./mapping.js"
 import type { OverlayOptions } from "./options.js"
 import {
   createPickerMachine,
+  isPicking,
   type PickerMachine,
   type PickerState,
 } from "./picker.js"
@@ -28,6 +29,9 @@ import {
   matchesHold,
   matchesShortcut,
   parseShortcut,
+  PICKER_SHORTCUT_KEYS,
+  type PickerShortcutKey,
+  type PickerShortcutSettings,
   type ShortcutSpec,
 } from "./shortcuts.js"
 import { createComponentTreeStore, type ComponentTreeStore, type PinnedRow, type TreeRow } from "./tree.js"
@@ -105,6 +109,16 @@ export interface ComponentTreeViewState {
   readonly attrsOverrides: ReadonlyMap<string, PreviewNode>
   /** Fetched replacements for expanded getter/max-depth/paginated state paths; see {@link attrsOverrides}. */
   readonly stateOverrides: ReadonlyMap<string, PreviewNode>
+  /**
+   * Local UI expand state (by `pathKey`) for a nested attrs container already
+   * loaded in the initial preview — separate from `attrsOverrides`, which is
+   * only for data that had to be *fetched*. A container's data can be present
+   * (within the serializer's `maxDepth`) yet still start collapsed behind a
+   * one-line devtools-style preview until the user clicks to expand it.
+   */
+  readonly expandedAttrsPaths: ReadonlySet<string>
+  /** Local UI expand state for a nested state container; see {@link expandedAttrsPaths}. */
+  readonly expandedStatePaths: ReadonlySet<string>
 }
 
 /** Everything the Mithril views render from — a pull-based snapshot. */
@@ -128,6 +142,12 @@ export interface OverlayViewState {
   readonly diagnostics: readonly Diagnostic[]
   /** The Components tab's tree/attrs/state state (task 0022). */
   readonly componentTree: ComponentTreeViewState
+  /** The picker's current shortcut/modifier settings — app-configured defaults, live-overridable from the Settings tab. */
+  readonly pickerShortcuts: PickerShortcutSettings
+  /** The user's live on/off preference for the picking banner (§18, Settings tab checkbox) — independent of its momentary auto-hide timing. */
+  readonly showPickingBanner: boolean
+  /** Whether the picking banner should actually render right now: picking, `showPickingBanner` is on, and it hasn't auto-hidden yet this session. */
+  readonly pickingBannerVisible: boolean
 }
 
 /** Structural click event (satisfied by `MouseEvent`); testable without the DOM. */
@@ -193,6 +213,18 @@ export interface OverlayController {
   scrollComponentIntoView(id: ComponentId): void
   /** Evaluate a getter, page a container, or expand a `max-depth` stub in the currently-selected component's attrs/state preview (§7.4). */
   expandComponentPreview(target: "attrs" | "state", path: PreviewPath, options?: ExpandPreviewOptions): void
+  /** Toggle the local (already-loaded) collapsed/expanded UI state of a nested attrs/state container. */
+  togglePreviewExpanded(target: "attrs" | "state", path: PreviewPath): void
+
+  // --- Settings tab: live picker shortcut editing --------------------------
+  /** Rebind a picker shortcut/modifier to a new raw string (e.g. "Alt+Shift"); persists and takes effect immediately. */
+  setPickerShortcutValue(key: PickerShortcutKey, value: string): void
+  /** Enable/disable a picker shortcut without discarding its typed value (e.g. it collides with an app the user is inspecting). */
+  setPickerShortcutEnabled(key: PickerShortcutKey, enabled: boolean): void
+  /** Revert a picker shortcut to the app-configured value (`options.picker`), discarding any Settings-tab override. */
+  resetPickerShortcut(key: PickerShortcutKey): void
+  /** Show/hide the picking-active banner (§18); persists across reloads. */
+  setShowPickingBanner(show: boolean): void
 
   /** Unsubscribe from the runtime and release resources (idempotent). */
   dispose(): void
@@ -238,13 +270,6 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   const openInEditor: OpenInEditor = deps.openInEditor ?? createEditorClient()
   const redraw = (): void => {
     if (deps.redraw) diagnostics.guard("redraw", deps.redraw, undefined)
-  }
-
-  const shortcuts: Shortcuts = {
-    toggle: parseShortcut(options.picker.toggleShortcut),
-    hold: parseShortcut(options.picker.holdShortcut),
-    open: parseShortcut(options.picker.openShortcut),
-    cancel: parseShortcut(options.picker.cancelShortcut),
   }
 
   let host: Element | null = null
@@ -306,8 +331,34 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     return choices
   }
 
+  // Picking-active banner (§18): auto-hides itself a few seconds after each
+  // fresh idle -> picking transition, independent of whether `showBanner` is
+  // even on (that only gates whether it's rendered at all, computed in
+  // getState()) — re-armed every time a new picking session starts.
+  const PICKING_BANNER_TIMEOUT_MS = 4000
+  let bannerDismissed = false
+  let bannerTimer: ReturnType<typeof setTimeout> | null = null
+  const clearBannerTimer = (): void => {
+    if (bannerTimer !== null) {
+      clearTimeout(bannerTimer)
+      bannerTimer = null
+    }
+  }
+  const armBannerTimer = (): void => {
+    clearBannerTimer()
+    bannerDismissed = false
+    bannerTimer = setTimeout(() => {
+      bannerDismissed = true
+      bannerTimer = null
+      redraw()
+    }, PICKING_BANNER_TIMEOUT_MS)
+  }
+
   const selection = createSelectionModel((node) => resolveNode(node))
-  const picker: PickerMachine = createPickerMachine()
+  const picker: PickerMachine = createPickerMachine((next, previous) => {
+    if (isPicking(next) && !isPicking(previous)) armBannerTimer()
+    else if (!isPicking(next)) clearBannerTimer()
+  })
 
   // Editor-open primitives shared by the details actions and the Enter shortcut.
   const doOpenLocation = (location: SourceLocation): void => {
@@ -356,6 +407,36 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   const persisted = loadOverlayState(storage)
   let collapsed = persisted.collapsed ?? !options.defaultOpen
   let activeTab: OverlayTab = persisted.activeTab ?? "components"
+  let showBanner = persisted.showPickingBanner ?? options.picker.showBanner
+
+  // --- Settings tab: live-editable picker shortcuts -------------------------
+  // Seeded from the app-configured `options.picker` values, overridden by
+  // anything the user rebound from the Settings tab last session. Mutable
+  // (unlike `options`, which stays the immutable app configuration) so a
+  // Settings-tab edit takes effect immediately without remounting.
+  let shortcutSettings: PickerShortcutSettings = (() => {
+    const out = {} as Record<PickerShortcutKey, { value: string; enabled: boolean }>
+    for (const key of PICKER_SHORTCUT_KEYS) {
+      const override = persisted.pickerShortcuts?.[key]
+      out[key] = override ?? { value: options.picker[key], enabled: parseShortcut(options.picker[key]) !== null }
+    }
+    return out
+  })()
+
+  const effectiveShortcutString = (key: PickerShortcutKey): string => {
+    const setting = shortcutSettings[key]
+    return setting.enabled ? setting.value : "none"
+  }
+
+  const computeShortcuts = (): Shortcuts => ({
+    toggle: parseShortcut(effectiveShortcutString("toggleShortcut")),
+    hold: parseShortcut(effectiveShortcutString("holdShortcut")),
+    open: parseShortcut(effectiveShortcutString("openShortcut")),
+    cancel: parseShortcut(effectiveShortcutString("cancelShortcut")),
+  })
+
+  let shortcuts: Shortcuts = computeShortcuts()
+
   let hover: HoverInfo | null = null
   let hoverRects: readonly HighlightRect[] = []
   let frozenRects: readonly HighlightRect[] = []
@@ -397,13 +478,22 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   // component changes so a stale expansion never leaks onto a new selection.
   let attrsOverrides = new Map<string, PreviewNode>()
   let stateOverrides = new Map<string, PreviewNode>()
+  // Local UI expand/collapse state (task: devtools-style compact preview),
+  // reset alongside the fetch overrides above whenever the selection changes.
+  let expandedAttrsPaths = new Set<string>()
+  let expandedStatePaths = new Set<string>()
   const resetPreviewOverrides = (): void => {
     attrsOverrides = new Map()
     stateOverrides = new Map()
+    expandedAttrsPaths = new Set()
+    expandedStatePaths = new Set()
   }
 
   const persist = (): void => {
-    saveOverlayState({ collapsed, activeTab, treeSearch: treeStore.getSearch() }, storage)
+    saveOverlayState(
+      { collapsed, activeTab, treeSearch: treeStore.getSearch(), pickerShortcuts: shortcutSettings, showPickingBanner: showBanner },
+      storage,
+    )
   }
 
   const clearHover = (): void => {
@@ -458,6 +548,8 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         statePreview: stateAvailable ? hook?.statePreview(selectedId) ?? null : null,
         attrsOverrides,
         stateOverrides,
+        expandedAttrsPaths,
+        expandedStatePaths,
       }
 
       return {
@@ -475,6 +567,9 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         frozenRects,
         diagnostics: diagnostics.list(),
         componentTree,
+        pickerShortcuts: shortcutSettings,
+        showPickingBanner: showBanner,
+        pickingBannerVisible: picker.isPicking() && showBanner && !bannerDismissed,
       }
     },
 
@@ -550,8 +645,11 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
 
     handleClick(event) {
       if (!picker.isPicking()) return false
+      // Checked ahead of the pass-through modifier below: if both ever share
+      // the same key, opening the editor wins over passing the click through.
+      const openDirectly = isModifierHeld(event, effectiveShortcutString("openEditorModifier"))
       // Pass-through modifier lets the application click proceed (§8.7).
-      if (isModifierHeld(event, options.picker.passThroughModifier)) return false
+      if (!openDirectly && isModifierHeld(event, effectiveShortcutString("passThroughModifier"))) return false
 
       // Prevent the application click by default (§8.7).
       event.preventDefault()
@@ -576,7 +674,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           activeTab = "components" // the merged tree/detail view is where a pick's result shows (§8.3)
           persist()
 
-          if (options.picker.openOnClick) controller.openSelectedInEditor()
+          if (options.picker.openOnClick || openDirectly) controller.openSelectedInEditor()
 
           picker.dispatch({ type: "select", continuous: options.picker.continuous })
           if (!picker.isPicking()) clearHover()
@@ -779,16 +877,63 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
             return
           }
           const key = pathKey(path)
-          if (target === "attrs") attrsOverrides.set(key, node)
-          else stateOverrides.set(key, node)
+          // A round-trip fetch is an explicit "show me this" request, so the
+          // freshly-resolved container opens straight to its expanded rows —
+          // unlike a container whose data was already available locally,
+          // which starts collapsed behind the compact preview (see
+          // `togglePreviewExpanded`).
+          if (target === "attrs") {
+            attrsOverrides.set(key, node)
+            expandedAttrsPaths.add(key)
+          } else {
+            stateOverrides.set(key, node)
+            expandedStatePaths.add(key)
+          }
           redraw()
         },
         undefined,
       )
     },
 
+    togglePreviewExpanded(target, path) {
+      const key = pathKey(path)
+      const set = target === "attrs" ? expandedAttrsPaths : expandedStatePaths
+      if (set.has(key)) set.delete(key)
+      else set.add(key)
+      redraw()
+    },
+
+    // --- Settings tab: live picker shortcut editing -------------------------
+    setPickerShortcutValue(key, value) {
+      shortcutSettings = { ...shortcutSettings, [key]: { value, enabled: shortcutSettings[key].enabled } }
+      shortcuts = computeShortcuts()
+      persist()
+      redraw()
+    },
+    setPickerShortcutEnabled(key, enabled) {
+      shortcutSettings = { ...shortcutSettings, [key]: { value: shortcutSettings[key].value, enabled } }
+      shortcuts = computeShortcuts()
+      persist()
+      redraw()
+    },
+    resetPickerShortcut(key) {
+      shortcutSettings = {
+        ...shortcutSettings,
+        [key]: { value: options.picker[key], enabled: parseShortcut(options.picker[key]) !== null },
+      }
+      shortcuts = computeShortcuts()
+      persist()
+      redraw()
+    },
+    setShowPickingBanner(show) {
+      showBanner = show
+      persist()
+      redraw()
+    },
+
     dispose() {
       unsubscribeTree?.()
+      clearBannerTimer()
     },
   }
 

@@ -43,9 +43,16 @@ export function pickerReducer(state: PickerState, action: PickerAction): PickerS
   switch (action.type) {
     case "toggle": {
       if (state.phase === "idle") return { phase: "picking", activation: "toggle", hovered: null }
-      // Toggling while picking always makes it sticky-off, whether the current
-      // session was a hold or a toggle. (A hold that was toggled would be odd;
-      // the simplest, least-surprising rule is: toggle key ends picking.)
+      // A toggle shortcut whose modifiers are a superset of the hold
+      // shortcut's (e.g. hold "Alt", toggle "Alt+Shift+M") makes pressing the
+      // *hold*'s modifiers on the way to the full chord start a hold session
+      // before the chord's own key is even pressed — one continuous physical
+      // gesture, not two independent requests. Promoting it to a toggle
+      // (rather than treating "toggle" as "cancel the hold that same
+      // keypress incidentally started") is what makes the chord actually
+      // able to turn picking on and keep it on; see `hold-end` below.
+      if (state.activation === "hold") return { ...state, activation: "toggle" }
+      // Toggling an already-sticky (toggle-activated) session turns it off.
       return IDLE
     }
 

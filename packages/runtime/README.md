@@ -335,7 +335,7 @@ standalone:
 
 ```ts
 const serializer = createSerializer({
-  maxDepth: 2,        // default DEFAULT_MAX_DEPTH
+  maxDepth: 3,        // default DEFAULT_MAX_DEPTH
   maxEntries: 50,      // default DEFAULT_MAX_ENTRIES
   redactKeys: [...],   // default DEFAULT_REDACTION_KEYS when omitted/empty
   replacement: "[redacted]",

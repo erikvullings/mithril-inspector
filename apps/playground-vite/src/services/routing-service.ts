@@ -2,6 +2,7 @@ import m, { type RouteDefs } from "mithril"
 
 import { Layout } from "../components/layout.js"
 import { Pages, type PageDef } from "../models.js"
+import { AttrsDemoPage } from "../pages/attrs-demo-page.js"
 import { DialogPage } from "../pages/dialog-page.js"
 import { FragmentPage } from "../pages/fragment-page.js"
 import { HomePage } from "../pages/home-page.js"
@@ -30,6 +31,7 @@ class RoutingService {
     { id: Pages.SCROLL, title: "Scroll", route: "/scroll", component: ScrollPage },
     { id: Pages.TRANSFORM, title: "Transform", route: "/transform", component: TransformPage },
     { id: Pages.STATE_DEMO, title: "State demo", route: "/state-demo", component: StateDemoPage },
+    { id: Pages.ATTRS_DEMO, title: "Attrs demo", route: "/attrs-demo", component: AttrsDemoPage },
   ]
 
   get defaultRoute(): string {

@@ -1,9 +1,12 @@
 /**
- * localStorage persistence for the overlay's collapsed state and last active
- * section (§8.1). All access is guarded: private-mode browsers throw on
+ * localStorage persistence for the overlay's collapsed state, last active
+ * section, and any picker shortcuts the user rebound from the Settings tab
+ * (§8.1, §8.4). All access is guarded: private-mode browsers throw on
  * `localStorage`, and the overlay must never break the host page (§16), so a
  * failure degrades to in-memory defaults.
  */
+
+import { PICKER_SHORTCUT_KEYS, type PickerShortcutKey, type PickerShortcutSetting } from "./shortcuts.js"
 
 /**
  * Local mirror of `OverlayTab` (`./controller.js`) — not imported, to avoid a
@@ -12,6 +15,7 @@
 type PersistedTab = "components" | "settings"
 
 const PERSISTED_TABS: ReadonlySet<string> = new Set<PersistedTab>(["components", "settings"])
+const PICKER_SHORTCUT_KEY_SET: ReadonlySet<string> = new Set(PICKER_SHORTCUT_KEYS)
 
 export interface OverlayPersistedState {
   /** Whether the panel is collapsed to the bottom toggle. */
@@ -26,6 +30,33 @@ export interface OverlayPersistedState {
   activeTab?: PersistedTab
   /** The component tree's search query; see {@link activeTab}. */
   treeSearch?: string
+  /**
+   * User-edited overrides for the picker's shortcuts/modifiers (Settings
+   * tab), keyed by option name. A key absent here keeps the app-configured
+   * default from `OverlayOptions.picker`.
+   */
+  pickerShortcuts?: Partial<Record<PickerShortcutKey, PickerShortcutSetting>>
+  /** Whether to show the picking-active banner (§18, Settings tab); absent keeps the app-configured `picker.showBanner` default. */
+  showPickingBanner?: boolean
+}
+
+/** Validate one stored shortcut-setting entry, discarding anything malformed. */
+function parsePickerShortcutSetting(value: unknown): PickerShortcutSetting | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  const { value: rawValue, enabled } = value as Record<string, unknown>
+  if (typeof rawValue !== "string" || typeof enabled !== "boolean") return undefined
+  return { value: rawValue, enabled }
+}
+
+function parsePickerShortcuts(value: unknown): Partial<Record<PickerShortcutKey, PickerShortcutSetting>> | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  const out: Partial<Record<PickerShortcutKey, PickerShortcutSetting>> = {}
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (!PICKER_SHORTCUT_KEY_SET.has(key)) continue
+    const setting = parsePickerShortcutSetting(entry)
+    if (setting !== undefined) out[key as PickerShortcutKey] = setting
+  }
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 export const OVERLAY_STORAGE_KEY = "__mithril-inspector-overlay"
@@ -73,6 +104,11 @@ export function loadOverlayState(storage: StorageLike | null = defaultStorage())
     state.activeTab = record.activeTab as PersistedTab
   }
   if (typeof record.treeSearch === "string") state.treeSearch = record.treeSearch
+
+  const pickerShortcuts = parsePickerShortcuts(record.pickerShortcuts)
+  if (pickerShortcuts !== undefined) state.pickerShortcuts = pickerShortcuts
+
+  if (typeof record.showPickingBanner === "boolean") state.showPickingBanner = record.showPickingBanner
 
   return state
 }

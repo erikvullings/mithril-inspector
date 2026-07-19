@@ -11,6 +11,7 @@ export enum Pages {
   SCROLL = "scroll",
   TRANSFORM = "transform",
   STATE_DEMO = "state-demo",
+  ATTRS_DEMO = "attrs-demo",
 }
 
 export interface PageDef {

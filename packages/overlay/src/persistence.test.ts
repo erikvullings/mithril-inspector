@@ -54,6 +54,49 @@ describe("overlay persistence", () => {
     expect(loadOverlayState(storage)).toEqual({})
   })
 
+  it("round-trips showPickingBanner and ignores a non-boolean value", () => {
+    const storage = memoryStorage()
+    saveOverlayState({ showPickingBanner: false }, storage)
+    expect(loadOverlayState(storage)).toEqual({ showPickingBanner: false })
+
+    const bad = memoryStorage({ [OVERLAY_STORAGE_KEY]: JSON.stringify({ showPickingBanner: "no" }) })
+    expect(loadOverlayState(bad)).toEqual({})
+  })
+
+  it("round-trips picker shortcut overrides (Settings tab live editing)", () => {
+    const storage = memoryStorage()
+    saveOverlayState(
+      { pickerShortcuts: { holdShortcut: { value: "Ctrl", enabled: true }, passThroughModifier: { value: "", enabled: false } } },
+      storage,
+    )
+    expect(loadOverlayState(storage)).toEqual({
+      pickerShortcuts: { holdShortcut: { value: "Ctrl", enabled: true }, passThroughModifier: { value: "", enabled: false } },
+    })
+  })
+
+  it("ignores an unknown picker-shortcut key and a malformed setting entry", () => {
+    const storage = memoryStorage({
+      [OVERLAY_STORAGE_KEY]: JSON.stringify({
+        pickerShortcuts: {
+          bogusKey: { value: "Alt", enabled: true },
+          holdShortcut: { value: 42, enabled: true }, // wrong type for value
+          openShortcut: { value: "Enter" }, // missing enabled
+          cancelShortcut: { value: "Escape", enabled: true }, // valid
+        },
+      }),
+    })
+    expect(loadOverlayState(storage)).toEqual({
+      pickerShortcuts: { cancelShortcut: { value: "Escape", enabled: true } },
+    })
+  })
+
+  it("omits pickerShortcuts entirely when every entry was malformed", () => {
+    const storage = memoryStorage({
+      [OVERLAY_STORAGE_KEY]: JSON.stringify({ pickerShortcuts: { bogusKey: { value: "Alt", enabled: true } } }),
+    })
+    expect(loadOverlayState(storage)).toEqual({})
+  })
+
   it("degrades to {} and does not throw when storage access throws (§16)", () => {
     const throwing: StorageLike = {
       getItem: vi.fn(() => {

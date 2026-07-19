@@ -8,17 +8,17 @@ describe("resolveOverlayOptions", () => {
     expect(options.defaultOpen).toBe(false)
     expect(options.theme).toBe("system")
     expect(options.picker.toggleShortcut).toBe("Alt+Shift+M")
-    expect(options.picker.holdShortcut).toBe("Alt+Shift")
+    expect(options.picker.holdShortcut).toBe("Alt")
     expect(options.picker.openShortcut).toBe("Enter")
     expect(options.picker.cancelShortcut).toBe("Escape")
     expect(options.picker.openOnClick).toBe(false)
     expect(options.picker.continuous).toBe(false)
   })
 
-  it("does not bind plain Alt+Click by default (§8.4)", () => {
+  it("gives pass-through and open-editor distinct default modifiers so neither shadows the other (§8.7)", () => {
     const options = resolveOverlayOptions()
-    // The pass-through modifier is Meta, distinct from the picker modifiers.
-    expect(options.picker.passThroughModifier).toBe("Meta")
+    expect(options.picker.passThroughModifier).toBe("Alt+Shift")
+    expect(options.picker.openEditorModifier).toBe("Meta")
     expect(options.picker.toggleShortcut).not.toMatch(/click/i)
   })
 

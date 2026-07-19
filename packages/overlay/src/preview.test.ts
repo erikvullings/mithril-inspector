@@ -1,7 +1,8 @@
 import type { PreviewNode } from "@mithril-inspector/protocol"
 import { describe, expect, it } from "vitest"
 
-import { isExpandable, pathKey, summarizeNode } from "./preview.js"
+import { compactContainerPreview, isExpandable, pathKey, summarizeNode } from "./preview.js"
+import type { ContainerNode } from "./preview.js"
 
 describe("summarizeNode (§7.4 preview tree, task 0022)", () => {
   it("formats every primitive type", () => {
@@ -24,6 +25,10 @@ describe("summarizeNode (§7.4 preview tree, task 0022)", () => {
   it("formats a function with and without a name", () => {
     expect(summarizeNode({ kind: "function", name: "onClick" })).toBe("ƒ onClick()")
     expect(summarizeNode({ kind: "function", name: "" })).toBe("ƒ ()")
+  })
+
+  it("formats a recognized component definition as its resolved name, not an object dump", () => {
+    expect(summarizeNode({ kind: "component", name: "HomePage", inferred: false, location: null })).toBe("<HomePage>")
   })
 
   it("formats a DOM node by tag, falling back to a text/generic marker", () => {
@@ -72,6 +77,108 @@ describe("isExpandable (§7.4 lazy preview)", () => {
   it("is false for a primitive and a redacted value", () => {
     expect(isExpandable({ kind: "primitive", type: "number", value: 1 })).toBe(false)
     expect(isExpandable({ kind: "redacted", replacement: "[redacted]" })).toBe(false)
+  })
+})
+
+describe("compactContainerPreview (devtools-style one-line preview)", () => {
+  it("inlines an object's shallow entries without a redundant 'Object' label", () => {
+    const node: ContainerNode = {
+      kind: "object",
+      className: "Object",
+      size: 3,
+      entries: [
+        { key: "id", node: { kind: "primitive", type: "number", value: 1 } },
+        { key: "label", node: { kind: "primitive", type: "string", value: "Write the changelog" } },
+        { key: "done", node: { kind: "primitive", type: "boolean", value: false } },
+      ],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(compactContainerPreview(node)).toBe('{ id: 1, label: "Write the changelog", done: false }')
+  })
+
+  it("prefixes a non-generic className", () => {
+    const node: ContainerNode = {
+      kind: "object",
+      className: "User",
+      size: 1,
+      entries: [{ key: "name", node: { kind: "primitive", type: "string", value: "Ada" } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(compactContainerPreview(node)).toBe('User { name: "Ada" }')
+  })
+
+  it("renders empty containers without a dangling space", () => {
+    const object: ContainerNode = { kind: "object", className: "Object", size: 0, entries: [], offset: 0, truncated: false, path: [] }
+    const array: ContainerNode = { kind: "array", length: 0, items: [], offset: 0, truncated: false, path: [] }
+    expect(compactContainerPreview(object)).toBe("{}")
+    expect(compactContainerPreview(array)).toBe("[]")
+  })
+
+  it("inlines array items positionally, one level deep only", () => {
+    const node: ContainerNode = {
+      kind: "array",
+      length: 2,
+      items: [
+        { kind: "primitive", type: "number", value: 1 },
+        { kind: "object", className: "Object", size: 1, entries: [], offset: 0, truncated: false, path: [] },
+      ],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(compactContainerPreview(node)).toBe("[ 1, Object ]")
+  })
+
+  it("caps at 5 entries and trails with an ellipsis when more remain", () => {
+    const node: ContainerNode = {
+      kind: "array",
+      length: 7,
+      items: Array.from({ length: 7 }, (_, i) => ({ kind: "primitive" as const, type: "number" as const, value: i })),
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(compactContainerPreview(node)).toBe("[ 0, 1, 2, 3, 4, … ]")
+  })
+
+  it("trails with an ellipsis for a truncated container even under the cap", () => {
+    const node: ContainerNode = {
+      kind: "array",
+      length: 100,
+      items: [{ kind: "primitive", type: "number", value: 0 }],
+      offset: 0,
+      truncated: true,
+      path: [],
+    }
+    expect(compactContainerPreview(node)).toBe("[ 0, … ]")
+  })
+
+  it("formats map and set entries", () => {
+    const map: ContainerNode = {
+      kind: "map",
+      size: 1,
+      entries: [{ key: { kind: "primitive", type: "string", value: "a" }, value: { kind: "primitive", type: "number", value: 1 } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    const set: ContainerNode = {
+      kind: "set",
+      size: 2,
+      items: [
+        { kind: "primitive", type: "number", value: 1 },
+        { kind: "primitive", type: "number", value: 2 },
+      ],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(compactContainerPreview(map)).toBe('Map(1) { "a" => 1 }')
+    expect(compactContainerPreview(set)).toBe("Set(2) { 1, 2 }")
   })
 })
 

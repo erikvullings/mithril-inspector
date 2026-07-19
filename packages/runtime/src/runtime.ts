@@ -214,6 +214,7 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
   const serializer: Serializer = createSerializer({
     redactKeys: redaction.keys,
     replacement: redaction.replacement,
+    describeComponent: (value) => components.describeComponentValue(value),
   })
 
   // §14: run a component's custom attrs()/state() hook before the safe

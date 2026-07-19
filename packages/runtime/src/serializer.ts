@@ -9,6 +9,7 @@ import type {
   PreviewPathSegment,
   PreviewSetNode,
   PreviewTypedArrayNode,
+  SourceLocation,
 } from "@mithril-inspector/protocol"
 
 /** §15 default redaction key patterns, matched case-insensitively as a substring of the property key. */
@@ -26,8 +27,15 @@ export const DEFAULT_REDACTION_KEYS: readonly string[] = [
 
 const DEFAULT_REPLACEMENT = "[redacted]"
 
-/** §7.4 lazy-inspection default limits, overridable per `createSerializer` call. */
-export const DEFAULT_MAX_DEPTH = 2
+/**
+ * §7.4 lazy-inspection default limits, overridable per `createSerializer` call.
+ * 3 (rather than 2) so the very common "array of flat objects" shape (e.g.
+ * `tasks: [{ id, label, done }]`) already shows its object fields inline —
+ * `state`(0) -> array(1) -> item object(2) still reads without an extra
+ * click-to-expand round-trip; only that object's own nested containers, if
+ * any, hit the stub.
+ */
+export const DEFAULT_MAX_DEPTH = 3
 export const DEFAULT_MAX_ENTRIES = 50
 
 export interface SerializerOptions {
@@ -44,6 +52,18 @@ export interface SerializerOptions {
   readonly redactKeys?: readonly string[]
   /** Replacement text shown in place of a redacted value (default `"[redacted]"`). */
   readonly replacement?: string
+  /**
+   * Recognize a value as a Mithril component definition the caller
+   * instrumented (object/closure/class/route-resolver) and resolve its
+   * display name, checked before the generic function/object handling for
+   * every value the serializer visits. When it returns non-null, the value
+   * serializes as a `component` node (its resolved name) instead of an object
+   * dump of the wrapper's `view`/lifecycle-hook own properties, which are
+   * implementation detail, not application data.
+   */
+  readonly describeComponent?: (
+    value: object,
+  ) => { readonly name: string; readonly inferred: boolean; readonly location: SourceLocation | null } | null
 }
 
 /** Attrs/state redaction serializer a component attaches via `setInspectorSerializer` (§14). */
@@ -101,6 +121,7 @@ export function createSerializer(options: SerializerOptions = {}): Serializer {
   const configuredKeys = options.redactKeys ?? []
   const redactionKeys = configuredKeys.length > 0 ? configuredKeys : DEFAULT_REDACTION_KEYS
   const replacement = options.replacement ?? DEFAULT_REPLACEMENT
+  const describeComponent = options.describeComponent
 
   const shouldRedact = (key: string): boolean => {
     const lower = key.toLowerCase()
@@ -251,10 +272,20 @@ export function createSerializer(options: SerializerOptions = {}): Serializer {
     if (type === "undefined") return { kind: "primitive", type: "undefined", value: null }
     if (type === "bigint") return { kind: "bigint", value: (value as bigint).toString() }
     if (type === "symbol") return { kind: "symbol", description: (value as symbol).description ?? null }
-    if (type === "function") return { kind: "function", name: (value as { name?: string }).name || "" }
+    if (type === "function") {
+      const described = describeComponent?.(value as object) ?? null
+      if (described !== null) {
+        return { kind: "component", name: described.name, inferred: described.inferred, location: described.location }
+      }
+      return { kind: "function", name: (value as { name?: string }).name || "" }
+    }
 
     // type === "object" from here.
     const obj = value as object
+    const describedObject = describeComponent?.(obj) ?? null
+    if (describedObject !== null) {
+      return { kind: "component", name: describedObject.name, inferred: describedObject.inferred, location: describedObject.location }
+    }
     const ancestorPath = seen.get(obj)
     if (ancestorPath !== undefined) return { kind: "circular", path: ancestorPath }
 

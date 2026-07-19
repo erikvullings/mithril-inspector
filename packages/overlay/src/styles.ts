@@ -118,6 +118,10 @@ export function overlayCss(): string {
 .mi-toggle-btn {
   appearance: none;
   border: 0;
+  /* Browsers apply their own default button padding, which stops
+   * .mi-toggle-pick's width: 0 (below) from truly collapsing — leaving
+   * it a few px wide and pushing the visible "M" off-center. */
+  padding: 0;
   background: transparent;
   color: var(--mi-fg);
   width: 30px;
@@ -270,9 +274,23 @@ export function overlayCss(): string {
 .mi-btn-small { padding: 3px 8px; font-size: 11px; font-weight: 600; border: 1px solid var(--mi-border); border-radius: 6px; background: var(--mi-surface); color: var(--mi-fg); cursor: pointer; }
 .mi-btn-small:hover { border-color: var(--mi-accent); }
 
-.mi-row { display: grid; grid-template-columns: 84px 1fr; gap: 4px 8px; margin-bottom: 8px; }
+/* Checkbox, label (wide enough for "Open editor on click" on one line), input, reset button. */
+.mi-shortcut-row { display: grid; grid-template-columns: 20px 150px 1fr auto; align-items: center; gap: 4px 8px; margin-bottom: 8px; }
 .mi-key { color: var(--mi-muted); }
-.mi-val { font-family: var(--mi-mono); word-break: break-all; }
+.mi-shortcut-enabled { margin: 0; cursor: pointer; }
+.mi-shortcut-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--mi-border);
+  border-radius: 6px;
+  background: var(--mi-bg);
+  color: var(--mi-fg);
+  font: inherit;
+}
+.mi-shortcut-input:disabled { opacity: 0.5; cursor: not-allowed; }
+.mi-row-check { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; }
+.mi-row-check label { cursor: pointer; }
 .mi-section-title {
   font-weight: 700;
   font-size: 11px;
@@ -438,9 +456,15 @@ export function overlayCss(): string {
 
 /* --- Attrs/state preview tree (§7.4, task 0020/0022) -------------------- */
 .mi-preview-node { font-family: var(--mi-mono); font-size: 12px; }
-.mi-preview-entries { list-style: none; margin: 2px 0 4px 14px; padding: 0; }
-.mi-preview-entries.mi-preview-root { margin: 0; }
-.mi-preview-entries > li {
+/* Only ever the root Attrs/State field list (view.ts's previewNodeView) — a
+ * nested container's own entries flow as .mi-preview-entry spans instead,
+ * see below. */
+.mi-preview-entries.mi-preview-root {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mi-preview-entries.mi-preview-root > li {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -448,11 +472,53 @@ export function overlayCss(): string {
   padding: 4px 0;
   border-bottom: 1px solid var(--mi-border);
 }
-.mi-preview-entries > li:last-child { border-bottom: 0; }
+.mi-preview-entries.mi-preview-root > li:last-child { border-bottom: 0; }
 .mi-preview-key { color: var(--mi-muted); flex: 0 0 auto; }
-.mi-preview-summary { font-weight: 600; }
+/*
+ * A nested (non-root) container's expanded entry — returned as a sibling of
+ * its own collapse toggle within the same flex-wrap parent <li> (view.ts) —
+ * so "0: −" and its fields read as one flowing, wrapping line (e.g. "0: −
+ * id: 1, label: "…", done: false"), the same shape the collapsed compact
+ * preview had, rather than a separate one-field-per-row block underneath.
+ */
+.mi-preview-entry { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.mi-preview-entry + .mi-preview-entry::before { content: ","; color: var(--mi-muted); margin-right: 4px; }
 .mi-preview-getter { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mi-mono); }
 .mi-preview-value { font-family: var(--mi-mono); word-break: break-word; }
+.mi-preview-component-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--mi-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+.mi-preview-component-link:hover, .mi-preview-component-link:focus-visible { text-decoration-color: var(--mi-accent); }
+.mi-preview-collapsed { display: inline-flex; align-items: baseline; gap: 5px; }
+.mi-preview-inline { color: var(--mi-muted); word-break: break-word; }
+.mi-preview-toggle {
+  appearance: none;
+  border: 1px solid var(--mi-border);
+  background: var(--mi-surface);
+  color: var(--mi-muted);
+  width: 15px;
+  height: 15px;
+  line-height: 1;
+  padding: 0;
+  border-radius: 3px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mi-preview-toggle:hover { border-color: var(--mi-accent); color: var(--mi-fg); }
 
 .mi-diagnostics { list-style: none; padding: 0; margin: 0; }
 .mi-diagnostics li { border-left: 3px solid var(--mi-danger); padding: 4px 8px; margin-bottom: 6px; background: var(--mi-surface); }

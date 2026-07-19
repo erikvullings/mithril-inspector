@@ -10,7 +10,7 @@ export interface PickerOptions {
   readonly enabled: boolean
   /** Sticky toggle chord (§8.4). Empty/"none" disables it (§18). */
   readonly toggleShortcut: string
-  /** Momentary modifier-only hold (§8.4). */
+  /** Momentary modifier-only hold (§8.4) — a single key since this is the picker's most-used gesture. */
   readonly holdShortcut: string
   /** Open the current source (§8.4, default `Enter`). */
   readonly openShortcut: string
@@ -26,8 +26,31 @@ export interface PickerOptions {
   readonly openOnClick: boolean
   /** Stay in picker mode after a selection (§8.7). */
   readonly continuous: boolean
-  /** Hold this modifier to let the application click pass through (§8.7). */
+  /**
+   * Hold this modifier to let the application click pass through (§8.7) — a
+   * rarer, more deliberate escape hatch than the hold-to-pick gesture above,
+   * so it gets the compound combo while hold-to-pick keeps the single key.
+   */
   readonly passThroughModifier: string
+  /**
+   * Hold this modifier while clicking during picking to select the element
+   * *and* immediately open it in the editor — checked ahead of
+   * `passThroughModifier` below, so if both are ever configured to the same
+   * key, opening wins. Defaults to Meta (Cmd/Win): Ctrl can't be the default
+   * here because macOS intercepts Ctrl+Click as a secondary click (it opens
+   * the native context menu before any `click` event reaches the page at
+   * all), so Meta is the one modifier that reliably reaches this handler on
+   * every platform.
+   */
+  readonly openEditorModifier: string
+  /**
+   * Show the "Inspecting…" banner while picking (§18). It auto-hides itself
+   * a few seconds after each fresh pick session starts (the toggle/crosshair
+   * icon's own active styling still indicates picking is on) — this only
+   * turns it off entirely, e.g. because it sits over the host page's own
+   * fixed UI. Live-toggleable from the Settings tab.
+   */
+  readonly showBanner: boolean
 }
 
 /**
@@ -67,14 +90,18 @@ export type OverlayOptionsInput = DeepPartial<OverlayOptions>
 export const DEFAULT_PICKER_OPTIONS: PickerOptions = {
   enabled: true,
   toggleShortcut: "Alt+Shift+M",
-  holdShortcut: "Alt+Shift",
+  // A single key: the most-used picker gesture gets the simplest one to hold.
+  holdShortcut: "Alt",
   openShortcut: "Enter",
   cancelShortcut: "Escape",
   openOnClick: false,
   continuous: false,
-  // Meta (Cmd/Win) is distinct from the Alt+Shift picker modifiers, so it works
-  // as a pass-through in both sticky and hold modes.
-  passThroughModifier: "Meta",
+  // The compound combo: pass-through is a rarer, deliberate escape hatch, so
+  // it takes the two-key combo the hold-to-pick gesture gave up. Distinct
+  // from openEditorModifier's default (Meta) so neither shadows the other.
+  passThroughModifier: "Alt+Shift",
+  openEditorModifier: "Meta",
+  showBanner: true,
 }
 
 export const DEFAULT_COMPONENT_TREE_OPTIONS: ComponentTreeOptions = {

@@ -39,6 +39,22 @@ select without triggering the app's own click handler — the result shows in
 the docked panel's tree/detail view in place — then use the "Open in editor"
 icon to jump straight to that line in VS Code.
 
+### Shortcuts (§8.4, §8.7)
+
+| Action | Default | What it does |
+| --- | --- | --- |
+| Toggle picking | `Alt+Shift+M` | Turns picking on/off — sticky, stays on after you release the keys. |
+| Hold to pick | `Alt` | Picking is active only while held; release to stop. |
+| Open in editor | `Enter` | Opens the current hover/selection's source while picking. |
+| Cancel | `Escape` | Stops picking. |
+| Open editor on click | `Meta` (Cmd/Win) | Hold while clicking during picking to select the element *and* jump straight to its source, skipping the toolbar's "Open in editor" step. |
+| Pass-through | `Alt+Shift` | Hold while clicking during picking to let the click reach the app underneath instead of selecting — for interacting with the real page without leaving picking mode. |
+
+Every shortcut is rebindable, or can be disabled entirely, from the overlay's
+Settings tab — changes apply immediately and persist across reloads. Not
+`Ctrl` for either click modifier: macOS intercepts `Ctrl`+click as a secondary
+click (opening the native context menu) before it ever reaches the page.
+
 The plugin is dev-only by default (`enabled` follows `NODE_ENV`) and adds no
 runtime, overlay or editor endpoint to production builds (§20.1.12).
 

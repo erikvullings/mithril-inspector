@@ -59,13 +59,23 @@ describe("pickerReducer — single transitions", () => {
 })
 
 describe("pickerReducer — interleaved multi-step sequences", () => {
-  it("a hold-end does NOT cancel a session that was promoted to a toggle", () => {
-    // hold Alt+Shift, then press the toggle chord (sticky), then release Alt+Shift.
-    // The toggle key turns picking OFF, so pressing it while holding ends the
-    // session; a subsequent hold-end must not resurrect or corrupt state.
+  it("a toggle while holding promotes the session to sticky, surviving a subsequent hold-end", () => {
+    // Physically pressing a toggle chord whose modifiers are a superset of
+    // the hold shortcut's (e.g. hold "Alt", toggle "Alt+Shift+M") starts a
+    // hold session on the way to the chord — one continuous gesture. The
+    // chord completing must lock picking in as sticky, not cancel the
+    // session its own prefix just started (that would make the toggle
+    // shortcut a no-op whenever it shares a modifier prefix with hold).
     const afterToggleWhileHolding = run([{ type: "hold-start" }, { type: "toggle" }])
-    expect(afterToggleWhileHolding).toEqual(initialPickerState())
-    expect(pickerReducer(afterToggleWhileHolding, { type: "hold-end" })).toEqual(initialPickerState())
+    expect(isPicking(afterToggleWhileHolding)).toBe(true)
+    expect(afterToggleWhileHolding.activation).toBe("toggle")
+    // Releasing the hold's own modifier afterward must not end the now-sticky session.
+    expect(pickerReducer(afterToggleWhileHolding, { type: "hold-end" })).toEqual(afterToggleWhileHolding)
+  })
+
+  it("a second toggle press, once already promoted to sticky, still turns picking off", () => {
+    const afterToggleWhileHolding = run([{ type: "hold-start" }, { type: "toggle" }])
+    expect(pickerReducer(afterToggleWhileHolding, { type: "toggle" })).toEqual(initialPickerState())
   })
 
   it("hold-end while toggled-active leaves the sticky session intact", () => {

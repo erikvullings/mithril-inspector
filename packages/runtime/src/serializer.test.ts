@@ -5,6 +5,7 @@ import type {
   PreviewPath,
   PreviewSetNode,
   PreviewTypedArrayNode,
+  SourceLocation,
 } from "@mithril-inspector/protocol"
 import { describe, expect, it } from "vitest"
 
@@ -309,6 +310,55 @@ describe("createSerializer (§7.4 safe serialization)", () => {
       for (let i = 0; i < 1000; i += 1) deep = { child: deep }
       const serializer = createSerializer()
       expect(() => serializer.serialize(deep)).not.toThrow()
+    })
+  })
+
+  describe("describeComponent (task: name component values instead of dumping lifecycle hooks)", () => {
+    const location: SourceLocation = {
+      moduleId: "m:src/pages/home-page.ts",
+      sourceId: "s1",
+      absoluteFile: "/project/src/pages/home-page.ts",
+      relativeFile: "src/pages/home-page.ts",
+      line: 5,
+      column: 1,
+      kind: "component-declaration",
+      displayName: "HomePage",
+    }
+
+    it("serializes a recognized component-shaped object as a component node (with its declaration location), bypassing the generic object dump", () => {
+      const wrapped = { view: () => null, oninit: () => undefined }
+      const serializer = createSerializer({
+        describeComponent: (value) => (value === wrapped ? { name: "HomePage", inferred: false, location } : null),
+      })
+      const node = serializer.serialize({ component: wrapped }) as PreviewObjectNode
+      expect(node.entries[0]!.node).toEqual({ kind: "component", name: "HomePage", inferred: false, location })
+    })
+
+    it("serializes a recognized component-shaped function as a component node too", () => {
+      const wrapped = (): unknown => null
+      const serializer = createSerializer({
+        describeComponent: (value) => (value === wrapped ? { name: "Counter", inferred: true, location: null } : null),
+      })
+      expect(serializer.serialize(wrapped)).toEqual({ kind: "component", name: "Counter", inferred: true, location: null })
+    })
+
+    it("falls back to the generic object dump when describeComponent returns null", () => {
+      const serializer = createSerializer({ describeComponent: () => null })
+      const node = serializer.serialize({ view: () => null }) as PreviewObjectNode
+      expect(node.kind).toBe("object")
+      expect(node.entries[0]!.key).toBe("view")
+    })
+
+    it("recognizes a component past maxDepth instead of stubbing it out — a component def is never itself worth a nested object dump", () => {
+      const wrapped = { view: () => null }
+      const serializer = createSerializer({
+        maxDepth: 2,
+        describeComponent: (value) => (value === wrapped ? { name: "HomePage", inferred: false, location } : null),
+      })
+      const node = serializer.serialize({ a: { component: wrapped } }) as PreviewObjectNode
+      const aNode = node.entries[0]!.node as PreviewObjectNode
+      expect(aNode.kind).toBe("object")
+      expect(aNode.entries[0]!.node).toEqual({ kind: "component", name: "HomePage", inferred: false, location })
     })
   })
 

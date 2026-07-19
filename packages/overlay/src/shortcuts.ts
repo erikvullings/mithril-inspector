@@ -114,17 +114,51 @@ export function matchesHold(event: ModifierState, spec: ShortcutSpec | null): bo
 }
 
 /**
- * Whether a single modifier name (e.g. the pass-through modifier, §8.7) is held.
- * Accepts the same aliases as {@link parseShortcut}; a disabled value is `false`.
+ * Whether a modifier or compound modifier combo (e.g. the pass-through
+ * modifier, §8.7 — `"Meta"` or `"Alt+Shift"`) is currently held. Every named
+ * modifier must be held; unlisted modifiers are ignored (so `"Alt+Shift"`
+ * doesn't also require Ctrl/Meta to be up) — the same permissive-on-extras
+ * behavior a single modifier always had. A disabled value is `false`.
  */
 export function isModifierHeld(event: ModifierState, modifier: string | null | undefined): boolean {
   if (modifier === null || modifier === undefined) return false
-  const trimmed = modifier.trim().toLowerCase()
-  if (DISABLED_TOKENS.has(trimmed)) return false
-  const resolved = MODIFIER_ALIASES[trimmed]
-  if (resolved === undefined) return false
-  if (resolved === "ctrl") return event.ctrlKey
-  if (resolved === "alt") return event.altKey
-  if (resolved === "shift") return event.shiftKey
-  return event.metaKey
+  const spec = parseShortcut(modifier)
+  if (spec === null) return false
+  if (!spec.ctrl && !spec.alt && !spec.shift && !spec.meta) return false
+  if (spec.ctrl && !event.ctrlKey) return false
+  if (spec.alt && !event.altKey) return false
+  if (spec.shift && !event.shiftKey) return false
+  if (spec.meta && !event.metaKey) return false
+  return true
 }
+
+/** The picker option keys that hold a remappable shortcut/modifier string (§8.4, §8.7, settings panel). */
+export type PickerShortcutKey =
+  | "toggleShortcut"
+  | "holdShortcut"
+  | "openShortcut"
+  | "cancelShortcut"
+  | "passThroughModifier"
+  | "openEditorModifier"
+
+export const PICKER_SHORTCUT_KEYS: readonly PickerShortcutKey[] = [
+  "toggleShortcut",
+  "holdShortcut",
+  "openShortcut",
+  "cancelShortcut",
+  "passThroughModifier",
+  "openEditorModifier",
+]
+
+/**
+ * A user-editable shortcut setting (settings panel): `value` is kept even
+ * while `enabled` is `false` so disabling one (e.g. because it collides with
+ * an app the user is inspecting) and re-enabling it later doesn't lose what
+ * was typed.
+ */
+export interface PickerShortcutSetting {
+  readonly value: string
+  readonly enabled: boolean
+}
+
+export type PickerShortcutSettings = Readonly<Record<PickerShortcutKey, PickerShortcutSetting>>

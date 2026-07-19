@@ -43,6 +43,17 @@ interface DefMeta {
   readonly kind: ComponentKind
 }
 
+export interface DisplayNameResult {
+  readonly name: string
+  /** True for the §9.2 fallback tiers (filename-derived, `"Anonymous"`) rather than an explicit or declared name. */
+  readonly inferred: boolean
+}
+
+export interface ComponentValueDescription extends DisplayNameResult {
+  /** The component's declaration location (same source `describeComponentValue` resolved the name from), or `null` when unresolvable. */
+  readonly location: SourceLocation | null
+}
+
 interface Rendered extends RenderedVnode {
   tag?: unknown
   children?: unknown
@@ -136,6 +147,14 @@ export interface ComponentRegistry {
   serializerOf(def: object): ComponentDataSerializer | undefined
   /** The original application definition backing a mounted instance, or `undefined` once unmapped. */
   defOf(id: ComponentId): object | undefined
+  /**
+   * Resolve `value` to its display name (§9.2) if it is a component
+   * definition this registry instrumented — mounted or not, any object/
+   * closure/class/route-resolver `instrument()` has ever seen, by either its
+   * original or wrapped reference (§14 preview naming). `null` for anything
+   * else (plain data that merely happens to look component-shaped).
+   */
+  describeComponentValue(value: unknown): ComponentValueDescription | null
   /** A fresh strong snapshot of every live component record (for `getSnapshot`). */
   componentsSnapshot(): Map<ComponentId, ComponentRecord>
 }
@@ -228,6 +247,15 @@ export function createComponentRegistry(
   const displayNameOverrides = new WeakMap<object, string>()
   const hidden = new WeakSet<object>()
   const serializers = new WeakMap<object, ComponentDataSerializer>()
+
+  // Every def `instrument()` has ever seen, keyed by BOTH the original
+  // application definition and (for the object/closure/route-resolver forms,
+  // which return a new wrapped reference) that wrapped reference too — so a
+  // component definition value found anywhere else as plain data (e.g. a
+  // route table's `{ component: HomePage }` carried in another component's
+  // attrs) can still be recognized and named via `describeComponentValue`,
+  // not just a value read from an actual mounted instance.
+  const defMetaByAny = new WeakMap<object, DefMeta>()
 
   // node → component ownership, rebuilt each flush; innermost owner wins.
   interface NodeEntry {
@@ -580,22 +608,16 @@ export function createComponentRegistry(
     return true
   }
 
-  interface DisplayNameResult {
-    readonly name: string
-    /** True for the §9.2 fallback tiers (filename-derived, `"Anonymous"`) rather than an explicit or declared name. */
-    readonly inferred: boolean
-  }
-
-  const resolveDisplayName = (record: InstanceRecord): DisplayNameResult => {
-    const override = displayNameOverrides.get(record.meta.def)
+  const resolveDisplayName = (meta: DefMeta): DisplayNameResult => {
+    const override = displayNameOverrides.get(meta.def)
     if (override !== undefined && override.length > 0) return { name: override, inferred: false }
-    const declared = (record.meta.def as { displayName?: unknown }).displayName
+    const declared = (meta.def as { displayName?: unknown }).displayName
     if (typeof declared === "string" && declared.length > 0) return { name: declared, inferred: false }
-    const source = record.meta.qualifiedId === "" ? null : sources.resolveSource(record.meta.qualifiedId)
+    const source = meta.qualifiedId === "" ? null : sources.resolveSource(meta.qualifiedId)
     if (source?.displayName !== undefined && source.displayName.length > 0) {
       return { name: source.displayName, inferred: false }
     }
-    const named = (record.meta.def as { name?: unknown }).name
+    const named = (meta.def as { name?: unknown }).name
     if (typeof named === "string" && named.length > 0) return { name: named, inferred: false }
     const file = source?.relativeFile || source?.absoluteFile
     const filename = file === undefined || file === "" ? null : filenameDerivedName(file)
@@ -619,7 +641,7 @@ export function createComponentRegistry(
   const toRecord = (record: InstanceRecord): ComponentRecord => {
     const source = record.meta.qualifiedId === "" ? null : sources.resolveSource(record.meta.qualifiedId)
     const range = record.latestVnode === null ? null : domRangeOf(record.latestVnode)
-    const { name: displayName, inferred: displayNameInferred } = resolveDisplayName(record)
+    const { name: displayName, inferred: displayNameInferred } = resolveDisplayName(record.meta)
     // "anonymous" is a read-time refinement of the structural "object" kind
     // (§2.4 "anonymous or unknown component"): an inline literal with no
     // discoverable name at all — a filename-derived fallback no longer
@@ -650,7 +672,11 @@ export function createComponentRegistry(
   const registry: ComponentRegistry = {
     instrument<T>(qualifiedId: string, def: T): T {
       if (isObjectComponent(def)) {
-        return composeHooks(def, { qualifiedId, def: def as object, kind: "object" }) as T
+        const meta: DefMeta = { qualifiedId, def: def as object, kind: "object" }
+        const wrapped = composeHooks(def, meta)
+        defMetaByAny.set(def as object, meta)
+        defMetaByAny.set(wrapped as object, meta)
+        return wrapped as T
       }
       if (typeof def === "function" && !isClassComponent(def)) {
         // Closure/function component: wrap the factory so the state object it
@@ -661,6 +687,8 @@ export function createComponentRegistry(
           const state = factory(vnode)
           return isObjectComponent(state) ? composeHooks(state, meta) : state
         }
+        defMetaByAny.set(def as object, meta)
+        defMetaByAny.set(wrapped as object, meta)
         return wrapped as T
       }
       // Class components (task 0017, ADR-103 "prototype facade"): a class
@@ -672,7 +700,9 @@ export function createComponentRegistry(
       // (§17; object/closure tracking predates the mode gate and stays
       // unconditional — see the runtime README's mode table).
       if (isClassComponent(def) && getMode() !== "source") {
-        instrumentClassPrototype(def.prototype, { qualifiedId, def: def as object, kind: "class" })
+        const meta: DefMeta = { qualifiedId, def: def as object, kind: "class" }
+        instrumentClassPrototype(def.prototype, meta)
+        defMetaByAny.set(def as object, meta)
         return def as T
       }
       // Route-resolvers (task 0017): runtime-only detection reachable via
@@ -681,7 +711,11 @@ export function createComponentRegistry(
       // `m.route()` config (§6.5 only detects `view`-shaped components), so
       // real end-to-end tracking needs a follow-up transform change.
       if (isRouteResolver(def) && getMode() !== "source") {
-        return composeRouteResolver(def, { qualifiedId, def: def as object, kind: "route-resolver" }) as T
+        const meta: DefMeta = { qualifiedId, def: def as object, kind: "route-resolver" }
+        const wrapped = composeRouteResolver(def, meta)
+        defMetaByAny.set(def as object, meta)
+        defMetaByAny.set(wrapped as object, meta)
+        return wrapped as T
       }
       return def
     },
@@ -705,7 +739,7 @@ export function createComponentRegistry(
     },
     displayNameOf(id) {
       const record = byId.get(id)
-      return record === undefined ? "Anonymous" : resolveDisplayName(record).name
+      return record === undefined ? "Anonymous" : resolveDisplayName(record.meta).name
     },
     flush() {
       generation += 1
@@ -837,6 +871,13 @@ export function createComponentRegistry(
     },
     defOf(id) {
       return byId.get(id)?.meta.def
+    },
+    describeComponentValue(value) {
+      if (value === null || (typeof value !== "object" && typeof value !== "function")) return null
+      const meta = defMetaByAny.get(value as object)
+      if (meta === undefined) return null
+      const location = meta.qualifiedId === "" ? null : sources.resolveSource(meta.qualifiedId)
+      return { ...resolveDisplayName(meta), location }
     },
     componentsSnapshot() {
       const snapshot = new Map<ComponentId, ComponentRecord>()

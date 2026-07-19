@@ -23,6 +23,11 @@ const elementSource: SourceLocation = {
   tagName: "article",
 }
 
+function memoryStorage(): NonNullable<OverlayControllerDeps["storage"]> {
+  const data = new Map<string, string>()
+  return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) }
+}
+
 interface FakeHook extends OverlayHook {
   excluded: Node[]
 }
@@ -258,7 +263,49 @@ describe("overlay controller — selection (§8.7)", () => {
     expect(openInEditor).toHaveBeenCalledWith({ file: "src/UserCard.ts", line: 17, column: 5 })
   })
 
-  it("lets the app click pass through with the pass-through modifier (§8.7)", () => {
+  it("opens the editor on a Meta (Cmd/Win)+Click even when openOnClick is off", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const { controller, setHits } = setup({ options: { picker: { openOnClick: false } }, openInEditor })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent({ metaKey: true }))
+    expect(openInEditor).toHaveBeenCalledWith({ file: "src/UserCard.ts", line: 17, column: 5 })
+    expect(controller.getState().selection.node).toBe(el)
+  })
+
+  it("does not use Ctrl+Click to open the editor — macOS intercepts it as a secondary click before it ever reaches a page", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const { controller, setHits } = setup({ options: { picker: { openOnClick: false } }, openInEditor })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent({ ctrlKey: true }))
+    expect(openInEditor).not.toHaveBeenCalled()
+    expect(controller.getState().selection.node).toBe(el) // still selects, just doesn't auto-open
+  })
+
+  it("openEditorModifier is checked ahead of passThroughModifier when both are configured to the same key", () => {
+    const el = document.createElement("article")
+    document.body.appendChild(el)
+    const { controller, setHits } = setup({ options: { picker: { passThroughModifier: "Meta" } } })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+
+    const event = clickEvent({ metaKey: true })
+    const handled = controller.handleClick(event)
+    expect(handled).toBe(true) // opening wins, rather than passing the click through
+    expect(controller.getState().selection.node).toBe(el)
+  })
+
+  it("lets the app click pass through with the default pass-through modifier, Alt+Shift (§8.7)", () => {
     const el = document.createElement("article")
     document.body.appendChild(el)
     const { controller, setHits } = setup()
@@ -266,12 +313,24 @@ describe("overlay controller — selection (§8.7)", () => {
     setHits([el])
     controller.handlePointerMove(1, 1)
 
-    const event = clickEvent({ metaKey: true }) // default pass-through is Meta
+    const event = clickEvent({ altKey: true, shiftKey: true })
     const handled = controller.handleClick(event)
     expect(handled).toBe(false)
     expect(event.preventDefault).not.toHaveBeenCalled()
     expect(controller.getState().selection.node).toBeNull()
     expect(controller.getState().picking).toBe(true) // still picking
+  })
+
+  it("does not pass through on just Alt, or just Shift — the default requires the full Alt+Shift combo", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const { controller, setHits } = setup()
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent({ altKey: true }))
+    expect(controller.getState().selection.node).toBe(el) // selected, not passed through
   })
 
   it("stays in picker mode after selection in continuous mode", () => {
@@ -296,13 +355,31 @@ describe("overlay controller — keyboard (§8.4)", () => {
     expect(controller.isPicking()).toBe(false)
   })
 
-  it("starts a momentary hold on Alt+Shift and ends it on release", () => {
+  it("actually pressing the toggle chord key-by-key (default hold: Alt) still ends up picking, sticky — the hold shortcut's own modifier prefix must not swallow the chord", () => {
+    // A real keyboard fires one keydown per physical key, in order — Alt,
+    // then Shift, then M — not one synthetic event with every modifier
+    // already set (that shape hid this exact bug: the default hold
+    // shortcut, "Alt", is a prefix of the toggle chord's own modifiers, so
+    // the Alt keydown alone starts a hold *before* Shift/M are pressed).
     const { controller } = setup()
-    controller.handleKeyDown(keyEvent({ key: "Alt", altKey: true, shiftKey: true }))
+    controller.handleKeyDown(keyEvent({ key: "Alt", altKey: true }))
+    expect(controller.isPicking()).toBe(true) // hold started by "Alt" alone
+    controller.handleKeyDown(keyEvent({ key: "Shift", altKey: true, shiftKey: true }))
+    controller.handleKeyDown(keyEvent({ key: "M", altKey: true, shiftKey: true }))
+    expect(controller.isPicking()).toBe(true) // promoted to sticky, not cancelled
+    expect(controller.getState().picker.activation).toBe("toggle")
+
+    // Releasing Alt (the hold's own modifier) afterward must not end the now-sticky session.
+    controller.handleKeyUp(keyEvent({ key: "Alt", altKey: false, shiftKey: true }))
+    expect(controller.isPicking()).toBe(true)
+  })
+
+  it("starts a momentary hold on Alt and ends it on release", () => {
+    const { controller } = setup()
+    controller.handleKeyDown(keyEvent({ key: "Alt", altKey: true }))
     expect(controller.isPicking()).toBe(true)
     expect(controller.getState().picker.activation).toBe("hold")
-    // Release Shift: modifiers no longer match the hold.
-    controller.handleKeyUp(keyEvent({ key: "Shift", altKey: true, shiftKey: false }))
+    controller.handleKeyUp(keyEvent({ key: "Alt", altKey: false }))
     expect(controller.isPicking()).toBe(false)
   })
 
@@ -332,6 +409,102 @@ describe("overlay controller — keyboard (§8.4)", () => {
     const { controller } = setup({ options: { picker: { toggleShortcut: "none", holdShortcut: "off" } } })
     expect(controller.handleKeyDown(keyEvent({ key: "M", altKey: true, shiftKey: true }))).toBe(false)
     expect(controller.isPicking()).toBe(false)
+  })
+})
+
+describe("overlay controller — Settings tab: live picker shortcut editing", () => {
+  it("getState().pickerShortcuts seeds from the app-configured options, enabled by default", () => {
+    const { controller } = setup()
+    const shortcuts = controller.getState().pickerShortcuts
+    expect(shortcuts.holdShortcut).toEqual({ value: "Alt", enabled: true })
+    expect(shortcuts.passThroughModifier).toEqual({ value: "Alt+Shift", enabled: true })
+  })
+
+  it("setPickerShortcutValue rebinds a shortcut and it takes effect immediately, without reconstructing the controller", () => {
+    const { controller } = setup()
+    // Default hold is Alt; rebind it to Ctrl.
+    controller.setPickerShortcutValue("holdShortcut", "Ctrl")
+    expect(controller.getState().pickerShortcuts.holdShortcut).toEqual({ value: "Ctrl", enabled: true })
+
+    expect(controller.handleKeyDown(keyEvent({ key: "Alt", altKey: true }))).toBe(false)
+    expect(controller.isPicking()).toBe(false)
+    expect(controller.handleKeyDown(keyEvent({ key: "Control", ctrlKey: true }))).toBe(true)
+    expect(controller.isPicking()).toBe(true)
+  })
+
+  it("setPickerShortcutEnabled disables a shortcut without discarding its value, and re-enabling restores it", () => {
+    const { controller } = setup()
+    controller.setPickerShortcutEnabled("holdShortcut", false)
+    expect(controller.getState().pickerShortcuts.holdShortcut).toEqual({ value: "Alt", enabled: false })
+    expect(controller.handleKeyDown(keyEvent({ key: "Alt", altKey: true }))).toBe(false)
+    expect(controller.isPicking()).toBe(false)
+
+    controller.setPickerShortcutEnabled("holdShortcut", true)
+    expect(controller.getState().pickerShortcuts.holdShortcut).toEqual({ value: "Alt", enabled: true })
+    expect(controller.handleKeyDown(keyEvent({ key: "Alt", altKey: true }))).toBe(true)
+    expect(controller.isPicking()).toBe(true)
+  })
+
+  it("resetPickerShortcut reverts to the app-configured value, discarding a Settings-tab override", () => {
+    const { controller } = setup({ options: { picker: { holdShortcut: "Ctrl+Shift" } } })
+    controller.setPickerShortcutValue("holdShortcut", "Alt")
+    controller.setPickerShortcutEnabled("holdShortcut", false)
+    controller.resetPickerShortcut("holdShortcut")
+    expect(controller.getState().pickerShortcuts.holdShortcut).toEqual({ value: "Ctrl+Shift", enabled: true })
+  })
+
+  it("persists shortcut overrides and restores them for a fresh controller (e.g. after a Vite full-reload)", () => {
+    const storage = memoryStorage()
+    const first = setup({ storage })
+    first.controller.setPickerShortcutValue("passThroughModifier", "Ctrl")
+    first.controller.setPickerShortcutEnabled("openEditorModifier", false)
+
+    const second = setup({ storage })
+    expect(second.controller.getState().pickerShortcuts.passThroughModifier).toEqual({ value: "Ctrl", enabled: true })
+    expect(second.controller.getState().pickerShortcuts.openEditorModifier.enabled).toBe(false)
+  })
+})
+
+describe("overlay controller — picking banner (§18)", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("shows the banner immediately once picking starts, and auto-hides it a few seconds later while picking continues", () => {
+    vi.useFakeTimers()
+    const { controller } = setup()
+    controller.startPicker()
+    expect(controller.getState().pickingBannerVisible).toBe(true)
+
+    vi.advanceTimersByTime(4000)
+    expect(controller.getState().pickingBannerVisible).toBe(false)
+    expect(controller.isPicking()).toBe(true) // still picking — only the banner hid
+  })
+
+  it("re-arms the auto-hide timer for a fresh picking session", () => {
+    vi.useFakeTimers()
+    const { controller } = setup()
+    controller.startPicker()
+    vi.advanceTimersByTime(4000)
+    expect(controller.getState().pickingBannerVisible).toBe(false)
+
+    controller.stopPicker()
+    controller.startPicker()
+    expect(controller.getState().pickingBannerVisible).toBe(true)
+  })
+
+  it("setShowPickingBanner(false) hides it immediately and persists across a fresh controller", () => {
+    const storage = memoryStorage()
+    const first = setup({ storage })
+    first.controller.startPicker()
+    expect(first.controller.getState().pickingBannerVisible).toBe(true)
+
+    first.controller.setShowPickingBanner(false)
+    expect(first.controller.getState().pickingBannerVisible).toBe(false)
+    expect(first.controller.getState().showPickingBanner).toBe(false)
+
+    const second = setup({ storage })
+    expect(second.controller.getState().showPickingBanner).toBe(false)
   })
 })
 
@@ -751,6 +924,50 @@ describe("Components tab: tree/search/pin/attrs+state (task 0022)", () => {
     expect(expandPreview).not.toHaveBeenCalled()
   })
 
+  it("expandComponentPreview also marks the fetched path expanded (an explicit fetch opens straight to its rows)", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const record = componentRecord({ id: "c:5" as ComponentId, domRange: { first: el, last: el } })
+    const replacement: PreviewNode = { kind: "primitive", type: "number", value: 42 }
+    const hook = fakeHook({ componentRecord: () => record, expandPreview: () => replacement })
+    const { controller } = setup({ hook })
+    controller.selectComponent("c:5" as ComponentId)
+
+    expect(controller.getState().componentTree.expandedAttrsPaths.has("prop:user")).toBe(false)
+    controller.expandComponentPreview("attrs", [{ kind: "prop", key: "user" }])
+    expect(controller.getState().componentTree.expandedAttrsPaths.has("prop:user")).toBe(true)
+  })
+
+  it("togglePreviewExpanded flips a path's local expand state without touching fetch overrides", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const record = componentRecord({ id: "c:5" as ComponentId, domRange: { first: el, last: el } })
+    const { controller } = setup({ hook: fakeHook({ componentRecord: () => record }) })
+    controller.selectComponent("c:5" as ComponentId)
+    const path = [{ kind: "prop" as const, key: "tasks" }, { kind: "index" as const, index: 0 }]
+
+    controller.togglePreviewExpanded("state", path)
+    expect(controller.getState().componentTree.expandedStatePaths.has("prop:tasks/index:0")).toBe(true)
+    expect(controller.getState().componentTree.stateOverrides.size).toBe(0)
+
+    controller.togglePreviewExpanded("state", path)
+    expect(controller.getState().componentTree.expandedStatePaths.has("prop:tasks/index:0")).toBe(false)
+  })
+
+  it("clearing the selection resets local preview expand state", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const record = componentRecord({ id: "c:5" as ComponentId, domRange: { first: el, last: el } })
+    const { controller } = setup({ hook: fakeHook({ componentRecord: () => record }) })
+    controller.selectComponent("c:5" as ComponentId)
+    controller.togglePreviewExpanded("attrs", [{ kind: "prop", key: "a" }])
+    expect(controller.getState().componentTree.expandedAttrsPaths.size).toBe(1)
+
+    controller.clearSelection()
+    controller.selectComponent("c:5" as ComponentId)
+    expect(controller.getState().componentTree.expandedAttrsPaths.size).toBe(0)
+  })
+
   it("gates attrs/state previews on mode:full and componentTree.captureAttrs/captureState (§11.1, §17)", () => {
     const el = document.createElement("div")
     document.body.appendChild(el)
@@ -800,11 +1017,6 @@ describe("Components tab: tree/search/pin/attrs+state (task 0022)", () => {
 })
 
 describe("persistence across a reload (task 0022 follow-up)", () => {
-  function memoryStorage(): NonNullable<OverlayControllerDeps["storage"]> {
-    const data = new Map<string, string>()
-    return { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) }
-  }
-
   it("survives a Vite full-reload's fresh controller construction: activeTab and Components-tab search are restored from the same storage", () => {
     const storage = memoryStorage()
     // "Before the reload": open the Components tab and type a search query.

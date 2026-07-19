@@ -49,12 +49,15 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   in editor" backgrounds the browser tab long enough for it to drop) triggers
   a full page reload (Vite's own behavior, not this package's), which would
   otherwise silently reset the panel.
-- **Picker (§8.4):** toggle with `Alt+Shift+M`, momentary hold with `Alt+Shift`,
+- **Picker (§8.4):** toggle with `Alt+Shift+M`, momentary hold with `Alt`,
   `Enter` opens the current source, `Escape` cancels. Every shortcut is
-  remappable and can be disabled (`"none"`). Plain `Alt+Click` is never bound.
-  Picking never jumps to the editor by itself (`picker.openOnClick` defaults
-  to `false`) — a pick lands its result in the docked panel in place; opening
-  the editor is a separate, explicit toolbar action.
+  remappable (right in the Settings tab, or via options) and can be disabled
+  (`"none"`). Picking never jumps to the editor by itself (`picker.openOnClick`
+  defaults to `false`) — a pick lands its result in the docked panel in place;
+  `picker.openEditorModifier` (default Meta/Cmd/Win) jumps straight to the
+  editor on click instead, and `picker.passThroughModifier` (default
+  `Alt+Shift`) lets one click through to the app underneath without leaving
+  picking mode (§8.7).
 - **Hover (§8.5) & highlight (§8.6):** a capture-phase pointer listener uses
   `document.elementsFromPoint`, ignores the overlay host, resolves the best
   source/component mapping through the hook, and draws separate fixed-position

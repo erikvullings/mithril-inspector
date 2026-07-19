@@ -46,6 +46,27 @@ describe("editor endpoint receives the expected file and line (§19.2 assertion 
     expect(invocation.column).toBe(column)
   })
 
+  it("a Meta (Cmd/Win)+Click while picking selects and opens the editor directly, without a separate toolbar click", async () => {
+    // Not Ctrl: macOS intercepts Ctrl+Click as a secondary click (opens the
+    // native context menu) before any `click` event reaches the page, so
+    // Meta is the modifier the overlay actually binds this to (§8.7).
+    const page = scenario.page()
+    await page.hover("#greeting")
+    await page.keyboard.down("Meta")
+    try {
+      await page.click("#greeting")
+    } finally {
+      await page.keyboard.up("Meta")
+    }
+
+    const invocation = await scenario.editorStub.waitForInvocation()
+    const { line, column } = positionOf(join(scenario.fixture.root, "src", "Greeting.ts"), 'm("h1#greeting')
+
+    expect(invocation.file).toBe(join(scenario.fixture.root, "src", "Greeting.ts"))
+    expect(invocation.line).toBe(line)
+    expect(invocation.column).toBe(column)
+  })
+
   it("never spawns a real editor process (only the harmless stub script runs)", async () => {
     const page = scenario.page()
     await page.hover("#greeting")

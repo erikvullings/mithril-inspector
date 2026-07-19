@@ -24,7 +24,9 @@ import {
 } from "./icons.js"
 import type { MappingInfo, MappingPrecision } from "./mapping.js"
 import type { OverlayTheme } from "./options.js"
-import { pathKey, summarizeNode } from "./preview.js"
+import { compactContainerPreview, isContainerNode, pathKey, shownCountOf, summarizeNode, totalCountOf } from "./preview.js"
+import type { ContainerNode } from "./preview.js"
+import { parseShortcut, PICKER_SHORTCUT_KEYS, type PickerShortcutKey, type PickerShortcutSetting } from "./shortcuts.js"
 import type { PinnedRow, TreeRow } from "./tree.js"
 
 /**
@@ -118,11 +120,11 @@ function hoverBadge(state: OverlayViewState): Children {
 }
 
 function pickingBanner(state: OverlayViewState): Children {
-  if (!state.picking) return null
+  if (!state.pickingBannerVisible) return null
   return m(
     "div.mi-picking-banner",
     { role: "status", "aria-live": "polite" },
-    "Inspecting — click to select, Esc to cancel",
+    "Inspecting — click to select, Cmd/Win+click to open in editor, Esc to cancel",
   )
 }
 
@@ -136,6 +138,7 @@ function collapsedToggle(controller: OverlayController, state: OverlayViewState)
         "button.mi-toggle-btn",
         {
           type: "button",
+          title: "Open Mithril Inspector",
           "aria-label": "Open Mithril Inspector",
           onclick: () => controller.setCollapsed(false),
         },
@@ -146,6 +149,7 @@ function collapsedToggle(controller: OverlayController, state: OverlayViewState)
         {
           type: "button",
           class: state.picking ? "mi-active" : undefined,
+          title: state.picking ? "Stop inspecting" : "Pick an element",
           "aria-label": state.picking ? "Stop inspecting" : "Pick an element",
           "aria-pressed": state.picking ? "true" : "false",
           disabled: !controller.options.picker.enabled,
@@ -410,6 +414,7 @@ function treeRow(
             "button.mi-tree-chevron",
             {
               type: "button",
+              title: row.expanded ? "Collapse" : "Expand",
               "aria-label": row.expanded ? "Collapse" : "Expand",
               onclick: (event: Event) => {
                 event.stopPropagation()
@@ -500,121 +505,161 @@ function treeSearchRow(controller: OverlayController, state: OverlayViewState): 
   ])
 }
 
-/** Renders one entry's label + value for an object/map/array/set/typed-array container. */
-function previewEntries(
-  controller: OverlayController,
-  target: "attrs" | "state",
-  node: PreviewNode,
-  overrides: ReadonlyMap<string, PreviewNode>,
-): Children {
+/** Everything `previewNodeView`/`previewEntries` thread through a recursive render pass. */
+interface PreviewContext {
+  readonly controller: OverlayController
+  readonly target: "attrs" | "state"
+  readonly overrides: ReadonlyMap<string, PreviewNode>
+  /** `pathKey`s of nested containers the user has locally expanded past their default collapsed preview. */
+  readonly expandedPaths: ReadonlySet<string>
+}
+
+/**
+ * Renders one entry's label + value for an object/map/array/set/typed-array
+ * container. The root section (§8.3's Attrs/State) renders each as its own
+ * full-width `<li>` row, matching the panel's existing top-level field list.
+ * A nested (non-root) container instead renders each as an inline
+ * `span.mi-preview-entry` (comma-separated via CSS, styles.ts) so the whole
+ * expanded entry — its "key:"/index label, toggle, and fields — reads as one
+ * flowing, wrapping line, the same as the collapsed compact preview it
+ * replaces, rather than a rigid one-field-per-row list.
+ */
+function previewEntries(ctx: PreviewContext, node: PreviewNode, flow: boolean): Children {
+  const tag = flow ? "span.mi-preview-entry" : "li"
   switch (node.kind) {
     case "object":
       return node.entries.map((entry) =>
-        m("li", { key: entry.key }, [
-          m("span.mi-preview-key", `${entry.key}: `),
-          previewNodeView(controller, target, entry.node, overrides),
-        ]),
+        m(tag, { key: entry.key }, [m("span.mi-preview-key", `${entry.key}: `), previewNodeView(ctx, entry.node)]),
       )
     case "map":
       return node.entries.map((entry, i) =>
-        m("li", { key: node.offset + i }, [
-          previewNodeView(controller, target, entry.key, overrides),
+        m(tag, { key: node.offset + i }, [
+          previewNodeView(ctx, entry.key),
           m("span.mi-preview-key", " => "),
-          previewNodeView(controller, target, entry.value, overrides),
+          previewNodeView(ctx, entry.value),
         ]),
       )
     case "array":
     case "typed-array":
       return node.items.map((item, i) =>
-        m("li", { key: node.offset + i }, [
-          m("span.mi-preview-key", `${node.offset + i}: `),
-          previewNodeView(controller, target, item, overrides),
-        ]),
+        m(tag, { key: node.offset + i }, [m("span.mi-preview-key", `${node.offset + i}: `), previewNodeView(ctx, item)]),
       )
     case "set":
-      return node.items.map((item, i) =>
-        m("li", { key: node.offset + i }, previewNodeView(controller, target, item, overrides)),
-      )
+      return node.items.map((item, i) => m(tag, { key: node.offset + i }, previewNodeView(ctx, item)))
     default:
       return null
   }
 }
 
-type ContainerNode = Extract<PreviewNode, { kind: "object" | "array" | "map" | "set" | "typed-array" }>
-
-function isContainerNode(node: PreviewNode): node is ContainerNode {
-  switch (node.kind) {
-    case "object":
-    case "array":
-    case "map":
-    case "set":
-    case "typed-array":
-      return true
-    default:
-      return false
-  }
+/** The "Show more (N more)" pagination round-trip button for a truncated container's next page (§7.4). */
+function showMoreButton(ctx: PreviewContext, node: ContainerNode, effective: ContainerNode): Children {
+  if (!effective.truncated) return null
+  const shown = shownCountOf(effective)
+  const remaining = totalCountOf(effective) - (effective.offset + shown)
+  return m(
+    "button.mi-btn.mi-btn-small",
+    {
+      type: "button",
+      onclick: () => ctx.controller.expandComponentPreview(ctx.target, node.path, { offset: effective.offset + shown }),
+    },
+    `Show more (${remaining} more)`,
+  )
 }
 
-/** How many entries/items a container has already fetched, for the "N more" pagination label. */
-function shownCountOf(node: ContainerNode): number {
-  if (node.kind === "object" || node.kind === "map") return node.entries.length
-  return node.items.length
+/**
+ * A nested (non-root) container's default, collapsed state (§7.4): a flat
+ * "+" toggle plus a one-line devtools-style preview of its already-loaded
+ * shallow contents (e.g. `{ id: 1, label: "Write the changelog", done: false
+ * }`) — built locally from `compactContainerPreview`, no fetch needed — so
+ * the contents are visible without expanding at all. Expanding is then a
+ * pure local UI toggle (`togglePreviewExpanded`), independent of the
+ * fetch-driven `attrsOverrides`/`stateOverrides` round-trip used only for
+ * data past `maxDepth`/`maxEntries`.
+ */
+function collapsedContainerPreview(ctx: PreviewContext, node: ContainerNode, effective: ContainerNode): Vnode {
+  return m("span.mi-preview-collapsed", [
+    m(
+      "button.mi-preview-toggle",
+      {
+        type: "button",
+        title: "Expand",
+        "aria-label": "Expand",
+        onclick: () => ctx.controller.togglePreviewExpanded(ctx.target, node.path),
+      },
+      "+",
+    ),
+    m("span.mi-preview-inline", compactContainerPreview(effective)),
+  ])
 }
 
-function totalCountOf(node: ContainerNode): number {
-  if (node.kind === "object" || node.kind === "map" || node.kind === "set") return node.size
-  return node.length
+/**
+ * The "−" collapse toggle for an expanded, non-root container. Returned as a
+ * standalone sibling (not wrapped together with the `<ul>` below) so it lands
+ * in the very same flex-row position its "+" counterpart had while collapsed
+ * — right after the "key: " label, on the same line — rather than the
+ * `<ul>`'s own block layout pushing it down.
+ */
+function collapseToggleButton(ctx: PreviewContext, node: ContainerNode): Vnode {
+  return m(
+    "button.mi-preview-toggle",
+    {
+      type: "button",
+      title: "Collapse",
+      "aria-label": "Collapse",
+      onclick: () => ctx.controller.togglePreviewExpanded(ctx.target, node.path),
+    },
+    "−",
+  )
 }
 
 /**
  * Recursively renders one preview node (§7.4), fetching getter/max-depth/pagination
- * expansions on demand. `isRoot` suppresses the container's own type summary
- * ("Object", "Array(3)") — redundant at the top of an Attrs/State section,
- * which already carries that label — so the section reads as a plain
- * key/value list instead of a generic "Object" dump (see `previewSection`).
+ * expansions on demand. The root container (§8.3's Attrs/State section) always
+ * shows its rows directly, with no type-label line and no collapse toggle — see
+ * `previewSection`. Any other, nested container defaults to the collapsed
+ * one-line preview above and only shows its expanded row list (again with no
+ * redundant "Object"/"Array(3)" label, since the rows already convey that)
+ * once the user has explicitly toggled it open.
+ *
+ * Returns `Children` rather than a single `Vnode`: an expanded non-root
+ * container's toggle button and its `<ul>` of rows are returned as sibling
+ * items (not one wrapping element) so they land directly in the entry's own
+ * `<li>` — a flex row — letting the toggle stay put right after "key: " while
+ * the `<ul>` wraps onto its own indented line below (§7.4's `flex-basis: 100%`
+ * on `.mi-preview-entries`, see styles.ts).
  */
-function previewNodeView(
-  controller: OverlayController,
-  target: "attrs" | "state",
-  node: PreviewNode,
-  overrides: ReadonlyMap<string, PreviewNode>,
-  isRoot = false,
-): Vnode {
+function previewNodeView(ctx: PreviewContext, node: PreviewNode, isRoot = false): Children {
   if (node.kind === "getter" || node.kind === "max-depth") {
-    const resolved = overrides.get(pathKey(node.path))
-    if (resolved !== undefined) return previewNodeView(controller, target, resolved, overrides, isRoot)
+    const resolved = ctx.overrides.get(pathKey(node.path))
+    if (resolved !== undefined) return previewNodeView(ctx, resolved, isRoot)
     return m("span.mi-preview-getter", [
       m("span.mi-muted", summarizeNode(node)),
       m(
         "button.mi-btn.mi-btn-small",
-        { type: "button", onclick: () => controller.expandComponentPreview(target, node.path) },
+        { type: "button", onclick: () => ctx.controller.expandComponentPreview(ctx.target, node.path) },
         node.kind === "getter" ? "Evaluate" : "Expand",
       ),
     ])
   }
   if (isContainerNode(node)) {
-    const paged = node.truncated ? overrides.get(pathKey(node.path)) : undefined
+    const paged = node.truncated ? ctx.overrides.get(pathKey(node.path)) : undefined
     const effective = paged !== undefined && isContainerNode(paged) ? paged : node
-    const shown = shownCountOf(effective)
-    const remaining = totalCountOf(effective) - (effective.truncated ? effective.offset + shown : totalCountOf(effective))
-    return m("div.mi-preview-node", [
-      isRoot ? null : m("span.mi-preview-summary", summarizeNode(effective)),
-      m(
-        "ul.mi-preview-entries",
-        { class: isRoot ? "mi-preview-root" : undefined },
-        previewEntries(controller, target, effective, overrides),
-      ),
-      effective.truncated
-        ? m(
-            "button.mi-btn.mi-btn-small",
-            {
-              type: "button",
-              onclick: () => controller.expandComponentPreview(target, node.path, { offset: effective.offset + shown }),
-            },
-            `Show more (${remaining} more)`,
-          )
-        : null,
-    ])
+    if (!isRoot && !ctx.expandedPaths.has(pathKey(node.path))) {
+      return collapsedContainerPreview(ctx, node, effective)
+    }
+    if (isRoot) {
+      const entriesList = m("ul.mi-preview-entries.mi-preview-root", previewEntries(ctx, effective, false))
+      return m("div.mi-preview-node", [entriesList, showMoreButton(ctx, node, effective)])
+    }
+    return [collapseToggleButton(ctx, node), previewEntries(ctx, effective, true), showMoreButton(ctx, node, effective)]
+  }
+  if (node.kind === "component" && node.location !== null) {
+    const location = node.location
+    return m(
+      "button.mi-preview-value.mi-preview-component-link",
+      { type: "button", title: "Open in editor", onclick: () => ctx.controller.openLocationInEditor(location) },
+      summarizeNode(node),
+    )
   }
   return m("span.mi-preview-value", summarizeNode(node))
 }
@@ -627,20 +672,21 @@ function previewGateMessage(gating: ComponentTreeGating, label: string): string 
   return null
 }
 
-function previewSection(controller: OverlayController, state: OverlayViewState, target: "attrs" | "state"): Vnode {
+function previewSection(controller: OverlayController, state: OverlayViewState, target: "attrs" | "state"): Children {
   const { componentTree } = state
   const label = target === "attrs" ? "attrs" : "state"
   const gateMessage = previewGateMessage(componentTree.gating, label)
   if (gateMessage !== null) return m("p.mi-muted", gateMessage)
   const node = target === "attrs" ? componentTree.attrsPreview : componentTree.statePreview
   const overrides = target === "attrs" ? componentTree.attrsOverrides : componentTree.stateOverrides
+  const expandedPaths = target === "attrs" ? componentTree.expandedAttrsPaths : componentTree.expandedStatePaths
   if (node === null) return m("p.mi-muted", `No ${label} available.`)
   // An empty, non-truncated container (no props/fields at all) reads more
   // clearly as an explicit "none" than as a bare, content-free "Object".
   if (isContainerNode(node) && !node.truncated && shownCountOf(node) === 0) {
     return m("p.mi-muted", `No ${label}.`)
   }
-  return previewNodeView(controller, target, node, overrides, true)
+  return previewNodeView({ controller, target, overrides, expandedPaths }, node, true)
 }
 
 /** The left pane: search, pinned, and the component tree — independent of whether a component is selected. */
@@ -702,21 +748,70 @@ function detailPane(controller: OverlayController, state: OverlayViewState): Vno
   ])
 }
 
-function shortcutRow(label: string, value: string): Vnode {
-  const shown = value.trim() === "" ? "(disabled)" : value
-  return m("div.mi-row", [m("span.mi-key", label), m("span.mi-val.mi-mono", shown)])
+const PICKER_SHORTCUT_LABELS: Record<PickerShortcutKey, string> = {
+  toggleShortcut: "Toggle",
+  holdShortcut: "Hold",
+  openShortcut: "Open",
+  cancelShortcut: "Cancel",
+  openEditorModifier: "Open editor on click",
+  passThroughModifier: "Pass-through",
+}
+
+/** Whether a shortcut still matches the app-configured value from `options.picker` (both the raw string and its implied enabled state) — controls the "Reset" button's visibility. */
+function isDefaultShortcut(controller: OverlayController, key: PickerShortcutKey, setting: PickerShortcutSetting): boolean {
+  const configuredValue = controller.options.picker[key]
+  const configuredEnabled = parseShortcut(configuredValue) !== null
+  return setting.value === configuredValue && setting.enabled === configuredEnabled
+}
+
+/** One rebindable shortcut row (Settings tab): an enable checkbox, its label, a live-editable text input, and — once changed — a button to revert to the app-configured default. */
+function shortcutRow(controller: OverlayController, key: PickerShortcutKey, setting: PickerShortcutSetting): Vnode {
+  const label = PICKER_SHORTCUT_LABELS[key]
+  return m("div.mi-shortcut-row", [
+    m("input.mi-shortcut-enabled", {
+      type: "checkbox",
+      checked: setting.enabled,
+      title: setting.enabled ? `Disable ${label}` : `Enable ${label}`,
+      "aria-label": setting.enabled ? `Disable ${label}` : `Enable ${label}`,
+      onclick: (event: Event) => controller.setPickerShortcutEnabled(key, (event.target as HTMLInputElement).checked),
+    }),
+    m("span.mi-key", label),
+    m("input.mi-shortcut-input.mi-mono", {
+      type: "text",
+      value: setting.value,
+      disabled: !setting.enabled,
+      spellcheck: false,
+      "aria-label": `${label} shortcut`,
+      oninput: (event: Event) => controller.setPickerShortcutValue(key, (event.target as HTMLInputElement).value),
+    }),
+    isDefaultShortcut(controller, key, setting)
+      ? null
+      : m(
+          "button.mi-btn-small",
+          { type: "button", title: "Reset to default", onclick: () => controller.resetPickerShortcut(key) },
+          "Reset",
+        ),
+  ])
+}
+
+/** Toggle for the picking-active banner (§18) — a plain on/off, unlike the shortcut rows above (nothing to type or reset). */
+function bannerToggleRow(controller: OverlayController, state: OverlayViewState): Vnode {
+  return m("div.mi-row-check", [
+    m("input#mi-show-banner", {
+      type: "checkbox",
+      checked: state.showPickingBanner,
+      onclick: (event: Event) => controller.setShowPickingBanner((event.target as HTMLInputElement).checked),
+    }),
+    m("label", { for: "mi-show-banner" }, 'Show the "Inspecting…" banner while picking (auto-hides after a few seconds)'),
+  ])
 }
 
 function settingsView(controller: OverlayController, state: OverlayViewState): Vnode {
-  const { picker } = controller.options
   return m("div.mi-settings", [
     m("div.mi-section-title", "Shortcuts"),
-    m("p.mi-muted", "Configured via the plugin options; each can be changed or disabled."),
-    shortcutRow("Toggle", picker.toggleShortcut),
-    shortcutRow("Hold", picker.holdShortcut),
-    shortcutRow("Open", picker.openShortcut),
-    shortcutRow("Cancel", picker.cancelShortcut),
-    shortcutRow("Pass-through", picker.passThroughModifier),
+    m("p.mi-muted", "Rebind or disable any shortcut below — e.g. if your app already uses it. Changes apply immediately and persist across reloads."),
+    PICKER_SHORTCUT_KEYS.map((key) => shortcutRow(controller, key, state.pickerShortcuts[key])),
+    bannerToggleRow(controller, state),
     m("hr.mi-hr"),
     m("div.mi-section-title", "Diagnostics"),
     diagnosticsView(state),

@@ -239,6 +239,23 @@ export interface PreviewFunctionNode {
   readonly name: string
 }
 
+/**
+ * A value the runtime recognizes as a Mithril component definition it
+ * instrumented (object/closure/class/route-resolver) — e.g. a `PageDef.component`
+ * field carried as plain data. Serialized as its resolved display name (§9.2's
+ * same tiers used for the component tree) instead of an object dump of its
+ * `view`/lifecycle-hook own properties, which are wrapper implementation
+ * detail, not application data.
+ */
+export interface PreviewComponentNode {
+  readonly kind: "component"
+  readonly name: string
+  /** True for a §9.2 fallback tier (filename-derived, "Anonymous") rather than an explicit or declared name. */
+  readonly inferred: boolean
+  /** The component's declaration location, if resolved — lets the UI open it in the editor directly, `null` when unresolvable. */
+  readonly location: SourceLocation | null
+}
+
 export interface PreviewDomNodeNode {
   readonly kind: "dom-node"
   readonly nodeType: number
@@ -335,6 +352,7 @@ export type PreviewNode =
   | PreviewBigIntNode
   | PreviewSymbolNode
   | PreviewFunctionNode
+  | PreviewComponentNode
   | PreviewDomNodeNode
   | PreviewErrorNode
   | PreviewPromiseNode

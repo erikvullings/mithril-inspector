@@ -117,4 +117,13 @@ describe("isModifierHeld", () => {
     expect(isModifierHeld(held, "")).toBe(false)
     expect(isModifierHeld(held, "banana")).toBe(false)
   })
+
+  it("requires every modifier in a compound combo (e.g. the pass-through default, Alt+Shift), ignoring unlisted ones", () => {
+    expect(isModifierHeld({ altKey: true, shiftKey: true, ctrlKey: false, metaKey: false }, "Alt+Shift")).toBe(true)
+    // Extra, unlisted modifier held too — still matches (permissive on extras).
+    expect(isModifierHeld({ altKey: true, shiftKey: true, ctrlKey: false, metaKey: true }, "Alt+Shift")).toBe(true)
+    // Only one of the two held — doesn't match.
+    expect(isModifierHeld({ altKey: true, shiftKey: false, ctrlKey: false, metaKey: false }, "Alt+Shift")).toBe(false)
+    expect(isModifierHeld({ altKey: false, shiftKey: true, ctrlKey: false, metaKey: false }, "Alt+Shift")).toBe(false)
+  })
 })

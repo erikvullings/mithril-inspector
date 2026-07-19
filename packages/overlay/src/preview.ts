@@ -32,6 +32,83 @@ export function isExpandable(node: PreviewNode): boolean {
   return "truncated" in node && node.truncated
 }
 
+export type ContainerNode = Extract<PreviewNode, { kind: "object" | "array" | "map" | "set" | "typed-array" }>
+
+export function isContainerNode(node: PreviewNode): node is ContainerNode {
+  switch (node.kind) {
+    case "object":
+    case "array":
+    case "map":
+    case "set":
+    case "typed-array":
+      return true
+    default:
+      return false
+  }
+}
+
+/** How many entries/items a container has already fetched, for the "N more" pagination label. */
+export function shownCountOf(node: ContainerNode): number {
+  if (node.kind === "object" || node.kind === "map") return node.entries.length
+  return node.items.length
+}
+
+export function totalCountOf(node: ContainerNode): number {
+  if (node.kind === "object" || node.kind === "map" || node.kind === "set") return node.size
+  return node.length
+}
+
+/** How many entries/items {@link compactContainerPreview} inlines before falling back to a trailing "…". */
+const COMPACT_PREVIEW_MAX_ENTRIES = 5
+
+function joinCompact(parts: readonly string[], hasMore: boolean): string {
+  if (parts.length === 0) return hasMore ? "…" : ""
+  return hasMore ? `${parts.join(", ")}, …` : parts.join(", ")
+}
+
+/**
+ * A one-line, devtools-console-style preview of a container's already-loaded
+ * shallow contents (§7.4) — e.g. `{ id: 1, label: "Write the changelog",
+ * done: false }` — built purely from data the initial `serialize()` already
+ * returned, no `expandPreview` round-trip. Nested containers within it are
+ * shown via their own `summarizeNode` type summary (`Array(2)`, `User`, …),
+ * not recursed into, matching the one-level-deep convention of a devtools
+ * console object preview.
+ */
+export function compactContainerPreview(node: ContainerNode): string {
+  const shownMore = (total: number, shown: number): boolean => node.truncated || total > shown
+  switch (node.kind) {
+    case "object": {
+      const shown = node.entries.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
+      const body = joinCompact(
+        shown.map((entry) => `${entry.key}: ${summarizeNode(entry.node)}`),
+        shownMore(node.entries.length, shown.length),
+      )
+      const prefix = node.className !== "Object" ? `${node.className} ` : ""
+      return body === "" ? `${prefix}{}` : `${prefix}{ ${body} }`
+    }
+    case "array":
+    case "typed-array": {
+      const shown = node.items.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
+      const body = joinCompact(shown.map((item) => summarizeNode(item)), shownMore(node.items.length, shown.length))
+      return body === "" ? "[]" : `[ ${body} ]`
+    }
+    case "map": {
+      const shown = node.entries.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
+      const body = joinCompact(
+        shown.map((entry) => `${summarizeNode(entry.key)} => ${summarizeNode(entry.value)}`),
+        shownMore(node.entries.length, shown.length),
+      )
+      return body === "" ? `${summarizeNode(node)} {}` : `${summarizeNode(node)} { ${body} }`
+    }
+    case "set": {
+      const shown = node.items.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
+      const body = joinCompact(shown.map((item) => summarizeNode(item)), shownMore(node.items.length, shown.length))
+      return body === "" ? `${summarizeNode(node)} {}` : `${summarizeNode(node)} { ${body} }`
+    }
+  }
+}
+
 /** A short one-line label for a node's own value (containers summarize their size, not their contents). */
 export function summarizeNode(node: PreviewNode): string {
   switch (node.kind) {
@@ -52,6 +129,8 @@ export function summarizeNode(node: PreviewNode): string {
       return node.description === null ? "Symbol()" : `Symbol(${node.description})`
     case "function":
       return node.name.length > 0 ? `ƒ ${node.name}()` : "ƒ ()"
+    case "component":
+      return `<${node.name}>`
     case "dom-node":
       if (node.tagName !== null) return `<${node.tagName}>`
       return node.nodeType === 3 ? "#text" : "#node"

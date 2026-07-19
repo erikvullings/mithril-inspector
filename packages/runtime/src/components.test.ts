@@ -1216,6 +1216,66 @@ describe("display name resolution (§9.2, task 0018)", () => {
   })
 })
 
+describe("describeComponentValue (task: name component values instead of dumping lifecycle hooks)", () => {
+  const s1Location = {
+    moduleId: MODULE,
+    sourceId: "s1",
+    absoluteFile: "/project/src/App.ts",
+    relativeFile: "src/App.ts",
+    line: 3,
+    column: 1,
+    kind: "component-declaration",
+    displayName: "App",
+  }
+  const s2Location = {
+    moduleId: MODULE,
+    sourceId: "s2",
+    absoluteFile: "/project/src/App.ts",
+    relativeFile: "src/App.ts",
+    line: 8,
+    column: 1,
+    kind: "component-declaration",
+    displayName: "Row",
+  }
+
+  it("resolves an object component's display name and declaration location from either its original or wrapped reference, mounted or not", () => {
+    const { registry } = setup()
+    const original = { view: () => m("div.app") } as Component
+    const wrapped = registry.instrument(`${MODULE}:s1`, original)
+
+    // Never mounted — describeComponentValue must not require a live instance.
+    expect(registry.describeComponentValue(original)).toEqual({ name: "App", inferred: false, location: s1Location })
+    expect(registry.describeComponentValue(wrapped)).toEqual({ name: "App", inferred: false, location: s1Location })
+  })
+
+  it("resolves a closure component's wrapped factory reference", () => {
+    const { registry } = setup()
+    const Counter = (): Component => ({ view: () => m("div") })
+    const wrapped = registry.instrument(`${MODULE}:s2`, Counter)
+
+    expect(registry.describeComponentValue(wrapped)).toEqual({ name: "Row", inferred: false, location: s2Location })
+  })
+
+  it("resolves a class component by its own (unwrapped) reference", () => {
+    const { registry } = setup({ mode: "full" })
+    class Widget implements Component {
+      view() {
+        return m("div.widget")
+      }
+    }
+    registry.instrument(`${MODULE}:s1`, Widget)
+
+    expect(registry.describeComponentValue(Widget)).toEqual({ name: "App", inferred: false, location: s1Location })
+  })
+
+  it("returns null for a value that was never instrument()-ed, even if it looks component-shaped", () => {
+    const { registry } = setup()
+    expect(registry.describeComponentValue({ view: () => m("div") })).toBeNull()
+    expect(registry.describeComponentValue(42)).toBeNull()
+    expect(registry.describeComponentValue(null)).toBeNull()
+  })
+})
+
 describe("component ancestry (§9.1, §19.2.6, task 0019)", () => {
   const ANCESTRY_MODULE: ModuleId = "m:src/Ancestry.ts"
 

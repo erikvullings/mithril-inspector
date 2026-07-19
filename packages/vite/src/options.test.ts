@@ -24,7 +24,7 @@ describe("resolveInspectorOptions", () => {
     expect(resolved.picker).toEqual({
       enabled: true,
       toggleShortcut: "Alt+Shift+M",
-      holdShortcut: "Alt+Shift",
+      holdShortcut: "Alt",
       openOnClick: false,
       continuous: false,
     })

@@ -637,17 +637,27 @@ export function overlayCss(): string {
 .mi-history-entry.mi-crumb-current { background: var(--mi-highlight-fill); color: var(--mi-accent); }
 .mi-history-entry-summary { color: var(--mi-muted); font-family: var(--mi-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mi-history-diff { list-style: none; padding: 0; margin: 0; font-family: var(--mi-mono); font-size: 12px; }
-.mi-history-diff li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; padding: 4px 0; border-bottom: 1px solid var(--mi-border); }
+.mi-history-diff li {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  padding: 5px 0 5px 12px;
+  border-bottom: 1px solid var(--mi-border);
+}
 .mi-history-diff li:last-child { border-bottom: 0; }
-.mi-history-diff-added { border-left: 3px solid var(--mi-exact); padding-left: 6px; }
-.mi-history-diff-removed { border-left: 3px solid var(--mi-danger); padding-left: 6px; }
-.mi-history-diff-changed { border-left: 3px solid var(--mi-inferred); padding-left: 6px; }
+/* The status color as an inset bar (not a flush border-left) so it never touches the row's own text and leaves a visible gap against a neighboring bar, e.g. an expanded entry's own bar vs. its nested compare table's row bars just to its right. */
+.mi-history-diff li::before { content: ""; position: absolute; left: 0; top: 3px; bottom: 3px; width: 3px; border-radius: 1.5px; }
+.mi-history-diff li.mi-history-diff-added::before { background: var(--mi-exact); }
+.mi-history-diff li.mi-history-diff-removed::before { background: var(--mi-danger); }
+.mi-history-diff li.mi-history-diff-changed::before { background: var(--mi-inferred); }
 /* An expanded (object/array) diff entry (task 0028): the key becomes its own line, its value/table stacks below instead of flowing inline. */
 .mi-history-diff-expanded { display: block; }
 .mi-history-diff-expanded > .mi-preview-key { display: block; font-weight: 600; margin-bottom: 4px; }
 .mi-history-value-entries { list-style: none; margin: 0; padding-left: 14px; }
 .mi-history-value-entries li { padding: 1px 0; }
-.mi-history-compare { width: 100%; border-collapse: collapse; margin-top: 2px; }
+.mi-history-compare { width: 100%; border-collapse: collapse; margin-top: 4px; }
 .mi-history-compare th {
   text-align: left;
   font-size: 10px;
@@ -655,14 +665,17 @@ export function overlayCss(): string {
   letter-spacing: 0.04em;
   color: var(--mi-muted);
   font-weight: 700;
-  padding: 2px 6px;
+  padding: 3px 6px;
   border-bottom: 1px solid var(--mi-border);
 }
-.mi-history-compare td { vertical-align: top; padding: 3px 6px; border-bottom: 1px solid var(--mi-border); word-break: break-word; }
-.mi-history-compare-key { color: var(--mi-muted); white-space: nowrap; }
-.mi-history-compare-added .mi-history-compare-key { border-left: 3px solid var(--mi-exact); padding-left: 5px; }
-.mi-history-compare-removed .mi-history-compare-key { border-left: 3px solid var(--mi-danger); padding-left: 5px; }
-.mi-history-compare-changed .mi-history-compare-key { border-left: 3px solid var(--mi-inferred); padding-left: 5px; }
+.mi-history-compare th:first-child { padding-left: 12px; }
+.mi-history-compare td { vertical-align: top; padding: 4px 6px; border-bottom: 1px solid var(--mi-border); word-break: break-word; }
+/* Same inset-bar treatment as the outer diff list, with its own top/bottom inset so two vertically-adjacent rows' bars (e.g. a "changed" row directly above an "added" row) leave a visible gap instead of abutting into what reads as one bar. */
+.mi-history-compare td.mi-history-compare-key { position: relative; color: var(--mi-muted); white-space: nowrap; padding-left: 12px; }
+.mi-history-compare td.mi-history-compare-key::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 1.5px; }
+tr.mi-history-compare-added td.mi-history-compare-key::before { background: var(--mi-exact); }
+tr.mi-history-compare-removed td.mi-history-compare-key::before { background: var(--mi-danger); }
+tr.mi-history-compare-changed td.mi-history-compare-key::before { background: var(--mi-inferred); }
 .mi-history-compare-unchanged { opacity: 0.6; }
 
 /* --- Scrollbars (task 0028): theme-matched thin scrollbars instead of the default browser chrome, which looks out of place against the dark theme --- */

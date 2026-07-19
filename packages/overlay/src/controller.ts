@@ -506,6 +506,20 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     historyStore.record(watchedId, hook?.statePreview(watchedId) ?? null, Date.now())
   }
 
+  // Switch the watched component and, on an actual change, seed the buffer
+  // with its *current* state right away — `statePreview` reads the state the
+  // runtime already keeps current every redraw, so selecting a component
+  // shows its state immediately instead of waiting for the next redraw to
+  // populate the buffer via `recordHistoryFromEvent`.
+  const watchComponent = (id: ComponentId | null): void => {
+    const changed = id !== historyStore.getWatchedComponent()
+    historyStore.setWatchedComponent(id)
+    if (!changed || id === null) return
+    const gating = computeGating()
+    if (!gating.enabled || !gating.fullMode || !gating.captureState) return
+    historyStore.record(id, hook?.statePreview(id) ?? null, Date.now())
+  }
+
   let unsubscribeTree: (() => void) | null = null
   if (options.componentTree.enabled && hook !== null && hook !== undefined) {
     diagnostics.guard(
@@ -729,7 +743,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           focusedAncestorId = null // a new selection starts with no ancestor focused
           frozenRects = [rectOfElement(target)]
           resetPreviewOverrides()
-          historyStore.setWatchedComponent(data.componentId)
+          watchComponent(data.componentId)
           collapsed = false // show the details panel (§8.7)
           activeTab = "components" // the merged tree/detail view is where a pick's result shows (§8.3)
           persist()
@@ -824,7 +838,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       focusedAncestorId = null
       frozenRects = []
       resetPreviewOverrides()
-      historyStore.setWatchedComponent(null)
+      watchComponent(null)
       redraw()
     },
 
@@ -832,7 +846,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       focusedAncestorId = null
       resetPreviewOverrides()
       if (selection.promoteToNearestAncestor()) {
-        historyStore.setWatchedComponent(selection.snapshot().componentId)
+        watchComponent(selection.snapshot().componentId)
         recomputeFrozen()
         redraw()
       }
@@ -903,7 +917,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           focusedAncestorId = null
           frozenRects = record.domRange !== null ? rectsOfDomRange(record.domRange) : [rectOfElement(element)]
           resetPreviewOverrides()
-          historyStore.setWatchedComponent(id)
+          watchComponent(id)
           redraw()
         },
         undefined,

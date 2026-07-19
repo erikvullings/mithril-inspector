@@ -721,29 +721,30 @@ describe("mountInspectorOverlay — State History tab (task 0027)", () => {
     })
     handle = mountInspectorOverlay({ componentTree: { captureState: true } }, { hook })
     handle!.controller.setCollapsed(false)
-    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.selectComponent("c:1" as ComponentId) // seeds row 0 with count:1
     handle!.controller.setActiveTab("history")
     render()
-    expect(handle!.shadowRoot.querySelectorAll(".mi-history-list li").length).toBe(0)
+    expect(handle!.shadowRoot.querySelectorAll(".mi-history-list li").length).toBe(1)
 
+    current = countState(2)
     listener!({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
     render()
-    current = countState(2)
+    current = countState(3)
     listener!({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 2 }] })
     render()
 
     const rows = handle!.shadowRoot.querySelectorAll(".mi-history-list li")
-    expect(rows.length).toBe(2)
+    expect(rows.length).toBe(3)
     // Each row shows its own compact "what changed" preview inline, not just
     // the selected entry's diff panel below.
-    // Newest first (task 0028): row 0 is the second (latest) snapshot.
-    expect(rows[0]?.textContent).toContain("count: 1 → 2")
-    expect(rows[1]?.textContent).toContain("initial snapshot")
+    // Newest first (task 0028): row 0 is the third (latest) snapshot.
+    expect(rows[0]?.textContent).toContain("count: 2 → 3")
+    expect(rows[2]?.textContent).toContain("initial snapshot")
 
     const diffText = handle!.shadowRoot.querySelector(".mi-history-diff")?.textContent ?? ""
     expect(diffText).toContain("count")
-    expect(diffText).toContain("1")
     expect(diffText).toContain("2")
+    expect(diffText).toContain("3")
   })
 
   it("shows the same left tree pane the Components tab uses, in sync with the watched component (task 0028)", () => {

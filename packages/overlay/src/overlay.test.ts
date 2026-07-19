@@ -140,6 +140,17 @@ describe("mountInspectorOverlay — panel (§8.3)", () => {
     expect(handle!.shadowRoot.querySelector('[role="dialog"]')).not.toBeNull()
   })
 
+  it("gives every sidebar tab icon both a native title and a themed hover tooltip (task 0028)", () => {
+    handle = mountInspectorOverlay({}, { hook: fakeHook() })
+    handle!.controller.setCollapsed(false)
+    render()
+    const buttons = Array.from(handle!.shadowRoot.querySelectorAll(".mi-sidebar-btn"))
+    for (const button of buttons) {
+      expect(button.getAttribute("title")).toBe(button.getAttribute("aria-label"))
+      expect(button.getAttribute("data-tooltip")).toBe(button.getAttribute("aria-label"))
+    }
+  })
+
   it("surfaces recorded diagnostics in the Settings section (§16)", () => {
     handle = mountInspectorOverlay({}, { hook: fakeHook() })
     handle!.controller.diagnostics.record("hover", new Error("kaboom"))
@@ -725,13 +736,97 @@ describe("mountInspectorOverlay — State History tab (task 0027)", () => {
     expect(rows.length).toBe(2)
     // Each row shows its own compact "what changed" preview inline, not just
     // the selected entry's diff panel below.
-    expect(rows[0]?.textContent).toContain("initial snapshot")
-    expect(rows[1]?.textContent).toContain("count: 1 → 2")
+    // Newest first (task 0028): row 0 is the second (latest) snapshot.
+    expect(rows[0]?.textContent).toContain("count: 1 → 2")
+    expect(rows[1]?.textContent).toContain("initial snapshot")
 
     const diffText = handle!.shadowRoot.querySelector(".mi-history-diff")?.textContent ?? ""
     expect(diffText).toContain("count")
     expect(diffText).toContain("1")
     expect(diffText).toContain("2")
+  })
+
+  it("shows the same left tree pane the Components tab uses, in sync with the watched component (task 0028)", () => {
+    const appEl = document.createElement("div")
+    const otherEl = document.createElement("div")
+    document.body.append(appEl, otherEl)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: appEl, last: appEl } })
+    const other = componentRecord({ id: "c:2" as ComponentId, displayName: "Other", domRange: { first: otherEl, last: otherEl } })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app, other]), componentRecord: (id) => (id === "c:2" ? other : app) })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("history")
+    render()
+
+    expect(handle!.shadowRoot.querySelector('[role="tree"]')).not.toBeNull()
+    expect(handle!.shadowRoot.textContent).toContain("Watching: App")
+
+    // Selecting a different component in the same tree updates the watched heading.
+    const rows = Array.from(handle!.shadowRoot.querySelectorAll(".mi-tree-name"))
+    const otherIndex = rows.findIndex((r) => r.textContent === "Other")
+    expect(otherIndex).toBeGreaterThanOrEqual(0)
+    ;(handle!.shadowRoot.querySelectorAll('[role="treeitem"]')[otherIndex] as HTMLElement).click()
+    render()
+    expect(handle!.shadowRoot.textContent).toContain("Watching: Other")
+  })
+
+  it("expands a changed array-of-objects diff entry into an aligned two-column table instead of Array(N) -> Array(N) (task 0028 regression)", () => {
+    const appEl = document.createElement("div")
+    document.body.appendChild(appEl)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: appEl, last: appEl } })
+    let listener: ((event: RuntimeEvent) => void) | null = null
+    const task = (done: boolean) => ({
+      kind: "object" as const,
+      className: "Object",
+      size: 2,
+      entries: [
+        { key: "id", node: { kind: "primitive" as const, type: "number" as const, value: 1 } },
+        { key: "done", node: { kind: "primitive" as const, type: "boolean" as const, value: done } },
+      ],
+      offset: 0,
+      truncated: false,
+      path: [],
+    })
+    const tasksState = (done: boolean) => ({
+      kind: "object" as const,
+      className: "Object",
+      size: 1,
+      entries: [{ key: "tasks", node: { kind: "array" as const, length: 1, items: [task(done)], offset: 0, truncated: false, path: [] } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    })
+    let current = tasksState(false)
+    const hook = fakeHook({
+      getSnapshot: () => snapshotOf([app]),
+      componentRecord: () => app,
+      getMode: () => "full",
+      statePreview: () => current,
+      subscribe: (fn) => {
+        listener = fn
+        return () => {}
+      },
+    })
+    handle = mountInspectorOverlay({ componentTree: { captureState: true } }, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("history")
+    render()
+
+    listener!({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    render()
+    current = tasksState(true) // same array length, one nested field flipped — the reported "Array(4) -> Array(4)" case
+    listener!({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 2 }] })
+    render()
+
+    const diffSection = handle!.shadowRoot.querySelector(".mi-history-diff")
+    expect(diffSection?.textContent).not.toContain("Array(1) → Array(1)")
+    const table = diffSection?.querySelector("table.mi-history-compare")
+    expect(table).not.toBeNull()
+    expect(table?.textContent).toContain("done")
+    expect(table?.textContent).toContain("false")
+    expect(table?.textContent).toContain("true")
   })
 })
 

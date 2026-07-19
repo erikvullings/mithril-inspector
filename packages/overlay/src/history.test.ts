@@ -1,7 +1,7 @@
-import type { ComponentId, PreviewNode, PreviewPath } from "@mithril-inspector/protocol"
+import type { PreviewArrayNode, PreviewObjectNode, ComponentId, PreviewNode, PreviewPath } from "@mithril-inspector/protocol"
 import { describe, expect, it } from "vitest"
 
-import { createHistoryStore, diffPreviewNodes } from "./history.js"
+import { alignContainerEntries, containerEntries, createHistoryStore, diffPreviewNodes } from "./history.js"
 
 const EMPTY_PATH: PreviewPath = []
 
@@ -9,7 +9,7 @@ const num = (value: number): PreviewNode => ({ kind: "primitive", type: "number"
 const str = (value: string): PreviewNode => ({ kind: "primitive", type: "string", value })
 const bool = (value: boolean): PreviewNode => ({ kind: "primitive", type: "boolean", value })
 
-const obj = (entries: Record<string, PreviewNode>): PreviewNode => ({
+const obj = (entries: Record<string, PreviewNode>): PreviewObjectNode => ({
   kind: "object",
   className: "Object",
   size: Object.keys(entries).length,
@@ -19,7 +19,7 @@ const obj = (entries: Record<string, PreviewNode>): PreviewNode => ({
   path: EMPTY_PATH,
 })
 
-const arr = (items: PreviewNode[]): PreviewNode => ({
+const arr = (items: PreviewNode[]): PreviewArrayNode => ({
   kind: "array",
   length: items.length,
   items,
@@ -184,5 +184,79 @@ describe("createHistoryStore (task 0027)", () => {
     // Selecting the last entry (C) diffs against B.
     store.selectEntry(c!.id)
     expect(store.selectedDiff()).toEqual([{ key: "count", kind: "changed", before: num(2), after: num(5) }])
+  })
+
+  it("keeps following new snapshots after explicitly selecting the entry that was, at the time, the latest one (task 0028)", () => {
+    const store = createHistoryStore()
+    store.setWatchedComponent(c1)
+    store.record(c1, num(1), 100)
+    store.record(c1, num(2), 200)
+    const entries = store.entries()
+    const latest = entries[entries.length - 1]!
+    store.selectEntry(latest.id) // explicitly click the entry that happens to be latest right now
+    expect(store.selectedEntry()?.timestamp).toBe(200)
+
+    store.record(c1, num(3), 300) // a new, later snapshot arrives
+    expect(store.selectedEntry()?.timestamp).toBe(300) // must advance, not stay pinned to the old "latest"
+    expect(store.selectedDiff()).toEqual([{ key: "(value)", kind: "changed", before: num(2), after: num(3) }])
+  })
+
+  it("keeps a pin on an older, explicitly-selected entry even as new snapshots arrive (task 0028)", () => {
+    const store = createHistoryStore()
+    store.setWatchedComponent(c1)
+    store.record(c1, num(1), 100)
+    store.record(c1, num(2), 200)
+    store.record(c1, num(3), 300)
+    const [first] = store.entries()
+    store.selectEntry(first!.id) // NOT the latest at selection time
+    store.record(c1, num(4), 400)
+    expect(store.selectedEntry()?.timestamp).toBe(100)
+  })
+})
+
+describe("containerEntries (task 0028)", () => {
+  it("lists object entries in declaration order", () => {
+    expect(containerEntries(obj({ a: num(1), b: num(2) }))).toEqual([
+      { key: "a", node: num(1) },
+      { key: "b", node: num(2) },
+    ])
+  })
+
+  it("lists array items by offset-adjusted index", () => {
+    expect(containerEntries(arr([num(10), num(20)]))).toEqual([
+      { key: "0", node: num(10) },
+      { key: "1", node: num(20) },
+    ])
+  })
+})
+
+describe("alignContainerEntries (task 0028)", () => {
+  it("row-aligns two objects: before's key order first, then any keys only after introduced", () => {
+    const before = obj({ a: num(1), b: num(2), c: num(3) })
+    const after = obj({ b: num(2), c: num(9), d: num(4) })
+    expect(alignContainerEntries(before, after)).toEqual([
+      { key: "a", before: num(1), after: null, status: "removed" },
+      { key: "b", before: num(2), after: num(2), status: "unchanged" },
+      { key: "c", before: num(3), after: num(9), status: "changed" },
+      { key: "d", before: null, after: num(4), status: "added" },
+    ])
+  })
+
+  it("row-aligns arrays by index, including a length change (the reported Array(3) -> Array(4) case)", () => {
+    const before = arr([num(1), num(2)])
+    const after = arr([num(1), num(3), num(4)])
+    expect(alignContainerEntries(before, after)).toEqual([
+      { key: "0", before: num(1), after: num(1), status: "unchanged" },
+      { key: "1", before: num(2), after: num(3), status: "changed" },
+      { key: "2", before: null, after: num(4), status: "added" },
+    ])
+  })
+
+  it("marks a nested-only field change as 'changed' even when the container's own size is unchanged (Array(4) -> Array(4) case)", () => {
+    const before = arr([obj({ id: num(1), done: bool(false) })])
+    const after = arr([obj({ id: num(1), done: bool(true) })])
+    expect(alignContainerEntries(before, after)).toEqual([
+      { key: "0", before: before.items[0], after: after.items[0], status: "changed" },
+    ])
   })
 })

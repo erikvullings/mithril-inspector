@@ -1183,6 +1183,22 @@ describe("State History tab (task 0027)", () => {
     expect(controller.getState().history.selectedEntryId).toBe(entries[0]!.id)
     expect(controller.getState().history.diff).toEqual([{ key: "(value)", kind: "added", before: null, after: num(1) }])
   })
+
+  it("keeps following new snapshots through the controller after selecting the then-latest entry (task 0028 regression)", () => {
+    const { hook, listeners } = historyHook({}, [num(1), num(2), num(3)])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 2 }] })
+
+    const latest = controller.getState().history.entries.at(-1)!
+    controller.selectHistoryEntry(latest.id) // click the row that is, right now, the latest one
+    expect(controller.getState().history.diff).toEqual([{ key: "(value)", kind: "changed", before: num(1), after: num(2) }])
+
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 3 }] })
+    // Must have advanced to the new latest entry's diff, not stayed pinned to the old one.
+    expect(controller.getState().history.diff).toEqual([{ key: "(value)", kind: "changed", before: num(2), after: num(3) }])
+  })
 })
 
 describe("persistence across a reload (task 0022 follow-up)", () => {

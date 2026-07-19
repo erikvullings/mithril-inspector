@@ -204,6 +204,7 @@ export function overlayCss(): string {
 .mi-sidebar-logo:hover { background: var(--mi-surface); }
 .mi-sidebar-spacer { flex: 1; }
 .mi-sidebar-btn {
+  position: relative;
   appearance: none;
   border: 0;
   background: transparent;
@@ -218,6 +219,33 @@ export function overlayCss(): string {
 }
 .mi-sidebar-btn:hover { background: var(--mi-surface); color: var(--mi-fg); }
 .mi-sidebar-btn[aria-pressed="true"] { background: var(--mi-highlight-fill); color: var(--mi-accent); }
+/* Themed hover tooltip (task 0028): faster and theme-matched, unlike the native title popup it supplements. */
+.mi-sidebar-btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--mi-bg);
+  color: var(--mi-fg);
+  border: 1px solid var(--mi-border);
+  box-shadow: var(--mi-shadow);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms;
+  z-index: 5;
+}
+.mi-sidebar-btn[data-tooltip]:hover::after,
+.mi-sidebar-btn[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
 
 .mi-main { flex: 1; display: flex; min-width: 0; }
 .mi-tree-pane {
@@ -552,6 +580,65 @@ export function overlayCss(): string {
 .mi-history-diff-added { border-left: 3px solid var(--mi-exact); padding-left: 6px; }
 .mi-history-diff-removed { border-left: 3px solid var(--mi-danger); padding-left: 6px; }
 .mi-history-diff-changed { border-left: 3px solid var(--mi-inferred); padding-left: 6px; }
+/* An expanded (object/array) diff entry (task 0028): the key becomes its own line, its value/table stacks below instead of flowing inline. */
+.mi-history-diff-expanded { display: block; }
+.mi-history-diff-expanded > .mi-preview-key { display: block; font-weight: 600; margin-bottom: 4px; }
+.mi-history-value-entries { list-style: none; margin: 0; padding-left: 14px; }
+.mi-history-value-entries li { padding: 1px 0; }
+.mi-history-compare { width: 100%; border-collapse: collapse; margin-top: 2px; }
+.mi-history-compare th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mi-muted);
+  font-weight: 700;
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--mi-border);
+}
+.mi-history-compare td { vertical-align: top; padding: 3px 6px; border-bottom: 1px solid var(--mi-border); word-break: break-word; }
+.mi-history-compare-key { color: var(--mi-muted); white-space: nowrap; }
+.mi-history-compare-added .mi-history-compare-key { border-left: 3px solid var(--mi-exact); padding-left: 5px; }
+.mi-history-compare-removed .mi-history-compare-key { border-left: 3px solid var(--mi-danger); padding-left: 5px; }
+.mi-history-compare-changed .mi-history-compare-key { border-left: 3px solid var(--mi-inferred); padding-left: 5px; }
+.mi-history-compare-unchanged { opacity: 0.6; }
+
+/* --- Scrollbars (task 0028): theme-matched thin scrollbars instead of the default browser chrome, which looks out of place against the dark theme --- */
+.mi-tree-pane, .mi-detail-pane, .mi-history, .mi-settings, .mi-history-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--mi-border) transparent;
+}
+.mi-tree-pane::-webkit-scrollbar,
+.mi-detail-pane::-webkit-scrollbar,
+.mi-history::-webkit-scrollbar,
+.mi-settings::-webkit-scrollbar,
+.mi-history-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.mi-tree-pane::-webkit-scrollbar-track,
+.mi-detail-pane::-webkit-scrollbar-track,
+.mi-history::-webkit-scrollbar-track,
+.mi-settings::-webkit-scrollbar-track,
+.mi-history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mi-tree-pane::-webkit-scrollbar-thumb,
+.mi-detail-pane::-webkit-scrollbar-thumb,
+.mi-history::-webkit-scrollbar-thumb,
+.mi-settings::-webkit-scrollbar-thumb,
+.mi-history-list::-webkit-scrollbar-thumb {
+  background-color: var(--mi-border);
+  border-radius: 6px;
+  border: 2px solid var(--mi-bg);
+}
+.mi-tree-pane::-webkit-scrollbar-thumb:hover,
+.mi-detail-pane::-webkit-scrollbar-thumb:hover,
+.mi-history::-webkit-scrollbar-thumb:hover,
+.mi-settings::-webkit-scrollbar-thumb:hover,
+.mi-history-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--mi-muted);
+}
 
 @media (prefers-reduced-motion: reduce) {
   .mi-root *, .mi-root *::before, .mi-root *::after {

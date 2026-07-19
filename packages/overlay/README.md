@@ -123,14 +123,25 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   evaluated only on that explicit action, §7.4), and a redacted value always
   renders its configured replacement text (default `[redacted]`, §15) — the
   redaction itself happens in the runtime, never in this package.
-- **State History (task 0027):** a read-only timeline of the currently
-  selected component's state preview, recorded each time it redraws (driven
-  by the same batched `RuntimeEvent`s as the Components tab, §9.4 — no
-  separate polling), plus a diff of the selected snapshot against its own
-  immediate predecessor. Gated identically to the Components tab's Attrs/State
-  sections (`mode: "full"` + `componentTree.captureState`). Built entirely
-  from data the runtime hook already exposes for any component's `state` —
-  most useful pointed at a root/layout component that receives a
+- **State History (task 0027, refined task 0028):** a read-only timeline of
+  the currently selected component's state preview, recorded each time it
+  redraws (driven by the same batched `RuntimeEvent`s as the Components tab,
+  §9.4 — no separate polling), newest first. The tab reuses the same left
+  tree pane the Components tab has — selecting a component there keeps the
+  history in sync — plus its own "Watching: `<name>`" heading, so it's always
+  clear whose state is being recorded. Selecting an entry shows a diff against
+  its own immediate predecessor; a `"changed"` object/array field expands into
+  an aligned two-column before/after table (row-per-key/index) instead of a
+  bare `Array(3) → Array(4)`, and an added/removed object/array field expands
+  into a single fully-nested column — both non-interactive, static renderings
+  of the frozen historical snapshot (no getter evaluation, no live round-trip,
+  unlike the Components tab's own attrs/state preview). The selection
+  auto-follows new snapshots as long as whatever was selected was itself the
+  latest entry at the time; explicitly pinning an older entry keeps it pinned
+  across future recordings. Gated identically to the Components tab's
+  Attrs/State sections (`mode: "full"` + `componentTree.captureState`). Built
+  entirely from data the runtime hook already exposes for any component's
+  `state` — most useful pointed at a root/layout component that receives a
   [Meiosis](https://meiosis.js.org) `cell().state` as its own state, the
   closest read-only analog to
   [meiosis-tracer](https://github.com/foxdonut/meiosis-tracer)'s timeline this
@@ -157,8 +168,8 @@ Mithril component), `resolveOverlayOptions`, `getOverlayHook`, `describeMapping`
 `createPickerMachine`, `createSelectionModel`, `createFrameScheduler`,
 `createEditorClient`, `parseShortcut`, the persistence helpers, (task 0022)
 `createComponentTreeStore` plus the preview-tree formatters `summarizeNode`,
-`isExpandable` and `pathKey`, and (task 0027) `createHistoryStore` plus
-`diffPreviewNodes`.
+`isExpandable` and `pathKey`, and (task 0027/0028) `createHistoryStore`,
+`diffPreviewNodes`, `containerEntries` and `alignContainerEntries`.
 
 ## Editor endpoint
 

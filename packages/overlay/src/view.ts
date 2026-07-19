@@ -9,7 +9,14 @@ import type {
   OverlayTab,
   OverlayViewState,
 } from "./controller.js"
-import { diffPreviewNodes, type HistoryDiffEntry, type HistoryEntry } from "./history.js"
+import {
+  alignContainerEntries,
+  containerEntries,
+  diffPreviewNodes,
+  type AlignedDiffRow,
+  type HistoryDiffEntry,
+  type HistoryEntry,
+} from "./history.js"
 import type { HighlightRect } from "./highlight.js"
 import {
   iconClose,
@@ -884,7 +891,79 @@ function historyEntryRow(
   )
 }
 
+/** Container kinds the two-column/expanded diff rendering applies to (task 0028's own scoping — map/set/typed-array keep the shallow one-line rendering). */
+function isExpandableDiffContainer(node: PreviewNode): node is Extract<ContainerNode, { kind: "object" | "array" }> {
+  return isContainerNode(node) && (node.kind === "object" || node.kind === "array")
+}
+
+/**
+ * A non-interactive, fully-expanded static rendering of a historical
+ * `PreviewNode` (task 0028) — no getter evaluation, no pagination
+ * round-trip, unlike `previewNodeView` below: this renders *frozen*
+ * historical data, and `previewNodeView`'s expand actions always read the
+ * *live* current selection through `controller.expandComponentPreview`,
+ * which would silently substitute live data for a past snapshot.
+ */
+function historyValuePreview(node: PreviewNode | null): Children {
+  if (node === null) return m("span.mi-muted", "—")
+  if (isContainerNode(node)) {
+    const entries = containerEntries(node)
+    if (entries.length === 0) return m("span.mi-mono.mi-muted", summarizeNode(node))
+    return m(
+      "ul.mi-history-value-entries",
+      entries.map((entry) =>
+        m("li", { key: entry.key }, [m("span.mi-preview-key", `${entry.key}: `), historyValuePreview(entry.node)]),
+      ),
+    )
+  }
+  return m("span.mi-mono", summarizeNode(node))
+}
+
+function historyCompareRow(row: AlignedDiffRow): Vnode {
+  return m(`tr.mi-history-compare-${row.status}`, { key: row.key }, [
+    m("td.mi-history-compare-key.mi-mono", row.key),
+    m("td.mi-history-compare-cell", historyValuePreview(row.before)),
+    m("td.mi-history-compare-cell", historyValuePreview(row.after)),
+  ])
+}
+
+/** The two-column before/after table for a `"changed"` object/array diff entry (task 0028), rows aligned by key/index. */
+function historyContainerCompare(before: ContainerNode, after: ContainerNode): Vnode {
+  return m("table.mi-history-compare", [
+    m("thead", m("tr", [m("th", "key"), m("th", "before"), m("th", "after")])),
+    m("tbody", alignContainerEntries(before, after).map(historyCompareRow)),
+  ])
+}
+
+/**
+ * One entry in the "Changes from previous snapshot" panel (task 0027/0028).
+ * An object/array `"changed"` entry gets a two-column before/after
+ * comparison; an `"added"`/`"removed"` object/array entry gets a single
+ * expanded column; everything else (primitives, map/set/typed-array, a
+ * kind mismatch) keeps the original one-line `before → after` summary —
+ * scoped to "arrays and objects only" per the request this responds to.
+ */
 function historyDiffRow(entry: HistoryDiffEntry): Vnode {
+  if (
+    entry.kind === "changed" &&
+    entry.before !== null &&
+    entry.after !== null &&
+    isExpandableDiffContainer(entry.before) &&
+    isExpandableDiffContainer(entry.after) &&
+    entry.before.kind === entry.after.kind
+  ) {
+    return m("li.mi-history-diff-changed.mi-history-diff-expanded", { key: entry.key }, [
+      m("div.mi-preview-key", entry.key),
+      historyContainerCompare(entry.before, entry.after),
+    ])
+  }
+  const singleSide = entry.kind === "removed" ? entry.before : entry.kind === "added" ? entry.after : null
+  if (singleSide !== null && isExpandableDiffContainer(singleSide)) {
+    return m(`li.mi-history-diff-${entry.kind}.mi-history-diff-expanded`, { key: entry.key }, [
+      m("div.mi-preview-key", entry.key),
+      historyValuePreview(singleSide),
+    ])
+  }
   return m(`li.mi-history-diff-${entry.kind}`, { key: entry.key }, [
     m("span.mi-preview-key", `${entry.key}: `),
     entry.before !== null ? m("span.mi-mono", summarizeNode(entry.before)) : null,
@@ -893,18 +972,22 @@ function historyDiffRow(entry: HistoryDiffEntry): Vnode {
   ])
 }
 
-function historyView(controller: OverlayController, state: OverlayViewState): Vnode {
+/** The right-hand side of the History tab (task 0028): mirrors `detailPane`'s role next to `treePane`, so the History tab reuses the same left tree the Components tab does rather than leaving "which component is this?" unclear. */
+function historyDetailPane(controller: OverlayController, state: OverlayViewState): Vnode {
   const { history } = state
   if (history.watchedComponentId === null) {
     return m("div.mi-history", [
       m("p.mi-muted", "No component selected."),
-      m("p.mi-muted", "Pick an element on the page, or choose a component from the tree, then reopen this tab to watch its state over time."),
+      m("p.mi-muted", "Pick an element on the page, or choose a component from the tree on the left, to watch its state over time."),
     ])
   }
+  const watchedName = state.selectedComponentName?.name ?? "component"
+  const heading = m("div.mi-detail-meta", [m("span.mi-mono", `Watching: ${watchedName}`)])
   const gateMessage = previewGateMessage(history.gating, "state")
-  if (gateMessage !== null) return m("div.mi-history", [m("p.mi-muted", gateMessage)])
+  if (gateMessage !== null) return m("div.mi-history", [heading, m("p.mi-muted", gateMessage)])
   if (history.entries.length === 0) {
     return m("div.mi-history", [
+      heading,
       m("p.mi-muted", "No state changes recorded yet for this component."),
       m(
         "p.mi-muted",
@@ -913,17 +996,26 @@ function historyView(controller: OverlayController, state: OverlayViewState): Vn
     ])
   }
   const selectedId = history.selectedEntryId ?? history.entries[history.entries.length - 1]!.id
+  // Newest first for display; each row keeps its own chronological #N label
+  // (computed from the un-reversed array) so numbering doesn't shuffle as
+  // new entries arrive — only the stacking order does (task 0028).
+  const rows = history.entries
+    .map((entry, index) => {
+      const summary =
+        index === 0
+          ? "initial snapshot"
+          : compactHistoryDiffSummary(diffPreviewNodes(history.entries[index - 1]!.state, entry.state))
+      return { entry, index, summary }
+    })
+    .reverse()
   return m("div.mi-history", [
+    heading,
     m("div.mi-section-title", `State history (${history.entries.length})`),
     m(
       "ul.mi-history-list",
-      history.entries.map((entry, index) => {
-        const summary =
-          index === 0
-            ? "initial snapshot"
-            : compactHistoryDiffSummary(diffPreviewNodes(history.entries[index - 1]!.state, entry.state))
-        return historyEntryRow(controller, entry, index, entry.id === selectedId, summary)
-      }),
+      rows.map(({ entry, index, summary }) =>
+        historyEntryRow(controller, entry, index, entry.id === selectedId, summary),
+      ),
     ),
     m("div.mi-section-title", "Changes from previous snapshot"),
     history.diff.length === 0
@@ -932,6 +1024,18 @@ function historyView(controller: OverlayController, state: OverlayViewState): Vn
   ])
 }
 
+function historyView(controller: OverlayController, state: OverlayViewState): Vnode {
+  return m("div.mi-main", [treePane(controller, state), historyDetailPane(controller, state)])
+}
+
+/**
+ * The sidebar's own themed hover tooltip (task 0028), in addition to the
+ * native `title` (kept for assistive tech / non-hover input): a CSS-only
+ * `::after` driven by `data-tooltip` (see `styles.ts`) so it matches the
+ * dark/light theme and appears with a consistent, fast transition rather
+ * than depending on the OS's own native-tooltip delay and (unthemed)
+ * styling.
+ */
 function sidebarButton(icon: Vnode, options: { readonly label: string; readonly active?: boolean; readonly onclick: () => void }): Vnode {
   return m(
     "button.mi-sidebar-btn",
@@ -940,6 +1044,7 @@ function sidebarButton(icon: Vnode, options: { readonly label: string; readonly 
       title: options.label,
       "aria-label": options.label,
       "aria-pressed": options.active === true ? "true" : "false",
+      "data-tooltip": options.label,
       onclick: options.onclick,
     },
     icon,

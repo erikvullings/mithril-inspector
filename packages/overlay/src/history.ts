@@ -73,9 +73,17 @@ export function createHistoryStore(options: HistoryStoreOptions = {}): HistorySt
     },
     record(id, state, timestamp) {
       if (id !== watchedId) return
+      // Auto-follow (task 0028): a selection that pointed at whatever was the
+      // latest entry a moment ago — whether that's the `null` default or an
+      // explicit click on the then-latest row — keeps following the new
+      // latest entry. Only a selection of an entry that was *not* latest at
+      // the time it was chosen stays pinned across future recordings.
+      const previousLatestId = entries.length > 0 ? entries[entries.length - 1]!.id : null
+      const wasFollowingLatest = selectedId === null || selectedId === previousLatestId
       entries.push({ id: nextEntryId, timestamp, state })
       nextEntryId += 1
       if (entries.length > limit) entries.splice(0, entries.length - limit)
+      if (wasFollowingLatest) selectedId = null
     },
     entries() {
       return entries
@@ -122,6 +130,46 @@ function keyedEntriesOf(node: ContainerNode): Map<string, PreviewNode> {
     case "set":
       return new Map(node.items.map((item) => [summarizeNode(item), item]))
   }
+}
+
+export interface ContainerEntry {
+  readonly key: string
+  readonly node: PreviewNode
+}
+
+/** A container's own entries/items as an ordered, key-labeled list (task 0028) — see {@link keyedEntriesOf}'s doc for the per-kind key scheme. */
+export function containerEntries(node: ContainerNode): ContainerEntry[] {
+  return Array.from(keyedEntriesOf(node), ([key, entryNode]) => ({ key, node: entryNode }))
+}
+
+export type AlignedDiffStatus = "added" | "removed" | "changed" | "unchanged"
+
+export interface AlignedDiffRow {
+  readonly key: string
+  readonly before: PreviewNode | null
+  readonly after: PreviewNode | null
+  readonly status: AlignedDiffStatus
+}
+
+/**
+ * Row-aligns two same-kind containers' own entries for a side-by-side
+ * comparison (task 0028) — before's own key order first, then any keys only
+ * `after` introduced, appended in `after`'s order. Used to render a
+ * two-column before/after table for a `"changed"` object/array diff entry
+ * instead of a shallow `summarizeNode` on each side.
+ */
+export function alignContainerEntries(before: ContainerNode, after: ContainerNode): AlignedDiffRow[] {
+  const beforeEntries = keyedEntriesOf(before)
+  const afterEntries = keyedEntriesOf(after)
+  const keys: string[] = [...beforeEntries.keys()]
+  for (const key of afterEntries.keys()) if (!beforeEntries.has(key)) keys.push(key)
+  return keys.map((key) => {
+    const b = beforeEntries.get(key) ?? null
+    const a = afterEntries.get(key) ?? null
+    const status: AlignedDiffStatus =
+      b === null ? "added" : a === null ? "removed" : previewNodesEqual(b, a) ? "unchanged" : "changed"
+    return { key, before: b, after: a, status }
+  })
 }
 
 function diffContainerEntries(before: ContainerNode, after: ContainerNode): HistoryDiffEntry[] {

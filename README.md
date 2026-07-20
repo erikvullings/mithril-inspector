@@ -76,6 +76,20 @@ dev-server hook to hang the open-in-editor endpoint on, so it ships an opt-in
 server reusing `@mithril-inspector/server` — see `packages/esbuild/README.md`
 and `apps/playground-esbuild` for a working example.
 
+`@mithril-inspector/webpack` (§12.5, task 0025) is one plugin that runs
+unmodified on both webpack and Rspack — a loader (`enforce: "pre"`) for
+transformation, `EntryPlugin`-based entry injection for the runtime/overlay
+bootstrap, and `devServer.setupMiddlewares` wiring for the open-in-editor
+endpoint. Dev-only by default (active unless `compiler.options.mode ===
+"production"`, unless `includeInProduction`). Because both bundlers treat any
+`scheme:...`-shaped specifier as a URI and reject `virtual:mithril-inspector/*`
+before `resolve.alias` ever runs, this adapter uses a colon-free specifier and
+writes the runtime/overlay bootstrap to real files under
+`node_modules/.cache/mithril-inspector` instead of an in-memory virtual module
+— see `packages/webpack/README.md` for this and the other webpack/Rspack
+divergences, all verified against real `webpack()` and `rspack()` builds in
+`tests/integration/`.
+
 ## Status: 0.1.0 (Phase 1–3 — source inspector, component tracking, state history)
 
 Beyond the 0.1.0-alpha.1 source inspector (AST source instrumentation, the
@@ -107,7 +121,7 @@ The packages under `packages/` are strict TypeScript, modern ESM modules. Playgr
 
 ## Releasing
 
-`scripts/release.mjs` bumps `protocol`, `runtime`, `transform`, `server`, `overlay`, `adapter-kit`, `vite`, `rollup` and `esbuild` to the same version, runs the CI gate, commits, tags and publishes each package with pnpm — run it from the repository root once the working tree is clean (commit or stash everything first):
+`scripts/release.mjs` bumps `protocol`, `runtime`, `transform`, `server`, `overlay`, `adapter-kit`, `vite`, `rollup`, `esbuild` and `webpack` to the same version, runs the CI gate, commits, tags and publishes each package with pnpm — run it from the repository root once the working tree is clean (commit or stash everything first):
 
 ```sh
 pnpm release:dry-run       # sanity check only — prints current -> next, changes nothing
@@ -117,10 +131,10 @@ pnpm release <patch|minor|major|<version>>
 `pnpm release patch` bumps `0.1.0` to `0.1.1`; an explicit version (e.g. `pnpm release 0.2.0`) is also accepted, and re-running it against an already-committed version just tags and publishes without an empty version-bump commit. The script:
 
 1. refuses to run against a dirty working tree (dry runs are exempt);
-2. writes the new version into all nine `package.json` files and refreshes `pnpm-lock.yaml`;
+2. writes the new version into all ten `package.json` files and refreshes `pnpm-lock.yaml`;
 3. runs `pnpm -r build`, `pnpm -r typecheck` and `pnpm -r test` — the same gate CI runs;
 4. commits the version bump, then tags `vX.Y.Z` (skipped if the tag already exists);
-5. runs `pnpm publish --access public` for each package in dependency order (`protocol` first, `vite`/`rollup`/`esbuild` last), rewriting `workspace:*` ranges to the pinned version as it goes.
+5. runs `pnpm publish --access public` for each package in dependency order (`protocol` first, `vite`/`rollup`/`esbuild`/`webpack` last), rewriting `workspace:*` ranges to the pinned version as it goes.
 
 npm/pnpm prompts for a 2FA one-time password per package when the terminal is interactive — that's expected during step 5, just type the code each time. Nothing is pushed automatically: review the commit and tag, then `git push && git push origin vX.Y.Z` yourself.
 

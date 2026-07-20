@@ -9,14 +9,17 @@
   },
   "dependencies": {
     "@mithril-inspector/esbuild": "workspace:*",
-    "@mithril-inspector/rollup": "workspace:*"
+    "@mithril-inspector/rollup": "workspace:*",
+    "@mithril-inspector/webpack": "workspace:*"
   },
   "devDependencies": {
+    "@rspack/core": "^2.1.4",
     "@types/mithril": "^2.2.8",
     "@types/node": "^24.0.14",
     "esbuild": "^0.28.1",
     "mithril": "^2.3.8",
     "rollup": "^4.62.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "webpack": "^5.108.4"
   }
 }

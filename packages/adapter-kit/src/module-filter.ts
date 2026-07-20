@@ -9,7 +9,7 @@
 
 const NODE_MODULES = /(?:^|\/)node_modules\//
 const SELF_PACKAGE =
-  /(?:@mithril-inspector\/|mithril-inspector\/packages\/)(?:overlay|runtime|transform|server|protocol|vite|rollup|esbuild|adapter-kit)(?:\/|$)/
+  /(?:@mithril-inspector\/|mithril-inspector\/packages\/)(?:overlay|runtime|transform|server|protocol|vite|rollup|esbuild|webpack|adapter-kit)(?:\/|$)/
 
 export function shouldAttemptTransform(id: string): boolean {
   // Vite prefixes resolved virtual/proxy module ids with a NUL byte (§11.2).

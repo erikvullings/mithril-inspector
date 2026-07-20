@@ -34,4 +34,9 @@ describe("shouldAttemptTransform (§11.2)", () => {
     expect(shouldAttemptTransform("/app/node_modules/@mithril-inspector/esbuild/dist/index.js")).toBe(false)
     expect(shouldAttemptTransform("/repo/mithril-inspector/packages/esbuild/dist/plugin.js")).toBe(false)
   })
+
+  it("skips the webpack adapter package (self)", () => {
+    expect(shouldAttemptTransform("/app/node_modules/@mithril-inspector/webpack/dist/index.js")).toBe(false)
+    expect(shouldAttemptTransform("/repo/mithril-inspector/packages/webpack/dist/plugin.js")).toBe(false)
+  })
 })

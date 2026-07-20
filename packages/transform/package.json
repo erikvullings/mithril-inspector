@@ -1,8 +1,21 @@
 {
   "name": "@mithril-inspector/transform",
-  "version": "0.1.0-alpha.1",
-  "private": true,
+  "version": "0.1.0",
+  "description": "Bundler-neutral AST source instrumentation for Mithril Inspector component detection.",
   "type": "module",
+  "license": "MIT",
+  "author": "Erik Vullings",
+  "homepage": "https://github.com/erikvullings/mithril-inspector#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erikvullings/mithril-inspector.git",
+    "directory": "packages/transform"
+  },
+  "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
+  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "ast", "source-transform"],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,7 +26,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

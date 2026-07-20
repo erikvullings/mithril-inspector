@@ -58,14 +58,20 @@ click (opening the native context menu) before it ever reaches the page.
 The plugin is dev-only by default (`enabled` follows `NODE_ENV`) and adds no
 runtime, overlay or editor endpoint to production builds (§20.1.12).
 
-## Status: 0.1.0-alpha.1 (Phase 1 — source inspector)
+## Status: 0.1.0 (Phase 1–3 — source inspector, component tracking, state history)
 
-This is the first publishable alpha (REQUIREMENTS.md §21 Phase 1): AST source
-instrumentation, the runtime source registry, DOM/source association, the
-picker, highlight, source tooltip, the Vite editor middleware and the
-collapsed bottom tab. See `TASKS/0016-mvp-acceptance-alpha-release.md` for the
-full acceptance checklist and `CHANGELOG.md` for release notes and known
-limitations.
+Beyond the 0.1.0-alpha.1 source inspector (AST source instrumentation, the
+runtime source registry, DOM/source association, the picker, highlight,
+source tooltip and the Vite editor middleware), this release adds
+component-instance tracking with a full ancestry chain, a lazy/redacted
+attrs-state preview tree, an expandable component tree UI, and a read-only
+State History tab. See `CHANGELOG.md` for the full list and known
+limitations, and `TASKS/0016-mvp-acceptance-alpha-release.md` for the
+original alpha acceptance checklist.
+
+REQUIREMENTS.md §20.2's quality gate for an initial **stable** release
+requires testing against at least two nontrivial Mithril applications; only
+the `apps/playground-vite` playground has been exercised so far.
 
 ## Development
 

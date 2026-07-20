@@ -49,7 +49,11 @@ describe("State History tab (task 0027)", () => {
 
     await page.click(mi('.mi-sidebar-btn[aria-label="State History"]'))
     await waitForShadowPresence(page, ".mi-history", true)
-    expect(await shadowTextAll(page, ".mi-history-list li")).toEqual([])
+    // Selecting a component seeds one entry with its current state (task 0028)
+    // rather than leaving the buffer empty until the next redraw.
+    const seeded = await shadowTextAll(page, ".mi-history-list li")
+    expect(seeded).toHaveLength(1)
+    expect(seeded[0]).toContain("initial snapshot")
 
     await page.click("#counter-btn")
     await page.click("#counter-btn")
@@ -58,15 +62,16 @@ describe("State History tab (task 0027)", () => {
     await page.waitForFunction(
       (hostId) => {
         const host = document.getElementById(hostId)
-        return (host?.shadowRoot?.querySelectorAll(".mi-history-list li").length ?? 0) >= 3
+        return (host?.shadowRoot?.querySelectorAll(".mi-history-list li").length ?? 0) >= 4
       },
       { timeout: 5_000 },
       HOST_ID,
     )
 
     // Switching the watched component (back to the Components tab, selecting
-    // Greeting) resets the buffer — the History tab is scoped to whichever
-    // component is currently selected, not a global log.
+    // Greeting) resets the buffer and reseeds it with Greeting's own current
+    // state — the History tab is scoped to whichever component is currently
+    // selected, not a global log.
     await page.click(mi('.mi-sidebar-btn[aria-label="Components"]'))
     await waitForShadowPresence(page, ".mi-tree-search", true)
     const namesAgain = await shadowTextAll(page, ".mi-tree-name")
@@ -76,7 +81,9 @@ describe("State History tab (task 0027)", () => {
 
     await page.click(mi('.mi-sidebar-btn[aria-label="State History"]'))
     await waitForShadowPresence(page, ".mi-history", true)
-    expect(await shadowTextAll(page, ".mi-history-list li")).toEqual([])
+    const reseeded = await shadowTextAll(page, ".mi-history-list li")
+    expect(reseeded).toHaveLength(1)
+    expect(reseeded[0]).toContain("initial snapshot")
   })
 
   it("shows a gating message instead of a timeline once a component is watched but mode isn't full", async () => {

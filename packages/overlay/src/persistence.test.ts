@@ -63,6 +63,15 @@ describe("overlay persistence", () => {
     expect(loadOverlayState(bad)).toEqual({})
   })
 
+  it("round-trips redrawFlashEnabled and ignores a non-boolean value", () => {
+    const storage = memoryStorage()
+    saveOverlayState({ redrawFlashEnabled: true }, storage)
+    expect(loadOverlayState(storage)).toEqual({ redrawFlashEnabled: true })
+
+    const bad = memoryStorage({ [OVERLAY_STORAGE_KEY]: JSON.stringify({ redrawFlashEnabled: "yes" }) })
+    expect(loadOverlayState(bad)).toEqual({})
+  })
+
   it("round-trips picker shortcut overrides (Settings tab live editing)", () => {
     const storage = memoryStorage()
     saveOverlayState(

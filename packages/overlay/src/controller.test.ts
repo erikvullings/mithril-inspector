@@ -636,6 +636,18 @@ describe("overlay controller — picking banner (§18)", () => {
     const second = setup({ storage })
     expect(second.controller.getState().showPickingBanner).toBe(false)
   })
+
+  it("setRedrawFlashEnabled(true) flips the live state immediately and persists across a fresh controller", () => {
+    const storage = memoryStorage()
+    const first = setup({ storage })
+    expect(first.controller.getState().redrawFlashEnabled).toBe(false)
+
+    first.controller.setRedrawFlashEnabled(true)
+    expect(first.controller.getState().redrawFlashEnabled).toBe(true)
+
+    const second = setup({ storage })
+    expect(second.controller.getState().redrawFlashEnabled).toBe(true)
+  })
 })
 
 describe("overlay controller — stale selection (§8.8)", () => {

@@ -76,8 +76,12 @@ export interface ComponentTreeOptions {
  * unlike {@link ComponentTreeOptions}'s permissive package-level default:
  * task 0026's own acceptance criterion requires this whole diagnostics
  * category to be opt-in. Also requires `mode: "full"` (checked live against
- * the runtime hook, not duplicated here) — this flag alone only controls
- * whether the overlay is even willing to install its `MutationObserver`.
+ * the runtime hook, not duplicated here). This value only seeds the initial
+ * on/off state — it's live-toggleable from the Settings tab thereafter
+ * (`OverlayController.setRedrawFlashEnabled`), and that live value, not this
+ * one, is what the overlay actually re-checks on each drained mutation
+ * batch; the `MutationObserver` itself installs unconditionally in
+ * `mode: "full"` so a later Settings-tab toggle takes effect immediately.
  */
 export interface RedrawFlashOptions {
   readonly enabled: boolean

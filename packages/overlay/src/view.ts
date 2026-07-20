@@ -934,6 +934,29 @@ function bannerToggleRow(controller: OverlayController, state: OverlayViewState)
 }
 
 /**
+ * Toggle for redraw-flash visualization (task 0030, Settings tab): a brief
+ * highlight over a component's DOM range when its own DOM actually mutated,
+ * not merely when its `view()` ran (see the Components tab's `updateCount`
+ * badge for that latter signal). Disabled with an explanatory hint outside
+ * `mode: "full"`, mirroring {@link previewGateMessage}'s gate — the checkbox
+ * itself still reflects the live setting so it doesn't clobber the user's
+ * preference while gated.
+ */
+function redrawFlashToggleRow(controller: OverlayController, state: OverlayViewState): Vnode {
+  const fullMode = state.componentTree.gating.fullMode
+  return m("div.mi-row-check", [
+    m("input#mi-redraw-flash-enabled", {
+      type: "checkbox",
+      checked: state.redrawFlashEnabled,
+      disabled: !fullMode,
+      onclick: (event: Event) => controller.setRedrawFlashEnabled((event.target as HTMLInputElement).checked),
+    }),
+    m("label", { for: "mi-redraw-flash-enabled" }, "Flash a component's DOM region when it actually mutates (not just when its view() runs)"),
+    fullMode ? null : m("p.mi-muted", 'Enable mode: "full" to use redraw-flash visualization.'),
+  ])
+}
+
+/**
  * Read-only editor display (§10.3): the browser can never choose what the
  * open-in-editor endpoint launches (§10.2 forbids the client from picking a
  * command), so this only surfaces the currently resolved editor plus the
@@ -1049,6 +1072,9 @@ function settingsView(controller: OverlayController, state: OverlayViewState): V
     m("hr.mi-hr"),
     m("div.mi-section-title", "Editor"),
     editorInfoView(controller),
+    m("hr.mi-hr"),
+    m("div.mi-section-title", "Redraw flash"),
+    redrawFlashToggleRow(controller, state),
     m("hr.mi-hr"),
     m("div.mi-section-title", "Privacy"),
     redactionToggleRow(controller, state),

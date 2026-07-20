@@ -212,6 +212,8 @@ export interface OverlayViewState {
   readonly pickerShortcuts: PickerShortcutSettings
   /** The user's live on/off preference for the picking banner (§18, Settings tab checkbox) — independent of its momentary auto-hide timing. */
   readonly showPickingBanner: boolean
+  /** Whether redraw-flash visualization is currently on (task 0030, Settings tab checkbox); seeded from `options.redrawFlash.enabled`, live-toggleable, persists across reloads. */
+  readonly redrawFlashEnabled: boolean
   /** Whether the picking banner should actually render right now: picking, `showPickingBanner` is on, and it hasn't auto-hidden yet this session. */
   readonly pickingBannerVisible: boolean
   /** The effective theme (§8.1): the app-configured `options.theme` unless the Settings tab overrode it. */
@@ -272,10 +274,12 @@ export interface OverlayController {
 
   /**
    * Feed a batch of observed DOM mutations through to the redraw-flash
-   * detector (task 0030) — a no-op unless `options.redrawFlash.enabled` and
-   * the runtime is in `mode: "full"`. The caller (`overlay.ts`) owns the
-   * actual `MutationObserver`/rAF throttling; this is pure attribution +
-   * timed state.
+   * detector (task 0030) — a no-op unless the live `redrawFlashEnabled`
+   * setting (Settings tab checkbox, seeded from `options.redrawFlash.enabled`)
+   * is on and the runtime is in `mode: "full"`. The caller (`overlay.ts`) owns
+   * the actual `MutationObserver`/rAF throttling — it installs unconditionally
+   * in `mode: "full"` so toggling this on later takes effect immediately —
+   * this is pure attribution + timed state.
    */
   recordDomMutations(records: readonly DomMutationLike[]): void
 
@@ -317,6 +321,8 @@ export interface OverlayController {
   resetPickerShortcut(key: PickerShortcutKey): void
   /** Show/hide the picking-active banner (§18); persists across reloads. */
   setShowPickingBanner(show: boolean): void
+  /** Turn redraw-flash visualization on/off (task 0030, Settings tab); persists across reloads. Only visible in `mode: "full"` — see {@link OverlayViewState.redrawFlashEnabled}. */
+  setRedrawFlashEnabled(enabled: boolean): void
   /** Override the theme (§8.1) from the Settings tab; persists and takes effect immediately. */
   setTheme(theme: OverlayTheme): void
   /** Revert to the app-configured `options.theme`, discarding any Settings-tab override. */
@@ -508,6 +514,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   let collapsed = persisted.collapsed ?? !options.defaultOpen
   let activeTab: OverlayTab = persisted.activeTab ?? "components"
   let showBanner = persisted.showPickingBanner ?? options.picker.showBanner
+  let redrawFlashEnabled = persisted.redrawFlashEnabled ?? options.redrawFlash.enabled
   let theme: OverlayTheme = persisted.theme ?? options.theme
 
   // §15: extra redaction keys added from the Settings tab persist across
@@ -688,6 +695,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         treeSearch: treeStore.getSearch(),
         pickerShortcuts: shortcutSettings,
         showPickingBanner: showBanner,
+        redrawFlashEnabled,
         theme,
         extraRedactKeys: addedRedactionKeys,
       },
@@ -790,6 +798,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         pickerShortcuts: shortcutSettings,
         showPickingBanner: showBanner,
         pickingBannerVisible: picker.isPicking() && showBanner && !bannerDismissed,
+        redrawFlashEnabled,
         theme,
         redactionEnabled: hook?.getRedactionEnabled() ?? true,
         redactionKeys: hook?.getRedactionKeys() ?? [],
@@ -988,7 +997,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     },
 
     recordDomMutations(records) {
-      if (!options.redrawFlash.enabled || hook === null || hook === undefined || hook.getMode() !== "full") return
+      if (!redrawFlashEnabled || hook === null || hook === undefined || hook.getMode() !== "full") return
       diagnostics.guard(
         "redraw-flash",
         () => {
@@ -1208,6 +1217,11 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     },
     setShowPickingBanner(show) {
       showBanner = show
+      persist()
+      redraw()
+    },
+    setRedrawFlashEnabled(enabled) {
+      redrawFlashEnabled = enabled
       persist()
       redraw()
     },

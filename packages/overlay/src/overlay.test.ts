@@ -1276,6 +1276,27 @@ describe("mountInspectorOverlay — redraw-flash visualization (task 0030)", () 
     expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(0)
   })
 
+  it("turns on live via the Settings-tab setter without remounting, even though redrawFlash.enabled defaulted to off", async () => {
+    const target = trackedTarget()
+    handle = mountInspectorOverlay(
+      {},
+      {
+        hook: fakeHook({
+          getMode: () => "full",
+          resolveDomComponent: (node) => (node === target ? ("c:1" as ComponentId) : null),
+          componentRecord: (id) => componentRecord({ id, domRange: { first: target, last: target } }),
+        }),
+      },
+    )
+
+    handle!.controller.setRedrawFlashEnabled(true)
+    target.setAttribute("data-x", "1")
+    await waitForFlashProcessing()
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(1)
+  })
+
   it("stays off when mode isn't full, even with redrawFlash.enabled: true", async () => {
     const target = trackedTarget()
     handle = mountInspectorOverlay(

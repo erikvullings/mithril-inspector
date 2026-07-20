@@ -40,6 +40,8 @@ export interface OverlayPersistedState {
   pickerShortcuts?: Partial<Record<PickerShortcutKey, PickerShortcutSetting>>
   /** Whether to show the picking-active banner (§18, Settings tab); absent keeps the app-configured `picker.showBanner` default. */
   showPickingBanner?: boolean
+  /** Whether redraw-flash visualization is on (task 0030, Settings tab); absent keeps the app-configured `redrawFlash.enabled` default. */
+  redrawFlashEnabled?: boolean
   /** A user-picked theme override (Settings tab); absent keeps the app-configured `OverlayOptions.theme` default. */
   theme?: OverlayTheme
   /**
@@ -120,6 +122,7 @@ export function loadOverlayState(storage: StorageLike | null = defaultStorage())
   if (pickerShortcuts !== undefined) state.pickerShortcuts = pickerShortcuts
 
   if (typeof record.showPickingBanner === "boolean") state.showPickingBanner = record.showPickingBanner
+  if (typeof record.redrawFlashEnabled === "boolean") state.redrawFlashEnabled = record.redrawFlashEnabled
 
   if (typeof record.theme === "string" && PERSISTED_THEMES.has(record.theme)) {
     state.theme = record.theme as OverlayTheme

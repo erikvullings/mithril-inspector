@@ -37,6 +37,21 @@ export function isNullOrUndefinedNode(node: PreviewNode): boolean {
   return node.kind === "primitive" && (node.type === "null" || node.type === "undefined")
 }
 
+/**
+ * Whether a preview node genuinely carries nothing worth showing: absent,
+ * JS `null`/`undefined`, or a fully-loaded container with zero entries — used
+ * to decide whether a whole attrs/state History swimlane is worth showing at
+ * all (task 0027 follow-up). A plain-object component with no closure state
+ * of its own still gets a Mithril-allocated state object with zero own
+ * properties, which serializes to exactly this: not absent, just empty.
+ */
+export function isEmptyPreviewValue(node: PreviewNode | null): boolean {
+  if (node === null) return true
+  if (isNullOrUndefinedNode(node)) return true
+  if (isContainerNode(node)) return !node.truncated && totalCountOf(node) === 0
+  return false
+}
+
 export type ContainerNode = Extract<PreviewNode, { kind: "object" | "array" | "map" | "set" | "typed-array" }>
 
 export function isContainerNode(node: PreviewNode): node is ContainerNode {

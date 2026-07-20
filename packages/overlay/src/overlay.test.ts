@@ -135,14 +135,14 @@ describe("mountInspectorOverlay — host & isolation", () => {
 })
 
 describe("mountInspectorOverlay — panel (§8.3)", () => {
-  it("expands to a docked panel with a Components/State History/Settings sidebar", () => {
+  it("expands to a docked panel with a Components/History/Settings sidebar", () => {
     handle = mountInspectorOverlay({}, { hook: fakeHook() })
     handle!.controller.setCollapsed(false)
     render()
     const sidebarLabels = Array.from(handle!.shadowRoot.querySelectorAll(".mi-sidebar-btn")).map((b) =>
       b.getAttribute("aria-label"),
     )
-    expect(sidebarLabels).toEqual(["Components", "State History", "Settings"])
+    expect(sidebarLabels).toEqual(["Components", "History", "Settings"])
     expect(handle!.shadowRoot.querySelector('[role="dialog"]')).not.toBeNull()
   })
 
@@ -155,6 +155,15 @@ describe("mountInspectorOverlay — panel (§8.3)", () => {
       expect(button.getAttribute("title")).toBe(button.getAttribute("aria-label"))
       expect(button.getAttribute("data-tooltip")).toBe(button.getAttribute("aria-label"))
     }
+  })
+
+  it("gives the 'M' collapse button the same themed hover tooltip as the rest of the sidebar rail, not just a native title", () => {
+    handle = mountInspectorOverlay({}, { hook: fakeHook() })
+    handle!.controller.setCollapsed(false)
+    render()
+    const logo = handle!.shadowRoot.querySelector(".mi-sidebar-logo")
+    expect(logo?.getAttribute("title")).toBe("Collapse Mithril Inspector")
+    expect(logo?.getAttribute("data-tooltip")).toBe("Collapse Mithril Inspector")
   })
 
   it("surfaces recorded diagnostics in the Settings section (§16)", () => {
@@ -973,6 +982,116 @@ describe("mountInspectorOverlay — State History tab (task 0027)", () => {
     expect(table?.textContent).toContain("done")
     expect(table?.textContent).toContain("false")
     expect(table?.textContent).toContain("true")
+  })
+
+  it("leaves the empty '(value): Object' noise out for an attrs-only component with no state of its own (task 0027 follow-up, the original bug report)", () => {
+    const appEl = document.createElement("div")
+    document.body.appendChild(appEl)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "UserCard", domRange: { first: appEl, last: appEl } })
+    const emptyState = { kind: "object" as const, className: "Object", size: 0, entries: [], offset: 0, truncated: false, path: [] }
+    const nameAttrs = (name: string) => ({
+      kind: "object" as const,
+      className: "Object",
+      size: 1,
+      entries: [{ key: "name", node: { kind: "primitive" as const, type: "string" as const, value: name } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    })
+    const hook = fakeHook({
+      getSnapshot: () => ({ components: new Map([["c:1" as ComponentId, app]]), vnodes: new Map(), modules: new Map(), domAssociations: new Map() }),
+      componentRecord: () => app,
+      getMode: () => "full",
+      statePreview: () => emptyState,
+      attrsPreview: () => nameAttrs("Grace Hopper"),
+    })
+    handle = mountInspectorOverlay({ componentTree: { captureState: true, captureAttrs: true } }, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("history")
+    render()
+
+    // The attrs whole-value "added" entry (real content) still shows...
+    const diffSection = handle!.shadowRoot.querySelector(".mi-history-diff")
+    const rows = Array.from(diffSection?.children ?? [])
+    expect(rows).toHaveLength(1)
+    expect(diffSection?.textContent).toContain("name")
+    expect(diffSection?.textContent).toContain("Grace Hopper")
+    // ...but the always-empty state never contributes its own bare "Object" row.
+    expect(diffSection?.querySelectorAll(".mi-history-diff-source")).toHaveLength(0)
+    // Only one source ever has data, so there's nothing to toggle between.
+    expect(handle!.shadowRoot.querySelector(".mi-row-check")).toBeNull()
+  })
+
+  it("interleaves attrs and state changes in one combined, sorted list with source badges once both have data", () => {
+    const appEl = document.createElement("div")
+    document.body.appendChild(appEl)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: appEl, last: appEl } })
+    let listener: ((event: RuntimeEvent) => void) | null = null
+    const countState = (value: number) => ({
+      kind: "object" as const,
+      className: "Object",
+      size: 1,
+      entries: [{ key: "count", node: { kind: "primitive" as const, type: "number" as const, value } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    })
+    const nameAttrs = (name: string) => ({
+      kind: "object" as const,
+      className: "Object",
+      size: 1,
+      entries: [{ key: "name", node: { kind: "primitive" as const, type: "string" as const, value: name } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    })
+    let state = countState(1)
+    let attrs = nameAttrs("Ada")
+    const hook = fakeHook({
+      getSnapshot: () => ({ components: new Map([["c:1" as ComponentId, app]]), vnodes: new Map(), modules: new Map(), domAssociations: new Map() }),
+      componentRecord: () => app,
+      getMode: () => "full",
+      statePreview: () => state,
+      attrsPreview: () => attrs,
+      subscribe: (fn) => {
+        listener = fn
+        return () => {}
+      },
+    })
+    handle = mountInspectorOverlay({ componentTree: { captureState: true, captureAttrs: true } }, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("history")
+    render()
+
+    state = countState(2)
+    attrs = nameAttrs("Grace")
+    listener!({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    render()
+
+    // Both sources have real data — the Both/State/Attrs toggle appears.
+    const filterButtons = Array.from(handle!.shadowRoot.querySelectorAll(".mi-row-check button.mi-btn-small")).map((b) => b.textContent)
+    expect(filterButtons).toEqual(["Both", "State", "Attrs"])
+
+    // The combined diff shows both, key-sorted (count before name), each tagged with its source.
+    const diffSection = handle!.shadowRoot.querySelector(".mi-history-diff")
+    const rows = Array.from(diffSection?.querySelectorAll("li") ?? [])
+    expect(rows).toHaveLength(2)
+    expect(rows[0]?.textContent).toContain("count")
+    expect(rows[0]?.querySelector(".mi-history-diff-source")?.textContent).toBe("state")
+    expect(rows[1]?.textContent).toContain("name")
+    expect(rows[1]?.querySelector(".mi-history-diff-source")?.textContent).toBe("attrs")
+
+    // Narrowing to "Attrs" hides the state row.
+    const attrsButton = Array.from(handle!.shadowRoot.querySelectorAll(".mi-row-check button.mi-btn-small")).find(
+      (b) => b.textContent === "Attrs",
+    ) as HTMLButtonElement
+    attrsButton.click()
+    render()
+    const narrowedRows = Array.from(handle!.shadowRoot.querySelectorAll(".mi-history-diff li"))
+    expect(narrowedRows).toHaveLength(1)
+    expect(narrowedRows[0]?.textContent).toContain("name")
   })
 })
 

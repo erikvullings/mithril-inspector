@@ -12,7 +12,15 @@ import type {
 import { createDiagnostics, type Diagnostic, type DiagnosticsLog } from "./diagnostics.js"
 import { describeElement, eligibleElementAt, isWithinHost } from "./element-info.js"
 import { createEditorClient, type OpenInEditor } from "./editor.js"
-import { createHistoryStore, type HistoryDiffEntry, type HistoryEntry, type HistoryStore } from "./history.js"
+import {
+  createHistoryStore,
+  hasMeaningfulHistoryData,
+  type HistoryDiffEntry,
+  type HistoryEntry,
+  type HistoryFilter,
+  type HistorySource,
+  type HistoryStore,
+} from "./history.js"
 import { rectOfElement, rectsOfDomRange, type HighlightRect } from "./highlight.js"
 import type { ExpandPreviewOptions, OverlayHook } from "./hook.js"
 import { describeMapping, type MappingInfo } from "./mapping.js"
@@ -130,10 +138,11 @@ export interface ComponentTreeViewState {
 
 /**
  * The State History tab's state (task 0027) — a read-only timeline of a
- * watched component's state preview, recorded on each redraw, plus a diff
- * against the selected entry's own predecessor. Gated identically to the
- * Components tab's attrs/state sections ({@link ComponentTreeGating}): no
- * separate gate is invented for this feature.
+ * watched component's attrs and state previews (task 0027 follow-up: attrs
+ * history), recorded on each redraw, plus a diff against the selected
+ * entry's own predecessor. Gated identically to the Components tab's
+ * attrs/state sections ({@link ComponentTreeGating}): no separate gate is
+ * invented for this feature.
  */
 export interface HistoryViewState {
   readonly gating: ComponentTreeGating
@@ -141,7 +150,22 @@ export interface HistoryViewState {
   readonly watchedComponentId: ComponentId | null
   readonly entries: readonly HistoryEntry[]
   readonly selectedEntryId: number | null
+  /** The selected entry's diff against its predecessor, already scoped to {@link sources} (task 0027 follow-up). */
   readonly diff: readonly HistoryDiffEntry[]
+  /** The user's chosen scope — "both" unless they've explicitly narrowed it via `setHistoryFilter` (task 0027 follow-up). */
+  readonly filter: HistoryFilter
+  /** Whether any recorded entry ever carried real state data — see {@link hasMeaningfulHistoryData}. */
+  readonly hasStateData: boolean
+  /** Whether any recorded entry ever carried real attrs data; see {@link hasStateData}. */
+  readonly hasAttrsData: boolean
+  /**
+   * `filter` resolved against what's actually available — e.g. `filter:
+   * "both"` for a component whose state is always empty (an attrs-only
+   * presentational component) resolves to just `["attrs"]`, not
+   * `["attrs", "state"]`: there's no point offering a toggle between
+   * "something" and "always empty" (task 0027 follow-up).
+   */
+  readonly sources: readonly HistorySource[]
 }
 
 /**
@@ -281,6 +305,8 @@ export interface OverlayController {
   // --- History tab: state-history panel (task 0027) -----------------------
   /** Select an entry to view/diff, or `null` to fall back to the latest one — local UI state only. */
   selectHistoryEntry(id: number | null): void
+  /** Narrow the History tab's combined timeline to just attrs, just state, or both (task 0027 follow-up) — local UI state only. */
+  setHistoryFilter(filter: HistoryFilter): void
 
   // --- Settings tab: live picker shortcut editing --------------------------
   /** Rebind a picker shortcut/modifier to a new raw string (e.g. "Alt+Shift"); persists and takes effect immediately. */
@@ -554,6 +580,11 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   // `computeGating()` allows it, same as the componentTree.enabled-gated
   // subscription below that drives it.
   const historyStore: HistoryStore = createHistoryStore({ limit: options.historyLimit })
+  // The user's chosen History-tab scope (task 0027 follow-up) — a UI-only
+  // preference, reset to "both" whenever the watched component changes (see
+  // `watchComponent`) since a filter tuned to one component's shape (e.g.
+  // "state" for a component with no attrs) doesn't necessarily fit the next.
+  let historyFilter: HistoryFilter = "both"
 
   // The Components tab's gating (§11.1, §17) — also what the History tab
   // reuses (task 0027): both require componentTree.enabled + mode "full" +
@@ -565,32 +596,49 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     captureState: options.componentTree.captureState,
   })
 
-  // Record a new state-history snapshot for the watched component when a
-  // batched components-updated event (§9.4) reports it redrew — pulled fresh
-  // via `hook.statePreview` rather than read off the patch, since the runtime
-  // never puts attrs/state on the patch itself (task 0027).
+  // Record a new history snapshot for the watched component when a batched
+  // components-updated event (§9.4) reports it redrew — pulled fresh via
+  // `hook.statePreview`/`attrsPreview` rather than read off the patch, since
+  // the runtime never puts attrs/state on the patch itself (task 0027).
+  // State and attrs are gated independently (task 0027 follow-up: attrs
+  // history) so an attrs-only presentational component still gets a
+  // timeline even with `captureState` off, and vice versa.
   const recordHistoryFromEvent = (event: RuntimeEvent): void => {
     if (event.type !== "components-updated") return
     const watchedId = historyStore.getWatchedComponent()
     if (watchedId === null) return
     if (!event.records.some((patch) => patch.id === watchedId)) return
     const gating = computeGating()
-    if (!gating.enabled || !gating.fullMode || !gating.captureState) return
-    historyStore.record(watchedId, hook?.statePreview(watchedId) ?? null, Date.now())
+    if (!gating.enabled || !gating.fullMode) return
+    if (!gating.captureState && !gating.captureAttrs) return
+    historyStore.record(
+      watchedId,
+      gating.captureState ? hook?.statePreview(watchedId) ?? null : null,
+      gating.captureAttrs ? hook?.attrsPreview(watchedId) ?? null : null,
+      Date.now(),
+    )
   }
 
   // Switch the watched component and, on an actual change, seed the buffer
-  // with its *current* state right away — `statePreview` reads the state the
-  // runtime already keeps current every redraw, so selecting a component
-  // shows its state immediately instead of waiting for the next redraw to
-  // populate the buffer via `recordHistoryFromEvent`.
+  // with its *current* attrs/state right away — `statePreview`/`attrsPreview`
+  // read the values the runtime already keeps current every redraw, so
+  // selecting a component shows them immediately instead of waiting for the
+  // next redraw to populate the buffer via `recordHistoryFromEvent`.
   const watchComponent = (id: ComponentId | null): void => {
     const changed = id !== historyStore.getWatchedComponent()
     historyStore.setWatchedComponent(id)
-    if (!changed || id === null) return
+    if (!changed) return
+    historyFilter = "both" // a filter tuned to the old component's shape may not fit the new one
+    if (id === null) return
     const gating = computeGating()
-    if (!gating.enabled || !gating.fullMode || !gating.captureState) return
-    historyStore.record(id, hook?.statePreview(id) ?? null, Date.now())
+    if (!gating.enabled || !gating.fullMode) return
+    if (!gating.captureState && !gating.captureAttrs) return
+    historyStore.record(
+      id,
+      gating.captureState ? hook?.statePreview(id) ?? null : null,
+      gating.captureAttrs ? hook?.attrsPreview(id) ?? null : null,
+      Date.now(),
+    )
   }
 
   let unsubscribeTree: (() => void) | null = null
@@ -699,12 +747,27 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         expandedAttrsPaths,
         expandedStatePaths,
       }
+      // task 0027 follow-up: only offer a source the component ever actually
+      // populated — a component with no attrs (or no state) shouldn't get a
+      // toggle between "something" and "always empty".
+      const historyEntries = historyStore.entries()
+      const hasStateData = hasMeaningfulHistoryData(historyEntries, "state")
+      const hasAttrsData = hasMeaningfulHistoryData(historyEntries, "attrs")
+      const availableSources: HistorySource[] = []
+      if (hasStateData) availableSources.push("state")
+      if (hasAttrsData) availableSources.push("attrs")
+      const sources: readonly HistorySource[] =
+        historyFilter === "both" ? availableSources : availableSources.filter((source) => source === historyFilter)
       const history: HistoryViewState = {
         gating,
         watchedComponentId: historyStore.getWatchedComponent(),
-        entries: historyStore.entries(),
+        entries: historyEntries,
         selectedEntryId: historyStore.getSelectedEntryId(),
-        diff: historyStore.selectedDiff(),
+        diff: historyStore.selectedDiff().filter((entry) => sources.includes(entry.source)),
+        filter: historyFilter,
+        hasStateData,
+        hasAttrsData,
+        sources,
       }
 
       return {
@@ -832,7 +895,12 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           resetPreviewOverrides()
           watchComponent(data.componentId)
           collapsed = false // show the details panel (§8.7)
-          activeTab = "components" // the merged tree/detail view is where a pick's result shows (§8.3)
+          // The merged tree/detail view is where a pick's result shows (§8.3)
+          // — but the History tab also reflects the newly-watched component
+          // (via `watchComponent` above), so a pick started from there should
+          // land back on History, not get yanked over to Components. Settings
+          // has no equivalent, so that's the only tab a pick still redirects.
+          if (activeTab === "settings") activeTab = "components"
           persist()
 
           if (options.picker.openOnClick || openDirectly) controller.openSelectedInEditor()
@@ -854,6 +922,14 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
             if (picker.isPicking()) {
               event.preventDefault()
               controller.stopPicker()
+              return true
+            }
+            // Escape with nothing to cancel collapses the docked panel back
+            // to the toggle (§8.1) — the same destination the "M" logo
+            // click reaches, just without having to find it first.
+            if (!collapsed) {
+              event.preventDefault()
+              controller.setCollapsed(true)
               return true
             }
             return false
@@ -1101,6 +1177,10 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     // --- History tab: state-history panel (task 0027) -----------------------
     selectHistoryEntry(id) {
       historyStore.selectEntry(id)
+      redraw()
+    },
+    setHistoryFilter(filter) {
+      historyFilter = filter
       redraw()
     },
 

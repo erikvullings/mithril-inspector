@@ -21,6 +21,6 @@
     "@mithril-inspector/transform": "workspace:*",
     "@mithril-inspector/vite": "workspace:*",
     "@types/mithril": "^2.2.8",
-    "vite": "^7.3.6"
+    "vite": "^8.1.5"
   }
 }

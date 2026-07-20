@@ -260,7 +260,8 @@ export function overlayCss(): string {
   opacity: 1;
   visibility: visible;
 }
-.mi-sidebar-btn[data-tooltip]::after {
+/* Every tooltip in the vertical left rail points right, not just .mi-sidebar-btn's — the "M" collapse button sits in the same narrow column. */
+.mi-sidebar [data-tooltip]::after {
   left: calc(100% + 10px);
   top: 50%;
   transform: translateY(-50%);
@@ -685,6 +686,20 @@ export function overlayCss(): string {
   border-bottom: 1px solid var(--mi-border);
 }
 .mi-history-diff li:last-child { border-bottom: 0; }
+/* The attrs/state source badge (task 0027 follow-up), shown only once the interleaved list actually mixes both. */
+.mi-history-diff-source {
+  display: inline-block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--mi-muted);
+  background: var(--mi-surface);
+  border: 1px solid var(--mi-border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-right: 2px;
+}
+.mi-history-diff-expanded .mi-history-diff-source { margin-right: 6px; }
 /* The status color as an inset bar (not a flush border-left) so it never touches the row's own text and leaves a visible gap against a neighboring bar, e.g. an expanded entry's own bar vs. its nested compare table's row bars just to its right. */
 .mi-history-diff li::before { content: ""; position: absolute; left: 0; top: 3px; bottom: 3px; width: 3px; border-radius: 1.5px; }
 .mi-history-diff li.mi-history-diff-added::before { background: var(--mi-exact); }

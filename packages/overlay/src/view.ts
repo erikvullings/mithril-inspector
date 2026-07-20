@@ -5,6 +5,7 @@ import type { Children, Component, Vnode } from "mithril"
 import type {
   AncestryEntry,
   ComponentTreeGating,
+  HistoryViewState,
   OverlayController,
   OverlayTab,
   OverlayViewState,
@@ -12,10 +13,11 @@ import type {
 import {
   alignContainerEntries,
   containerEntries,
-  diffPreviewNodes,
+  diffHistoryEntries,
   type AlignedDiffRow,
   type HistoryDiffEntry,
   type HistoryEntry,
+  type HistoryFilter,
 } from "./history.js"
 import type { HighlightRect } from "./highlight.js"
 import {
@@ -775,6 +777,21 @@ function previewGateMessage(gating: ComponentTreeGating, label: string): string 
 }
 
 /**
+ * The History tab's own gate message (task 0027 follow-up) — unlike
+ * {@link previewGateMessage}'s per-target check, this only blocks once
+ * *neither* source can ever be captured: a component with just one of the
+ * two (attrs off, state on, or vice versa) still gets a timeline for
+ * whichever one is available.
+ */
+function historyGateMessage(gating: ComponentTreeGating): string | null {
+  if (!gating.fullMode) return 'Enable mode: "full" to see this component\'s history.'
+  if (!gating.captureAttrs && !gating.captureState) {
+    return "Attrs/state capture is disabled (componentTree.captureAttrs / componentTree.captureState)."
+  }
+  return null
+}
+
+/**
  * Content for the Attrs/State section, or `null` when there is nothing worth
  * showing: unavailable, a JS `null`/`undefined` value (e.g. a component with
  * no `state` field), or an empty container with no props/fields at all —
@@ -1060,24 +1077,30 @@ function diagnosticsView(state: OverlayViewState): Vnode {
 
 /**
  * The State History tab (task 0027): a read-only timeline of the currently
- * selected component's state preview, recorded on each redraw, plus a diff
- * of the selected entry against its own immediate predecessor. Gated
- * identically to the Components tab's Attrs/State sections via the shared
- * `previewGateMessage` — no separate gate is invented here. There is
- * deliberately no rewind/replay affordance (REQUIREMENTS.md §3.3 lists
- * time-travel debugging as an explicit non-goal); this only ever reads.
+ * selected component's attrs and state previews (task 0027 follow-up: attrs
+ * history), recorded on each redraw, plus a diff of the selected entry
+ * against its own immediate predecessor. Both sources interleave into one
+ * combined, key-sorted list (`diffHistoryEntries`) rather than two separate
+ * sections — an attrs-only presentational component (no state of its own)
+ * and a state-only component both just work, and a component with real data
+ * in both places shows them together. Gated identically to the Components
+ * tab's Attrs/State sections via `historyGateMessage` (only blocks if
+ * *neither* source can ever be captured). There is deliberately no
+ * rewind/replay affordance (REQUIREMENTS.md §3.3 lists time-travel
+ * debugging as an explicit non-goal); this only ever reads.
  */
-/** A short one-line label for one diff entry, e.g. `count: 1 → 2`, `+added`, `-removed`. */
-function historyDiffEntryLabel(entry: HistoryDiffEntry): string {
-  if (entry.kind === "added") return `+${entry.key}`
-  if (entry.kind === "removed") return `-${entry.key}`
-  return `${entry.key}: ${summarizeNode(entry.before!)} → ${summarizeNode(entry.after!)}`
+/** A short one-line label for one diff entry, e.g. `count: 1 → 2`, `+added`, `-removed` — prefixed with its source once both attrs and state are in view together, so a reader can tell them apart without opening the row. */
+function historyDiffEntryLabel(entry: HistoryDiffEntry, showSource: boolean): string {
+  const prefix = showSource ? `${entry.source}·` : ""
+  if (entry.kind === "added") return `${prefix}+${entry.key}`
+  if (entry.kind === "removed") return `${prefix}-${entry.key}`
+  return `${prefix}${entry.key}: ${summarizeNode(entry.before!)} → ${summarizeNode(entry.after!)}`
 }
 
 /** The list row's own compact "what changed" preview (first sub-bullet of task 0027's acceptance criteria) — up to 3 changed keys, comma-joined, with a trailing "…" once truncated. */
-function compactHistoryDiffSummary(diff: readonly HistoryDiffEntry[]): string {
+function compactHistoryDiffSummary(diff: readonly HistoryDiffEntry[], showSource: boolean): string {
   if (diff.length === 0) return "no change"
-  const shown = diff.slice(0, 3).map(historyDiffEntryLabel)
+  const shown = diff.slice(0, 3).map((entry) => historyDiffEntryLabel(entry, showSource))
   return diff.length > shown.length ? `${shown.join(", ")}, …` : shown.join(", ")
 }
 
@@ -1158,8 +1181,15 @@ function historyContainerCompare(before: ContainerNode, after: ContainerNode): V
  * expanded column; everything else (primitives, map/set/typed-array, a
  * kind mismatch) keeps the original one-line `before → after` summary —
  * scoped to "arrays and objects only" per the request this responds to.
+ * `showSource` adds a small attrs/state badge (task 0027 follow-up) once
+ * the interleaved list actually mixes both — with only one source present
+ * it would just repeat the same word on every row. The vnode `key` folds in
+ * `entry.source`: attrs and state are separate namespaces, so a same-named
+ * field changing in both would otherwise collide as duplicate list keys.
  */
-function historyDiffRow(entry: HistoryDiffEntry): Vnode {
+function historyDiffRow(entry: HistoryDiffEntry, showSource: boolean): Vnode {
+  const sourceBadge = showSource ? m("span.mi-history-diff-source", entry.source) : null
+  const rowKey = `${entry.source}:${entry.key}`
   if (
     entry.kind === "changed" &&
     entry.before !== null &&
@@ -1168,23 +1198,53 @@ function historyDiffRow(entry: HistoryDiffEntry): Vnode {
     isExpandableDiffContainer(entry.after) &&
     entry.before.kind === entry.after.kind
   ) {
-    return m("li.mi-history-diff-changed.mi-history-diff-expanded", { key: entry.key }, [
-      m("div.mi-preview-key", entry.key),
+    return m("li.mi-history-diff-changed.mi-history-diff-expanded", { key: rowKey }, [
+      m("div.mi-preview-key", [sourceBadge, entry.key]),
       historyContainerCompare(entry.before, entry.after),
     ])
   }
   const singleSide = entry.kind === "removed" ? entry.before : entry.kind === "added" ? entry.after : null
   if (singleSide !== null && isExpandableDiffContainer(singleSide)) {
-    return m(`li.mi-history-diff-${entry.kind}.mi-history-diff-expanded`, { key: entry.key }, [
-      m("div.mi-preview-key", entry.key),
+    return m(`li.mi-history-diff-${entry.kind}.mi-history-diff-expanded`, { key: rowKey }, [
+      m("div.mi-preview-key", [sourceBadge, entry.key]),
       historyValuePreview(singleSide),
     ])
   }
-  return m(`li.mi-history-diff-${entry.kind}`, { key: entry.key }, [
+  return m(`li.mi-history-diff-${entry.kind}`, { key: rowKey }, [
+    sourceBadge,
     m("span.mi-preview-key", `${entry.key}: `),
     entry.before !== null ? m("span.mi-mono", summarizeNode(entry.before)) : null,
     entry.kind === "changed" ? m("span.mi-muted", " → ") : null,
     entry.after !== null ? m("span.mi-mono", summarizeNode(entry.after)) : null,
+  ])
+}
+
+const HISTORY_FILTER_OPTIONS: readonly HistoryFilter[] = ["both", "state", "attrs"]
+const HISTORY_FILTER_LABELS: Record<HistoryFilter, string> = { both: "Both", state: "State", attrs: "Attrs" }
+
+/**
+ * The attrs/state scope toggle (task 0027 follow-up) — only shown once the
+ * watched component has actually produced real data on *both* sides; a
+ * component that only ever has one (an attrs-only presentational component,
+ * or one with no attrs at all) has nothing to toggle, so the timeline just
+ * shows whatever it has without this row at all.
+ */
+function historyFilterRow(controller: OverlayController, history: HistoryViewState): Vnode | null {
+  if (!history.hasAttrsData || !history.hasStateData) return null
+  return m("div.mi-row-check", [
+    m("span.mi-key", "Show"),
+    HISTORY_FILTER_OPTIONS.map((filter) =>
+      m(
+        "button.mi-btn-small",
+        {
+          type: "button",
+          class: history.filter === filter ? "mi-crumb-current" : undefined,
+          "aria-pressed": history.filter === filter,
+          onclick: () => controller.setHistoryFilter(filter),
+        },
+        HISTORY_FILTER_LABELS[filter],
+      ),
+    ),
   ])
 }
 
@@ -1194,39 +1254,50 @@ function historyDetailPane(controller: OverlayController, state: OverlayViewStat
   if (history.watchedComponentId === null) {
     return m("div.mi-history", [
       m("p.mi-muted", "No component selected."),
-      m("p.mi-muted", "Pick an element on the page, or choose a component from the tree on the left, to watch its state over time."),
+      m("p.mi-muted", "Pick an element on the page, or choose a component from the tree on the left, to watch its attrs/state over time."),
     ])
   }
   const watchedName = state.selectedComponentName?.name ?? "component"
   const heading = m("div.mi-detail-meta", [m("span.mi-mono", `Watching: ${watchedName}`)])
-  const gateMessage = previewGateMessage(history.gating, "state")
+  const gateMessage = historyGateMessage(history.gating)
   if (gateMessage !== null) return m("div.mi-history", [heading, m("p.mi-muted", gateMessage)])
   if (history.entries.length === 0) {
     return m("div.mi-history", [
       heading,
-      m("p.mi-muted", "No state changes recorded yet for this component."),
+      m("p.mi-muted", "No changes recorded yet for this component."),
       m(
         "p.mi-muted",
         "Most useful pointed at a root/layout component that receives a Meiosis cell().state as its state — trigger an action in the app to see snapshots accumulate here.",
       ),
     ])
   }
+  if (history.sources.length === 0) {
+    // Recorded entries exist, but every one of them is a structurally-empty
+    // container on both sides — e.g. a component with neither attrs nor
+    // state of its own. Showing a timeline of bare "(value): Object" rows
+    // would be worse than saying so plainly (task 0027 follow-up).
+    return m("div.mi-history", [
+      heading,
+      m("p.mi-muted", "This component has no attrs or state of its own to track."),
+    ])
+  }
+  const showSource = history.sources.length > 1
   const selectedId = history.selectedEntryId ?? history.entries[history.entries.length - 1]!.id
   // Newest first for display; each row keeps its own chronological #N label
   // (computed from the un-reversed array) so numbering doesn't shuffle as
   // new entries arrive — only the stacking order does (task 0028).
   const rows = history.entries
     .map((entry, index) => {
-      const summary =
-        index === 0
-          ? "initial snapshot"
-          : compactHistoryDiffSummary(diffPreviewNodes(history.entries[index - 1]!.state, entry.state))
+      const priorEntry = index === 0 ? null : history.entries[index - 1]!
+      const rowDiff = diffHistoryEntries(priorEntry, entry).filter((diffEntry) => history.sources.includes(diffEntry.source))
+      const summary = index === 0 ? "initial snapshot" : compactHistoryDiffSummary(rowDiff, showSource)
       return { entry, index, summary }
     })
     .reverse()
   return m("div.mi-history", [
     heading,
-    m("div.mi-section-title", `State history (${history.entries.length})`),
+    historyFilterRow(controller, history),
+    m("div.mi-section-title", `History (${history.entries.length})`),
     m(
       "ul.mi-history-list",
       rows.map(({ entry, index, summary }) =>
@@ -1236,7 +1307,7 @@ function historyDetailPane(controller: OverlayController, state: OverlayViewStat
     m("div.mi-section-title", "Changes from previous snapshot"),
     history.diff.length === 0
       ? m("p.mi-muted", "No changes from the previous snapshot.")
-      : m("ul.mi-history-diff", history.diff.map((entry) => historyDiffRow(entry))),
+      : m("ul.mi-history-diff", history.diff.map((entry) => historyDiffRow(entry, showSource))),
   ])
 }
 
@@ -1272,11 +1343,17 @@ function sidebar(controller: OverlayController, tab: OverlayTab, setTab: (tab: O
   return m("nav.mi-sidebar", { "aria-label": "Mithril Inspector sections" }, [
     m(
       "button.mi-sidebar-logo",
-      { type: "button", title: "Collapse Mithril Inspector", "aria-label": "Collapse Mithril Inspector", onclick: () => controller.setCollapsed(true) },
+      {
+        type: "button",
+        title: "Collapse Mithril Inspector",
+        "aria-label": "Collapse Mithril Inspector",
+        "data-tooltip": "Collapse Mithril Inspector",
+        onclick: () => controller.setCollapsed(true),
+      },
       "M",
     ),
     sidebarButton(iconComponents(), { label: "Components", active: tab === "components", onclick: () => setTab("components") }),
-    sidebarButton(iconHistory(), { label: "State History", active: tab === "history", onclick: () => setTab("history") }),
+    sidebarButton(iconHistory(), { label: "History", active: tab === "history", onclick: () => setTab("history") }),
     m("div.mi-sidebar-spacer"),
     sidebarButton(iconSettings(), { label: "Settings", active: tab === "settings", onclick: () => setTab("settings") }),
   ])

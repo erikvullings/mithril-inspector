@@ -243,6 +243,27 @@ describe("overlay controller — selection (§8.7)", () => {
     expect(openInEditor).not.toHaveBeenCalled()
   })
 
+  it("switches to the Components tab when picking from Settings, but stays on History when picking from there", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const { controller, setHits } = setup()
+
+    controller.setActiveTab("settings")
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+    expect(controller.getState().activeTab).toBe("components")
+
+    controller.setActiveTab("history")
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+    expect(controller.getState().activeTab).toBe("history")
+  })
+
   it("does not open the editor on click by default — a pick lands in the panel, not the editor", () => {
     const el = document.createElement("article")
     stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
@@ -395,6 +416,30 @@ describe("overlay controller — keyboard (§8.4)", () => {
     controller.startPicker()
     expect(controller.handleKeyDown(keyEvent({ key: "Escape" }))).toBe(true)
     expect(controller.isPicking()).toBe(false)
+  })
+
+  it("collapses the docked panel on Escape once there's no picker left to cancel", () => {
+    const { controller } = setup({ options: { defaultOpen: true } })
+    expect(controller.getState().collapsed).toBe(false)
+    expect(controller.isPicking()).toBe(false)
+
+    expect(controller.handleKeyDown(keyEvent({ key: "Escape" }))).toBe(true)
+    expect(controller.getState().collapsed).toBe(true)
+  })
+
+  it("does nothing on Escape once already collapsed — not picking, nothing to cancel or collapse", () => {
+    const { controller } = setup() // collapsed by default
+    expect(controller.getState().collapsed).toBe(true)
+    expect(controller.handleKeyDown(keyEvent({ key: "Escape" }))).toBe(false)
+  })
+
+  it("cancels the picker on Escape rather than collapsing, when both would otherwise apply", () => {
+    const { controller } = setup({ options: { defaultOpen: true } })
+    controller.startPicker()
+    expect(controller.handleKeyDown(keyEvent({ key: "Escape" }))).toBe(true)
+    expect(controller.isPicking()).toBe(false)
+    // The panel itself must stay open — Escape only cancelled the picker this time.
+    expect(controller.getState().collapsed).toBe(false)
   })
 
   it("opens the hovered source on Enter", () => {
@@ -1131,19 +1176,24 @@ describe("Components tab: tree/search/pin/attrs+state (task 0022)", () => {
   })
 })
 
-describe("State History tab (task 0027)", () => {
+describe("State History tab (task 0027, plus task 0027 follow-up: attrs history)", () => {
   const el = (): HTMLElement => {
     const node = document.createElement("div")
     document.body.appendChild(node)
     return node
   }
 
-  function historyHook(overrides: Partial<OverlayHook> = {}, statePreviewValues: PreviewNode[] = []): {
+  function historyHook(
+    overrides: Partial<OverlayHook> = {},
+    statePreviewValues: PreviewNode[] = [],
+    attrsPreviewValues: PreviewNode[] = [],
+  ): {
     hook: FakeHook
     listeners: Array<(event: RuntimeEvent) => void>
   } {
     const listeners: Array<(event: RuntimeEvent) => void> = []
-    let call = 0
+    let stateCall = 0
+    let attrsCall = 0
     // selectComponent() needs a representative DOM element to resolve
     // (representativeElementOf(record.domRange)) or it bails before ever
     // watching the component — every fake record gets one by default.
@@ -1156,13 +1206,24 @@ describe("State History tab (task 0027)", () => {
         listeners.push(fn)
         return () => {}
       },
-      statePreview: () => statePreviewValues[Math.min(call++, statePreviewValues.length - 1)] ?? null,
+      statePreview: () => statePreviewValues[Math.min(stateCall++, statePreviewValues.length - 1)] ?? null,
+      attrsPreview: () => attrsPreviewValues[Math.min(attrsCall++, attrsPreviewValues.length - 1)] ?? null,
       ...overrides,
     })
     return { hook, listeners }
   }
 
   const num = (value: number): PreviewNode => ({ kind: "primitive", type: "number", value })
+  const str = (value: string): PreviewNode => ({ kind: "primitive", type: "string", value })
+  const emptyObj = (): PreviewNode => ({
+    kind: "object",
+    className: "Object",
+    size: 0,
+    entries: [],
+    offset: 0,
+    truncated: false,
+    path: [],
+  })
 
   it("seeds an initial snapshot on selection, then records another when the watched component reports components-updated, gated by mode:full + captureState", () => {
     const { hook, listeners } = historyHook({}, [num(1), num(2)])
@@ -1188,13 +1249,28 @@ describe("State History tab (task 0027)", () => {
     expect(controller.getState().history.gating.fullMode).toBe(false)
   })
 
-  it("does not record when componentTree.captureState is off", () => {
+  it("does not record at all when both componentTree.captureState and captureAttrs are off", () => {
     const { hook, listeners } = historyHook({}, [num(1)])
-    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: false } } })
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: false, captureAttrs: false } } })
     controller.selectComponent("c:1" as ComponentId)
 
     listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
     expect(controller.getState().history.entries).toEqual([])
+  })
+
+  it("still records (attrs-only) when componentTree.captureState is off but captureAttrs stays on (task 0027 follow-up)", () => {
+    const { hook, listeners } = historyHook({}, [num(1)], [str("Ada"), str("Grace")])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: false, captureAttrs: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+    expect(controller.getState().history.entries).toHaveLength(1)
+    expect(controller.getState().history.entries[0]?.state).toBeNull()
+    expect(controller.getState().history.entries[0]?.attrs).toEqual(str("Ada"))
+
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    const entries = controller.getState().history.entries
+    expect(entries).toHaveLength(2)
+    expect(entries[1]?.state).toBeNull()
+    expect(entries[1]?.attrs).toEqual(str("Grace"))
   })
 
   it("ignores a components-updated event for a component other than the one being watched", () => {
@@ -1297,12 +1373,12 @@ describe("State History tab (task 0027)", () => {
     expect(entries).toHaveLength(4)
 
     // Default (nothing selected): diffs the latest entry against its predecessor (5 -> 9).
-    expect(controller.getState().history.diff).toEqual([{ key: "(value)", kind: "changed", before: num(5), after: num(9) }])
+    expect(controller.getState().history.diff).toEqual([{ key: "(value)", source: "state", kind: "changed", before: num(5), after: num(9) }])
 
     // Explicitly selecting the first (seeded) entry: no predecessor, whole-value "added".
     controller.selectHistoryEntry(entries[0]!.id)
     expect(controller.getState().history.selectedEntryId).toBe(entries[0]!.id)
-    expect(controller.getState().history.diff).toEqual([{ key: "(value)", kind: "added", before: null, after: num(1) }])
+    expect(controller.getState().history.diff).toEqual([{ key: "(value)", source: "state", kind: "added", before: null, after: num(1) }])
   })
 
   it("keeps following new snapshots through the controller after selecting the then-latest entry (task 0028 regression)", () => {
@@ -1314,11 +1390,103 @@ describe("State History tab (task 0027)", () => {
 
     const latest = controller.getState().history.entries.at(-1)!
     controller.selectHistoryEntry(latest.id) // click the row that is, right now, the latest one
-    expect(controller.getState().history.diff).toEqual([{ key: "(value)", kind: "changed", before: num(2), after: num(3) }])
+    expect(controller.getState().history.diff).toEqual([{ key: "(value)", source: "state", kind: "changed", before: num(2), after: num(3) }])
 
     listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 3 }] })
     // Must have advanced to the new latest entry's diff, not stayed pinned to the old one.
-    expect(controller.getState().history.diff).toEqual([{ key: "(value)", kind: "changed", before: num(3), after: num(4) }])
+    expect(controller.getState().history.diff).toEqual([{ key: "(value)", source: "state", kind: "changed", before: num(3), after: num(4) }])
+  })
+
+  it("records attrs history for a component with captureAttrs on, independently of captureState", () => {
+    const { hook, listeners } = historyHook({}, [], [str("Ada"), str("Grace")])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: false, captureAttrs: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+
+    expect(controller.getState().history.entries).toHaveLength(1)
+    expect(controller.getState().history.entries[0]?.attrs).toEqual(str("Ada"))
+    expect(controller.getState().history.entries[0]?.state).toBeNull()
+
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    const entries = controller.getState().history.entries
+    expect(entries).toHaveLength(2)
+    expect(entries[1]?.attrs).toEqual(str("Grace"))
+  })
+
+  it("reports hasAttrsData/hasStateData/sources reflecting only sources with real recorded data", () => {
+    const { hook } = historyHook({}, [num(1)], [str("Ada")])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true, captureAttrs: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+
+    const history = controller.getState().history
+    expect(history.hasStateData).toBe(true)
+    expect(history.hasAttrsData).toBe(true)
+    expect(history.sources).toEqual(["state", "attrs"])
+  })
+
+  it("leaves a source out of hasStateData/hasAttrsData/sources when it's structurally empty on every entry (e.g. an attrs-only component's state)", () => {
+    const { hook } = historyHook({}, [emptyObj()], [str("Ada")])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true, captureAttrs: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+
+    const history = controller.getState().history
+    expect(history.hasStateData).toBe(false)
+    expect(history.hasAttrsData).toBe(true)
+    expect(history.sources).toEqual(["attrs"])
+    // The diff must not include the empty-state "(value): Object" noise the bug report was about.
+    expect(history.diff.every((entry) => entry.source === "attrs")).toBe(true)
+  })
+
+  it("reports an empty sources list when neither attrs nor state ever carries real data", () => {
+    const { hook } = historyHook({}, [emptyObj()], [emptyObj()])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true, captureAttrs: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+
+    const history = controller.getState().history
+    expect(history.sources).toEqual([])
+    expect(history.diff).toEqual([])
+  })
+
+  it("interleaves attrs and state changes into one diff, sorted by key", () => {
+    const { hook, listeners } = historyHook({}, [num(1), num(2)], [str("Ada"), str("Grace")])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true, captureAttrs: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+
+    expect(controller.getState().history.diff).toEqual([
+      { key: "(value)", source: "attrs", kind: "changed", before: str("Ada"), after: str("Grace") },
+      { key: "(value)", source: "state", kind: "changed", before: num(1), after: num(2) },
+    ])
+  })
+
+  it("setHistoryFilter() narrows entries()'s diff and reports the filter back on state()", () => {
+    const { hook, listeners } = historyHook({}, [num(1), num(2)], [str("Ada"), str("Grace")])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true, captureAttrs: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+    listeners[0]?.({ type: "components-updated", records: [{ id: "c:1" as ComponentId, updateCount: 1 }] })
+    expect(controller.getState().history.filter).toBe("both")
+
+    controller.setHistoryFilter("attrs")
+    expect(controller.getState().history.filter).toBe("attrs")
+    expect(controller.getState().history.diff).toEqual([
+      { key: "(value)", source: "attrs", kind: "changed", before: str("Ada"), after: str("Grace") },
+    ])
+
+    controller.setHistoryFilter("state")
+    expect(controller.getState().history.diff).toEqual([
+      { key: "(value)", source: "state", kind: "changed", before: num(1), after: num(2) },
+    ])
+  })
+
+  it("resets the filter to 'both' when the watched component changes", () => {
+    const { hook } = historyHook({}, [num(1)], [str("Ada")])
+    const { controller } = setup({ hook, options: { componentTree: { enabled: true, captureState: true, captureAttrs: true } } })
+    controller.selectComponent("c:1" as ComponentId)
+    controller.setHistoryFilter("attrs")
+    expect(controller.getState().history.filter).toBe("attrs")
+
+    controller.clearSelection()
+    controller.selectComponent("c:1" as ComponentId)
+    expect(controller.getState().history.filter).toBe("both")
   })
 })
 

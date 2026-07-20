@@ -135,7 +135,7 @@ export function iconComponents(): Vnode {
   ])
 }
 
-/** The "State History" sidebar entry (task 0027) — a clock face, distinct from Settings' equalizer glyph. */
+/** The "History" sidebar entry (task 0027, renamed from "State History" once it also covers attrs — task 0027 follow-up) — a clock face, distinct from Settings' equalizer glyph. */
 export function iconHistory(): Vnode {
   return icon([m("circle", { cx: 12, cy: 12, r: 9 }), m("polyline", { points: "12,7 12,12 16,14" })])
 }

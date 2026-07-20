@@ -87,4 +87,23 @@ pnpm test:browser
 
 The packages under `packages/` are strict TypeScript, modern ESM modules. Playground applications live under `apps/`, while shared fixtures and integration suites live under `tests/`. Technical spikes are private workspace packages under `tests/fixtures/spikes/`; the decisions they validate are recorded in `docs/adr/`.
 
+## Releasing
+
+`scripts/release.mjs` bumps `protocol`, `runtime`, `transform`, `server`, `overlay` and `vite` to the same version, runs the CI gate, commits, tags and publishes each package with pnpm — run it from the repository root once the working tree is clean (commit or stash everything first):
+
+```sh
+pnpm release:dry-run       # sanity check only — prints current -> next, changes nothing
+pnpm release <patch|minor|major|<version>>
+```
+
+`pnpm release patch` bumps `0.1.0` to `0.1.1`; an explicit version (e.g. `pnpm release 0.2.0`) is also accepted, and re-running it against an already-committed version just tags and publishes without an empty version-bump commit. The script:
+
+1. refuses to run against a dirty working tree (dry runs are exempt);
+2. writes the new version into all six `package.json` files and refreshes `pnpm-lock.yaml`;
+3. runs `pnpm -r build`, `pnpm -r typecheck` and `pnpm -r test` — the same gate CI runs;
+4. commits the version bump, then tags `vX.Y.Z` (skipped if the tag already exists);
+5. runs `pnpm publish --access public` for each package in dependency order (`protocol` first, `vite` last), rewriting `workspace:*` ranges to the pinned version as it goes.
+
+npm/pnpm prompts for a 2FA one-time password per package when the terminal is interactive — that's expected during step 5, just type the code each time. Nothing is pushed automatically: review the commit and tag, then `git push && git push origin vX.Y.Z` yourself.
+
 `pnpm test:browser` runs the headless-Chromium integration suite in `tests/browser` (Puppeteer, no Playwright) against real, in-process Vite dev servers and a real production build — see `tests/browser/README.md`. It needs `pnpm build` to have run first, since it consumes the built `@mithril-inspector/vite` package like any other consumer.

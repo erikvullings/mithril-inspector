@@ -2,7 +2,7 @@ export const packageName = "@mithril-inspector/vite" as const
 
 export { mithrilInspector } from "./plugin.js"
 
-export { DEFAULT_REDACT_KEYS } from "./options.js"
+export { DEFAULT_REDACT_KEYS, OVERLAY_MODULE_ID, RUNTIME_MODULE_ID } from "@mithril-inspector/adapter-kit"
 export type {
   MithrilInspectorOptions,
   ResolvedComponentTreeOptions,
@@ -11,9 +11,7 @@ export type {
   ResolvedSourceOptions,
   ResolvedUiOptions,
   RuntimeBootstrapConfig,
-} from "./options.js"
-
-export { OVERLAY_MODULE_ID, RUNTIME_MODULE_ID } from "./ids.js"
+} from "@mithril-inspector/adapter-kit"
 
 /** Default export so `import mithrilInspector from "@mithril-inspector/vite"` also works. */
 export { mithrilInspector as default } from "./plugin.js"

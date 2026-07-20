@@ -1,6 +1,6 @@
 import type { OverlayOptionsInput } from "@mithril-inspector/overlay"
 
-import { HMR_INVALIDATE_EVENT } from "./hmr.js"
+import { HMR_INVALIDATE_EVENT } from "./hmr-protocol.js"
 import {
   OVERLAY_MODULE_ID,
   RESOLVED_OVERLAY_ID,

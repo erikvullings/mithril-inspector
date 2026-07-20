@@ -1,5 +1,17 @@
 import type { ConfigEnv, HmrContext, Plugin, ResolvedConfig, ViteDevServer } from "vite"
 
+import {
+  loadVirtualModule,
+  resolveInspectorOptions,
+  resolveVirtualId,
+  shouldAttemptTransform,
+  toOverlayOptionsInput,
+  toRuntimeBootstrapConfig,
+  toServerOptions,
+  toTransformOptions,
+  type MithrilInspectorOptions,
+  type VirtualModuleDeps,
+} from "@mithril-inspector/adapter-kit"
 import { createInspectorMiddleware } from "@mithril-inspector/server"
 import { transformMithrilModule } from "@mithril-inspector/transform"
 
@@ -10,16 +22,6 @@ import {
   HMR_INVALIDATE_EVENT,
   type HmrInvalidatePayload,
 } from "./hmr.js"
-import {
-  resolveInspectorOptions,
-  toOverlayOptionsInput,
-  toRuntimeBootstrapConfig,
-  toServerOptions,
-  toTransformOptions,
-  type MithrilInspectorOptions,
-} from "./options.js"
-import { loadVirtualModule, resolveVirtualId, type VirtualModuleDeps } from "./virtual-modules.js"
-import { shouldAttemptTransform } from "./module-filter.js"
 
 /**
  * The Vite integration for Mithril Inspector (§4, §11). Zero-config:

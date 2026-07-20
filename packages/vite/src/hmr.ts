@@ -1,17 +1,13 @@
 import type { ModuleId } from "@mithril-inspector/protocol"
 
 /**
- * Custom HMR event the plugin's `handleHotUpdate` pushes to the browser so the
- * runtime bootstrap can invalidate a replaced module's stale source table
- * (ADR-106, §11.2). The re-executed module's own `__miRegisterModule` call then
- * restores the fresh table, so no replacement records travel over this channel.
+ * The HMR invalidation event/payload (ADR-106, §11.2) is a shared,
+ * bundler-neutral wire-protocol constant — defined once in
+ * `@mithril-inspector/adapter-kit` and re-exported here so the rest of this
+ * package (and existing consumers of `./hmr.js`) don't need to know it moved.
  */
-export const HMR_INVALIDATE_EVENT = "mithril-inspector:invalidate"
-
-/** The payload of an {@link HMR_INVALIDATE_EVENT} message. */
-export interface HmrInvalidatePayload {
-  readonly moduleIds: readonly ModuleId[]
-}
+export { HMR_INVALIDATE_EVENT } from "@mithril-inspector/adapter-kit"
+export type { HmrInvalidatePayload } from "@mithril-inspector/adapter-kit"
 
 /**
  * Normalize a bundler id / file path to the transform's canonical form

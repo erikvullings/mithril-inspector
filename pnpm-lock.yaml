@@ -49,6 +49,31 @@ importers:
         specifier: ^7.3.6
         version: 7.3.6(@types/node@24.13.3)
 
+  packages/adapter-kit:
+    dependencies:
+      '@mithril-inspector/overlay':
+        specifier: workspace:*
+        version: link:../overlay
+      '@mithril-inspector/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@mithril-inspector/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@mithril-inspector/server':
+        specifier: workspace:*
+        version: link:../server
+      '@mithril-inspector/transform':
+        specifier: workspace:*
+        version: link:../transform
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.14
+        version: 24.13.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(jsdom@29.1.1)
+
   packages/esbuild: {}
 
   packages/overlay:
@@ -75,7 +100,42 @@ importers:
 
   packages/protocol: {}
 
-  packages/rollup: {}
+  packages/rollup:
+    dependencies:
+      '@mithril-inspector/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapter-kit
+      '@mithril-inspector/overlay':
+        specifier: workspace:*
+        version: link:../overlay
+      '@mithril-inspector/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@mithril-inspector/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      '@mithril-inspector/server':
+        specifier: workspace:*
+        version: link:../server
+      '@mithril-inspector/transform':
+        specifier: workspace:*
+        version: link:../transform
+    devDependencies:
+      '@types/mithril':
+        specifier: ^2.2.8
+        version: 2.2.8
+      '@types/node':
+        specifier: ^24.0.14
+        version: 24.13.3
+      mithril:
+        specifier: ^2.3.8
+        version: 2.3.8
+      rollup:
+        specifier: ^4.62.2
+        version: 4.62.2
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(jsdom@29.1.1)
 
   packages/runtime:
     dependencies:
@@ -151,6 +211,9 @@ importers:
 
   packages/vite:
     dependencies:
+      '@mithril-inspector/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapter-kit
       '@mithril-inspector/overlay':
         specifier: workspace:*
         version: link:../overlay
@@ -329,6 +392,28 @@ importers:
       mithril:
         specifier: ^2.3.8
         version: 2.3.8
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(jsdom@29.1.1)
+
+  tests/integration:
+    dependencies:
+      '@mithril-inspector/rollup':
+        specifier: workspace:*
+        version: link:../../packages/rollup
+    devDependencies:
+      '@types/mithril':
+        specifier: ^2.2.8
+        version: 2.2.8
+      '@types/node':
+        specifier: ^24.0.14
+        version: 24.13.3
+      mithril:
+        specifier: ^2.3.8
+        version: 2.3.8
+      rollup:
+        specifier: ^4.62.2
+        version: 4.62.2
       vitest:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.13.3)(jsdom@29.1.1)

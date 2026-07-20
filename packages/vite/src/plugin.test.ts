@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest"
 import type { ConfigEnv, HmrContext, Plugin, ResolvedConfig, ViteDevServer } from "vite"
 
+import {
+  OVERLAY_MODULE_ID,
+  RESOLVED_OVERLAY_ID,
+  RESOLVED_RUNTIME_ID,
+  RUNTIME_MODULE_ID,
+  type MithrilInspectorOptions,
+} from "@mithril-inspector/adapter-kit"
+
 import { HMR_INVALIDATE_EVENT } from "./hmr.js"
-import { OVERLAY_MODULE_ID, RESOLVED_OVERLAY_ID, RESOLVED_RUNTIME_ID, RUNTIME_MODULE_ID } from "./ids.js"
 import { DIAGNOSTICS_PATH } from "./diagnostics.js"
 import { mithrilInspector } from "./plugin.js"
-import type { MithrilInspectorOptions } from "./options.js"
 
 // --- Hook-calling helpers (a plugin hook may be a fn or an { handler } object) --
 type AnyFn = (...args: never[]) => unknown

@@ -1,7 +1,7 @@
 {
-  "name": "@mithril-inspector/vite",
+  "name": "@mithril-inspector/adapter-kit",
   "version": "0.1.0",
-  "description": "Zero-config Vite plugin for Mithril Inspector — combines the transform, runtime, overlay and server packages.",
+  "description": "Shared, bundler-neutral option resolution and virtual-module utilities for Mithril Inspector's build-tool adapters (Vite, Rollup, ...).",
   "type": "module",
   "license": "MIT",
   "author": "Erik Vullings",
@@ -9,10 +9,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/erikvullings/mithril-inspector.git",
-    "directory": "packages/vite"
+    "directory": "packages/adapter-kit"
   },
   "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
-  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "vite", "vite-plugin"],
+  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "adapter", "internal"],
   "publishConfig": {
     "access": "public"
   },
@@ -29,11 +29,7 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "peerDependencies": {
-    "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
-  },
   "dependencies": {
-    "@mithril-inspector/adapter-kit": "workspace:*",
     "@mithril-inspector/overlay": "workspace:*",
     "@mithril-inspector/protocol": "workspace:*",
     "@mithril-inspector/runtime": "workspace:*",
@@ -41,11 +37,7 @@
     "@mithril-inspector/transform": "workspace:*"
   },
   "devDependencies": {
-    "@types/connect": "^3.4.38",
-    "@types/mithril": "^2.2.8",
     "@types/node": "^24.0.14",
-    "mithril": "^2.3.8",
-    "vite": "^7.3.6",
     "vitest": "^3.2.4"
   }
 }

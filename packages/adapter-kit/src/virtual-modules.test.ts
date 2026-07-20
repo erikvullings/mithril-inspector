@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { HMR_INVALIDATE_EVENT } from "./hmr.js"
+import { HMR_INVALIDATE_EVENT } from "./hmr-protocol.js"
 import { OVERLAY_MODULE_ID, RESOLVED_OVERLAY_ID, RESOLVED_RUNTIME_ID, RUNTIME_MODULE_ID } from "./ids.js"
 import { resolveInspectorOptions, toOverlayOptionsInput, toRuntimeBootstrapConfig } from "./options.js"
 import { loadVirtualModule, overlayModuleCode, resolveVirtualId, runtimeModuleCode } from "./virtual-modules.js"

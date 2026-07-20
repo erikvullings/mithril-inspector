@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { OVERLAY_MODULE_ID, RESOLVED_OVERLAY_ID } from "./ids.js"
+import { OVERLAY_MODULE_ID, RESOLVED_OVERLAY_ID } from "@mithril-inspector/adapter-kit"
+
 import { devVirtualUrl, overlayBootstrapTags } from "./html.js"
 
 describe("devVirtualUrl", () => {

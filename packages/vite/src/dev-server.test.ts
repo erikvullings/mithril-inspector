@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { createServer, type ViteDevServer } from "vite"
 
-import { OVERLAY_MODULE_ID, RESOLVED_OVERLAY_ID, RUNTIME_MODULE_ID } from "./ids.js"
+import { OVERLAY_MODULE_ID, RESOLVED_OVERLAY_ID, RUNTIME_MODULE_ID } from "@mithril-inspector/adapter-kit"
+
 import { mithrilInspector } from "./plugin.js"
 
 /**

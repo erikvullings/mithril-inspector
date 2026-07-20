@@ -1,0 +1,20 @@
+{
+  "name": "@mithril-inspector/integration-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mithril-inspector/rollup": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/mithril": "^2.2.8",
+    "@types/node": "^24.0.14",
+    "mithril": "^2.3.8",
+    "rollup": "^4.62.2",
+    "vitest": "^3.2.4"
+  }
+}

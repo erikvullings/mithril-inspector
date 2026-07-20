@@ -43,6 +43,25 @@ Supported editor aliases: `code`, `code-insiders`, `cursor`, `windsurf`,
 for anything else. With no `editor` option, `resolveEditor` falls back to the
 `VISUAL`/`EDITOR` environment variables.
 
+## Standalone server (§12.3)
+
+Bundlers with no development-server hook of their own (e.g.
+`@mithril-inspector/rollup`) can start a small standalone HTTP server serving
+just this endpoint:
+
+```ts
+import { startInspectorServer } from "@mithril-inspector/server"
+
+const handle = await startInspectorServer({ root: projectRoot, editor: "code" })
+console.log(handle.url) // http://127.0.0.1:<port>
+// later: await handle.close()
+```
+
+Binds to `127.0.0.1` by default (never a network-reachable host) and adds no
+CORS headers, so a page must be same-origin to call it — pair it with a
+reverse proxy, or mount `createInspectorMiddleware` directly in a dev server
+you already run, if the app is served from a different origin/port.
+
 ## Lower-level pieces
 
 `handleInspectorRequest` (bundler-neutral request/response, for adapters that

@@ -1,8 +1,21 @@
 {
   "name": "@mithril-inspector/rollup",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "The Rollup integration for Mithril Inspector — a thin adapter over the shared transform, runtime and server packages (§4, §12.3).",
   "type": "module",
+  "license": "MIT",
+  "author": "Erik Vullings",
+  "homepage": "https://github.com/erikvullings/mithril-inspector#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/erikvullings/mithril-inspector.git",
+    "directory": "packages/rollup"
+  },
+  "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
+  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "rollup", "rollup-plugin"],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -11,8 +24,27 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm build",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "rollup": "^3.0.0 || ^4.0.0"
+  },
+  "dependencies": {
+    "@mithril-inspector/adapter-kit": "workspace:*",
+    "@mithril-inspector/overlay": "workspace:*",
+    "@mithril-inspector/protocol": "workspace:*",
+    "@mithril-inspector/runtime": "workspace:*",
+    "@mithril-inspector/server": "workspace:*",
+    "@mithril-inspector/transform": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/mithril": "^2.2.8",
+    "@types/node": "^24.0.14",
+    "mithril": "^2.3.8",
+    "rollup": "^4.62.2",
+    "vitest": "^3.2.4"
   }
 }

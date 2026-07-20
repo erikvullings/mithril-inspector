@@ -1,6 +1,6 @@
 import type { HtmlTagDescriptor } from "vite"
 
-import { OVERLAY_MODULE_ID, RESOLVED_OVERLAY_ID } from "./ids.js"
+import { OVERLAY_MODULE_ID, RESOLVED_OVERLAY_ID } from "@mithril-inspector/adapter-kit"
 
 /**
  * Vite's dev URL for a resolved (NUL-prefixed) virtual module: `/@id/` + the id

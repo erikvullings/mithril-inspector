@@ -23,3 +23,6 @@ export type { EditorRequestBody, ParsedRequestBody, RequestBodyErrorCode } from 
 
 export { spawnEditorProcess } from "./launch-editor-process.js"
 export type { EditorProcessLauncher } from "./launch-editor-process.js"
+
+export { startInspectorServer } from "./start-server.js"
+export type { InspectorServerHandle, StartInspectorServerOptions } from "./start-server.js"

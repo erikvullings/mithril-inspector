@@ -23,4 +23,10 @@ describe("shouldAttemptTransform (§11.2)", () => {
     expect(shouldAttemptTransform("/repo/mithril-inspector/packages/overlay/dist/index.js")).toBe(false)
     expect(shouldAttemptTransform("/repo/mithril-inspector/packages/runtime/dist/runtime.js")).toBe(false)
   })
+
+  it("skips the rollup adapter and shared adapter-kit packages (self)", () => {
+    expect(shouldAttemptTransform("/app/node_modules/@mithril-inspector/rollup/dist/index.js")).toBe(false)
+    expect(shouldAttemptTransform("/app/node_modules/@mithril-inspector/adapter-kit/dist/index.js")).toBe(false)
+    expect(shouldAttemptTransform("/repo/mithril-inspector/packages/rollup/dist/plugin.js")).toBe(false)
+  })
 })

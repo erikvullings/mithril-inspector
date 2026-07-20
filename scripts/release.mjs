@@ -12,10 +12,12 @@ import { fileURLToPath } from "node:url"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 
-// Dependency order: protocol first (no internal deps), vite last (depends on
-// all the others). Order among the middle packages doesn't matter — they only
-// depend on protocol.
-const PACKAGES = ["protocol", "runtime", "transform", "server", "overlay", "vite"]
+// Dependency order: protocol first (no internal deps), then the other
+// bundler-neutral core packages (order among them doesn't matter — they only
+// depend on protocol), then adapter-kit (depends on all of those), then the
+// build-tool adapters last (each depends on adapter-kit + the core packages;
+// order between vite/rollup doesn't matter).
+const PACKAGES = ["protocol", "runtime", "transform", "server", "overlay", "adapter-kit", "vite", "rollup"]
 
 const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/
 

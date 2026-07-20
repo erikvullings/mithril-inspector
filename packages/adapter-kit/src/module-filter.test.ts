@@ -29,4 +29,9 @@ describe("shouldAttemptTransform (§11.2)", () => {
     expect(shouldAttemptTransform("/app/node_modules/@mithril-inspector/adapter-kit/dist/index.js")).toBe(false)
     expect(shouldAttemptTransform("/repo/mithril-inspector/packages/rollup/dist/plugin.js")).toBe(false)
   })
+
+  it("skips the esbuild adapter package (self)", () => {
+    expect(shouldAttemptTransform("/app/node_modules/@mithril-inspector/esbuild/dist/index.js")).toBe(false)
+    expect(shouldAttemptTransform("/repo/mithril-inspector/packages/esbuild/dist/plugin.js")).toBe(false)
+  })
 })

@@ -8,11 +8,13 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@mithril-inspector/esbuild": "workspace:*",
     "@mithril-inspector/rollup": "workspace:*"
   },
   "devDependencies": {
     "@types/mithril": "^2.2.8",
     "@types/node": "^24.0.14",
+    "esbuild": "^0.28.1",
     "mithril": "^2.3.8",
     "rollup": "^4.62.2",
     "vitest": "^3.2.4"

@@ -67,6 +67,15 @@ only in `rollup --watch`/`rollup.watch()` unless `includeInProduction`).
 Rollup has no HTML-injection or dev-server hooks, so overlay mounting and
 editor launching need one extra step each — see `packages/rollup/README.md`.
 
+`@mithril-inspector/esbuild` (§12.4, task 0024) is the same adapter built on
+`build.onResolve`/`build.onLoad`/`build.onEnd` — dev-only by default (active
+unless `NODE_ENV=production` or the build is `minify`d, unless
+`includeInProduction`). esbuild has no HTML-injection hook either, and no
+dev-server hook to hang the open-in-editor endpoint on, so it ships an opt-in
+`devServer` option that starts a small combined static-file + editor-endpoint
+server reusing `@mithril-inspector/server` — see `packages/esbuild/README.md`
+and `apps/playground-esbuild` for a working example.
+
 ## Status: 0.1.0 (Phase 1–3 — source inspector, component tracking, state history)
 
 Beyond the 0.1.0-alpha.1 source inspector (AST source instrumentation, the
@@ -98,7 +107,7 @@ The packages under `packages/` are strict TypeScript, modern ESM modules. Playgr
 
 ## Releasing
 
-`scripts/release.mjs` bumps `protocol`, `runtime`, `transform`, `server`, `overlay`, `adapter-kit`, `vite` and `rollup` to the same version, runs the CI gate, commits, tags and publishes each package with pnpm — run it from the repository root once the working tree is clean (commit or stash everything first):
+`scripts/release.mjs` bumps `protocol`, `runtime`, `transform`, `server`, `overlay`, `adapter-kit`, `vite`, `rollup` and `esbuild` to the same version, runs the CI gate, commits, tags and publishes each package with pnpm — run it from the repository root once the working tree is clean (commit or stash everything first):
 
 ```sh
 pnpm release:dry-run       # sanity check only — prints current -> next, changes nothing
@@ -108,10 +117,10 @@ pnpm release <patch|minor|major|<version>>
 `pnpm release patch` bumps `0.1.0` to `0.1.1`; an explicit version (e.g. `pnpm release 0.2.0`) is also accepted, and re-running it against an already-committed version just tags and publishes without an empty version-bump commit. The script:
 
 1. refuses to run against a dirty working tree (dry runs are exempt);
-2. writes the new version into all eight `package.json` files and refreshes `pnpm-lock.yaml`;
+2. writes the new version into all nine `package.json` files and refreshes `pnpm-lock.yaml`;
 3. runs `pnpm -r build`, `pnpm -r typecheck` and `pnpm -r test` — the same gate CI runs;
 4. commits the version bump, then tags `vX.Y.Z` (skipped if the tag already exists);
-5. runs `pnpm publish --access public` for each package in dependency order (`protocol` first, `vite`/`rollup` last), rewriting `workspace:*` ranges to the pinned version as it goes.
+5. runs `pnpm publish --access public` for each package in dependency order (`protocol` first, `vite`/`rollup`/`esbuild` last), rewriting `workspace:*` ranges to the pinned version as it goes.
 
 npm/pnpm prompts for a 2FA one-time password per package when the terminal is interactive — that's expected during step 5, just type the code each time. Nothing is pushed automatically: review the commit and tag, then `git push && git push origin vX.Y.Z` yourself.
 

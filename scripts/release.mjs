@@ -17,7 +17,7 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 // depend on protocol), then adapter-kit (depends on all of those), then the
 // build-tool adapters last (each depends on adapter-kit + the core packages;
 // order between vite/rollup doesn't matter).
-const PACKAGES = ["protocol", "runtime", "transform", "server", "overlay", "adapter-kit", "vite", "rollup"]
+const PACKAGES = ["protocol", "runtime", "transform", "server", "overlay", "adapter-kit", "vite", "rollup", "esbuild"]
 
 const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/
 

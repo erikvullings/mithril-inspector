@@ -52,6 +52,14 @@ export interface OverlayHook {
   subscribe(listener: InspectorListener): () => void
   /** The runtime's active performance/feature mode (§17) — attrs/state require `"full"`. */
   getMode(): OverlayInspectorMode
+  /** Whether attrs/state redaction is currently active (§15, Settings tab toggle) — session-only, always `true` right after a fresh page load. */
+  getRedactionEnabled(): boolean
+  /** Turn attrs/state redaction on/off (§15, Settings tab) — never persisted; see {@link getRedactionEnabled}. */
+  setRedactionEnabled(enabled: boolean): void
+  /** The full active set of redacted key patterns (§15, Settings tab display). */
+  getRedactionKeys(): readonly string[]
+  /** Add one more key pattern to redact (§15, Settings tab) — the overlay persists it across reloads and replays it here on mount. */
+  addRedactionKey(key: string): void
   /** The lazy, redacted attrs preview tree for an instance (§7.4, §15, task 0020), or `null`. */
   attrsPreview(id: ComponentId): PreviewNode | null
   /** The lazy, redacted state preview tree for an instance (§7.4, §15, task 0020), or `null`. */

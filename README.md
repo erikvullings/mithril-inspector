@@ -119,6 +119,87 @@ pnpm test:browser
 
 The packages under `packages/` are strict TypeScript, modern ESM modules. Playground applications live under `apps/`, while shared fixtures and integration suites live under `tests/`. Technical spikes are private workspace packages under `tests/fixtures/spikes/`; the decisions they validate are recorded in `docs/adr/`.
 
+## Testing a package locally before it's on npm
+
+None of the `@mithril-inspector/*` packages are on the npm registry until you
+run `pnpm release` (below), so a consumer project can't just `pnpm add
+@mithril-inspector/webpack` yet. Every adapter (`vite`, `rollup`, `esbuild`,
+`webpack`) depends on the same six shared packages —
+`adapter-kit`, `overlay`, `protocol`, `runtime`, `server`, `transform` — so
+whichever approach you use, that's the full set you need to make available
+locally alongside the adapter itself. Build first, either way:
+
+```sh
+pnpm build   # dist/ is what every package's package.json "exports" points to
+```
+
+### Fast iteration loop: `pnpm link`
+
+Best while you're still actively changing this repo's code — a linked
+package is a symlink, so a rebuild here (`pnpm --filter @mithril-inspector/webpack build`,
+or a filtered `pnpm dev`/watch if you set one up) is picked up by the
+consumer project immediately, no re-linking needed. It does **not** validate
+what actually ends up in the published tarball (the `files` allow-list,
+missing `dependencies`, etc.) — use the tarball approach below before you
+actually cut a release.
+
+```sh
+# in this repo, for the adapter plus every shared package it depends on
+for pkg in webpack adapter-kit overlay protocol runtime server transform; do
+  pnpm --filter "@mithril-inspector/$pkg" exec pnpm link --global
+done
+```
+
+```sh
+# in the consumer (Vite/Rspack/etc.) project
+pnpm link --global \
+  @mithril-inspector/webpack @mithril-inspector/adapter-kit \
+  @mithril-inspector/overlay @mithril-inspector/protocol \
+  @mithril-inspector/runtime @mithril-inspector/server \
+  @mithril-inspector/transform
+```
+
+You only need to link the *adapter* you're actually testing (swap `webpack`
+for `vite`/`rollup`/`esbuild`) plus the six shared packages — always the same
+six regardless of which adapter.
+
+### Closest to a real install: `pnpm pack`
+
+Packs each package the way `npm publish` would (respecting `files`, rewriting
+`workspace:*` ranges in the packed `package.json` to the current local
+version) and installs it from a tarball, which is the best pre-release sanity
+check. Because the shared packages aren't on the registry either, pack **all
+seven** and add all seven tarballs together so the consumer's resolver can
+satisfy the cross-references without reaching the network for them:
+
+```sh
+# in this repo
+mkdir -p /tmp/mi-tarballs
+for pkg in webpack adapter-kit overlay protocol runtime server transform; do
+  (cd "packages/$pkg" && pnpm pack --pack-destination /tmp/mi-tarballs)
+done
+```
+
+```sh
+# in the consumer project
+pnpm add /tmp/mi-tarballs/mithril-inspector-webpack-*.tgz \
+  /tmp/mi-tarballs/mithril-inspector-adapter-kit-*.tgz \
+  /tmp/mi-tarballs/mithril-inspector-overlay-*.tgz \
+  /tmp/mi-tarballs/mithril-inspector-protocol-*.tgz \
+  /tmp/mi-tarballs/mithril-inspector-runtime-*.tgz \
+  /tmp/mi-tarballs/mithril-inspector-server-*.tgz \
+  /tmp/mi-tarballs/mithril-inspector-transform-*.tgz
+```
+
+Either way, the adapter's own peer dependency (`vite`, `rollup`, `esbuild`, or
+`webpack`/`@rspack/core`) is **not** included — the consumer project keeps
+using whichever one it already has installed, same as a real install. Wire
+the plugin into that project's config exactly as documented in the package's
+own README (`packages/webpack/README.md`, etc.) or the Quick start above for
+Vite, then run the dev server and confirm the overlay's "M" toggle appears —
+that's the fastest end-to-end signal the linked/packed packages actually
+resolved correctly.
+
 ## Releasing
 
 `scripts/release.mjs` bumps `protocol`, `runtime`, `transform`, `server`, `overlay`, `adapter-kit`, `vite`, `rollup`, `esbuild` and `webpack` to the same version, runs the CI gate, commits, tags and publishes each package with pnpm — run it from the repository root once the working tree is clean (commit or stash everything first):

@@ -39,9 +39,9 @@ mithrilInspector({
   includeInProduction,// keep it in production builds (default false)
   include, exclude,   // FilterPattern for which modules to instrument
   root, projectRoots, // editor-endpoint roots (§10.2, §10.4)
-  editor,             // "code" | "cursor" | … | { command, args } (§10.3)
+  editor,             // "code" | "cursor" | … | { command, args } (§10.3; default "code" with no env var set)
   pathMappings,       // remote-path rewrites (§10.4)
-  mode,               // "source" | "components" | "full" (§17; default "source")
+  mode,               // "source" | "components" | "full" (§17; default "full")
   ui:            { enabled, defaultOpen, theme, zIndex },
   picker:        { enabled, toggleShortcut, holdShortcut, openOnClick, continuous },
   componentTree: { enabled, captureAttrs, captureState },
@@ -53,14 +53,21 @@ mithrilInspector({
 ```
 
 `componentTree` is passed straight through to the overlay's Components tab
-(task 0022): `enabled` (default `false`) gates the full component tree UI
+(task 0022): `enabled` (default `true`) gates the full component tree UI
 itself. `captureAttrs`/`captureState` gate the attrs/state preview panels
 specifically; both **default to `true` once `mode` resolves to `"full"`**
 (and to `false` otherwise) — §17 defines `"full"` mode itself as including
-attrs/state, so `mode: "full"` alone is enough to see them without also
-opting into two more flags. Set either explicitly (e.g. `captureState:
+attrs/state, so the zero-config default (`mode: "full"`) already shows them
+without opting into two more flags. Set either explicitly (e.g. `captureState:
 false`) to keep `"full"` mode's other diagnostics while still suppressing
-one of the preview panels.
+one of the preview panels, or set `mode: "source"` for the lighter zero-tracking
+experience described in §17's performance budget.
+
+The resolved editor command (whichever of `editor` / `MITHRIL_INSPECTOR_EDITOR` /
+`LAUNCH_EDITOR` / `VISUAL` / `EDITOR` / the `"code"` default actually won) is
+shown read-only in the overlay's Settings tab, alongside the same override
+instructions — §10.2 forbids the browser from ever choosing what the
+open-in-editor endpoint launches, so there is no control to change it there.
 
 ## Virtual modules (§11.2)
 

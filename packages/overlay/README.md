@@ -99,7 +99,13 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   default — seeded once from `hook.getSnapshot()` and thereafter patched
   incrementally from batched `RuntimeEvent`s via `hook.subscribe` (§9.4: no
   re-fetch, no full rebuild per redraw). Each row shows an update-count badge
-  (§3.2) and can be expanded/collapsed (chevron, or `ArrowRight`/`ArrowLeft`;
+  (§3.2) and, once at least one of its own renders exceeded the runtime's
+  slow-render threshold in `mode: "full"` (default 16ms — one 60fps frame
+  budget, §17 diagnostics, task 0029), a `⚠ N` warning badge with the latest
+  duration in its tooltip; the detail pane shows the same "Last render: Xms"
+  line (styled as a warning once slow) for the selected component. Both stay
+  hidden entirely outside `mode: "full"` — no gate message, since the tree's
+  own badges already carry that signal. Rows can be expanded/collapsed (chevron, or `ArrowRight`/`ArrowLeft`;
   `ArrowUp`/`ArrowDown` move a roving `tabindex`, `Enter`/`Space` select — a
   flat `role="tree"` with `aria-level` per row rather than physically nested
   `role="group"`s, §18). Selection is bidirectional: picking a DOM element (via
@@ -151,6 +157,27 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   other instrumentation, meiosis-tracer's own time-travel needs a live
   reference to the app's actual state stream handed to it — something no
   zero-app-code-change strategy this project uses can obtain on its own.
+- **Redraw-flash visualization (§21 Phase 5, task 0030):** opt-in
+  (`redrawFlash.enabled`, off by default) and `mode: "full"`-only — a brief
+  highlight over a component's own DOM range when its DOM *actually mutated*
+  this redraw, not merely when its `view()` ran (every component's `view()`
+  runs on every `m.redraw()` regardless of whether anything changed; Mithril's
+  own diff only touches real DOM where the new/old vnode trees actually
+  differ, and that's the signal this keys off). Detection is a single
+  `MutationObserver` on `document.body` (`childList`/`attributes`/
+  `characterData`, `subtree: true`) — deliberately not scoped to individual
+  `m.mount` roots, since observing one stable ancestor that contains every
+  root needs no root-discovery bookkeeping and handles multiple independent
+  roots and roots that mount/unmount later for free. Mutation records are
+  rAF-throttled (`createFrameScheduler`, mirroring the existing
+  pointer-move/highlight-refresh scheduling) and resolved to owning
+  components via the same `resolveDomComponent` the picker uses, so the
+  existing `excludeHost` exclusion applies unchanged — reinforced by shadow
+  DOM boundaries already being opaque to a light-DOM `MutationObserver` (the
+  overlay's own UI lives entirely in its shadow root). Each flash fades over
+  ~400ms and clears itself on a timer independent of whether it animates, so
+  `prefers-reduced-motion` (§18) is satisfied by the existing global
+  `.mi-root` reduced-motion rule alone — no separate check needed.
 - **Accessibility (§18):** semantic controls, ARIA roles (`dialog`, `status`,
   `tree`, `treeitem`), visible focus indicators, WCAG AA contrast,
   reduced-motion support (also respected by "Scroll into view", via
@@ -168,8 +195,10 @@ Mithril component), `resolveOverlayOptions`, `getOverlayHook`, `describeMapping`
 `createPickerMachine`, `createSelectionModel`, `createFrameScheduler`,
 `createEditorClient`, `parseShortcut`, the persistence helpers, (task 0022)
 `createComponentTreeStore` plus the preview-tree formatters `summarizeNode`,
-`isExpandable` and `pathKey`, and (task 0027/0028) `createHistoryStore`,
-`diffPreviewNodes`, `containerEntries` and `alignContainerEntries`.
+`isExpandable` and `pathKey`, (task 0027/0028) `createHistoryStore`,
+`diffPreviewNodes`, `containerEntries` and `alignContainerEntries`, and (task
+0030) `componentsWithMutatedDom` — the pure DOM-mutation-to-component
+attribution logic behind redraw-flash detection.
 
 ## Editor endpoint
 

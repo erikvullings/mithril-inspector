@@ -16,7 +16,7 @@ import { createHistoryStore, type HistoryDiffEntry, type HistoryEntry, type Hist
 import { rectOfElement, rectsOfDomRange, type HighlightRect } from "./highlight.js"
 import type { ExpandPreviewOptions, OverlayHook } from "./hook.js"
 import { describeMapping, type MappingInfo } from "./mapping.js"
-import type { OverlayOptions } from "./options.js"
+import type { OverlayOptions, OverlayTheme } from "./options.js"
 import {
   createPickerMachine,
   isPicking,
@@ -25,6 +25,7 @@ import {
 } from "./picker.js"
 import { loadOverlayState, saveOverlayState, type StorageLike } from "./persistence.js"
 import { pathKey } from "./preview.js"
+import { componentsWithMutatedDom, type DomMutationLike } from "./redraw-flash.js"
 import { createSelectionModel, type SelectionData, type SelectionSnapshot } from "./selection.js"
 import {
   isModifierHeld,
@@ -82,6 +83,10 @@ export interface AncestryEntry {
   readonly key: string | number | null
   readonly mounted: boolean
   readonly choices: readonly SourceChoice[]
+  /** See `ComponentRecord.renderDuration` (§17 diagnostics, task 0029). */
+  readonly renderDuration: number | null
+  /** See `ComponentRecord.slowRenderCount` (task 0029). */
+  readonly slowRenderCount: number
 }
 
 /**
@@ -139,6 +144,21 @@ export interface HistoryViewState {
   readonly diff: readonly HistoryDiffEntry[]
 }
 
+/**
+ * A component whose own DOM actually mutated on a recent redraw (task 0030),
+ * still within its brief on-screen fade window. `seq` is a monotonically
+ * increasing per-occurrence id (not just per-component) so a component that
+ * flashes again while still fading gets a fresh value — the view keys each
+ * flash's DOM node on it so Mithril inserts a genuinely new element rather
+ * than diff-reusing the old one, which is what makes the CSS fade animation
+ * restart instead of staying at its already-completed end state.
+ */
+export interface FlashEntry {
+  readonly componentId: ComponentId
+  readonly seq: number
+  readonly rects: readonly HighlightRect[]
+}
+
 /** Everything the Mithril views render from — a pull-based snapshot. */
 export interface OverlayViewState {
   readonly picker: PickerState
@@ -157,6 +177,8 @@ export interface OverlayViewState {
   /** The ancestry entry currently focused via `focusAncestor` (§9.3), or `null`. */
   readonly focusedAncestorId: ComponentId | null
   readonly frozenRects: readonly HighlightRect[]
+  /** Components whose own DOM actually mutated on a recent redraw, still within their brief fade window (task 0030). */
+  readonly flashes: readonly FlashEntry[]
   readonly diagnostics: readonly Diagnostic[]
   /** The Components tab's tree/attrs/state state (task 0022). */
   readonly componentTree: ComponentTreeViewState
@@ -168,6 +190,17 @@ export interface OverlayViewState {
   readonly showPickingBanner: boolean
   /** Whether the picking banner should actually render right now: picking, `showPickingBanner` is on, and it hasn't auto-hidden yet this session. */
   readonly pickingBannerVisible: boolean
+  /** The effective theme (§8.1): the app-configured `options.theme` unless the Settings tab overrode it. */
+  readonly theme: OverlayTheme
+  /**
+   * Whether attrs/state redaction is currently active (§15, Settings tab
+   * toggle) — read live from the runtime, not overlay-local state: it's the
+   * runtime's serializer that actually applies it. `true` when there is no
+   * hook (production/no-runtime), matching the safe default.
+   */
+  readonly redactionEnabled: boolean
+  /** The full active set of redacted key patterns (§15, Settings tab display) — configured defaults plus anything added there. */
+  readonly redactionKeys: readonly string[]
 }
 
 /** Structural click event (satisfied by `MouseEvent`); testable without the DOM. */
@@ -213,6 +246,15 @@ export interface OverlayController {
   handleKeyUp(event: KeyboardEvent): boolean
   refreshHighlight(): void
 
+  /**
+   * Feed a batch of observed DOM mutations through to the redraw-flash
+   * detector (task 0030) — a no-op unless `options.redrawFlash.enabled` and
+   * the runtime is in `mode: "full"`. The caller (`overlay.ts`) owns the
+   * actual `MutationObserver`/rAF throttling; this is pure attribution +
+   * timed state.
+   */
+  recordDomMutations(records: readonly DomMutationLike[]): void
+
   openSelectedInEditor(): void
   openLocationInEditor(location: SourceLocation): void
   clearSelection(): void
@@ -249,6 +291,14 @@ export interface OverlayController {
   resetPickerShortcut(key: PickerShortcutKey): void
   /** Show/hide the picking-active banner (§18); persists across reloads. */
   setShowPickingBanner(show: boolean): void
+  /** Override the theme (§8.1) from the Settings tab; persists and takes effect immediately. */
+  setTheme(theme: OverlayTheme): void
+  /** Revert to the app-configured `options.theme`, discarding any Settings-tab override. */
+  resetTheme(): void
+  /** Turn attrs/state redaction on/off (§15, Settings tab) — session-only; see {@link OverlayViewState.redactionEnabled}. */
+  setRedactionEnabled(enabled: boolean): void
+  /** Add a redaction key pattern from the Settings tab (§15); persists across reloads. Ignores a blank pattern. */
+  addRedactionKey(key: string): void
 
   /** Unsubscribe from the runtime and release resources (idempotent). */
   dispose(): void
@@ -432,6 +482,14 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   let collapsed = persisted.collapsed ?? !options.defaultOpen
   let activeTab: OverlayTab = persisted.activeTab ?? "components"
   let showBanner = persisted.showPickingBanner ?? options.picker.showBanner
+  let theme: OverlayTheme = persisted.theme ?? options.theme
+
+  // §15: extra redaction keys added from the Settings tab persist across
+  // reloads (unlike the on/off toggle, they only ever narrow what's
+  // redacted) — replay them onto the fresh runtime hook once here, since
+  // createRuntime() always starts with none of its own.
+  let addedRedactionKeys: string[] = persisted.extraRedactKeys !== undefined ? [...persisted.extraRedactKeys] : []
+  for (const key of addedRedactionKeys) hook?.addRedactionKey(key)
 
   // --- Settings tab: live-editable picker shortcuts -------------------------
   // Seeded from the app-configured `options.picker` values, overridden by
@@ -467,6 +525,21 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   // The ancestry entry currently highlighted via `focusAncestor` (§9.3); reset
   // whenever the underlying selection changes so a stale ancestor never lingers.
   let focusedAncestorId: ComponentId | null = null
+
+  // --- Redraw-flash visualization (task 0030) -------------------------------
+  // A brief, self-clearing highlight per component whose own DOM actually
+  // mutated (not merely whose `view()` ran) — see `recordDomMutations` below.
+  // Each entry's timer is the sole owner of its own removal; refreshing an
+  // already-flashing component clears the old timer before arming a new one,
+  // so there is never more than one live timer per component id.
+  interface FlashState {
+    readonly rects: readonly HighlightRect[]
+    readonly seq: number
+    readonly timer: ReturnType<typeof setTimeout>
+  }
+  const REDRAW_FLASH_DURATION_MS = 400
+  const flashesById = new Map<ComponentId, FlashState>()
+  let nextFlashSeq = 0
 
   // --- Components tab: tree/search/pin/attrs+state (task 0022) -------------
   // Seeded once from getSnapshot() and patched incrementally from batched
@@ -561,7 +634,15 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
 
   const persist = (): void => {
     saveOverlayState(
-      { collapsed, activeTab, treeSearch: treeStore.getSearch(), pickerShortcuts: shortcutSettings, showPickingBanner: showBanner },
+      {
+        collapsed,
+        activeTab,
+        treeSearch: treeStore.getSearch(),
+        pickerShortcuts: shortcutSettings,
+        showPickingBanner: showBanner,
+        theme,
+        extraRedactKeys: addedRedactionKeys,
+      },
       storage,
     )
   }
@@ -597,6 +678,8 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         key: record.key,
         mounted: record.mounted,
         choices: computeChoices(record),
+        renderDuration: record.renderDuration,
+        slowRenderCount: record.slowRenderCount,
       }))
       const selectedComponentChoices = ancestry.length > 0 ? ancestry[ancestry.length - 1]!.choices : []
 
@@ -637,12 +720,16 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         selectedComponentChoices,
         focusedAncestorId,
         frozenRects,
+        flashes: Array.from(flashesById, ([componentId, { rects, seq }]) => ({ componentId, seq, rects })),
         diagnostics: diagnostics.list(),
         componentTree,
         history,
         pickerShortcuts: shortcutSettings,
         showPickingBanner: showBanner,
         pickingBannerVisible: picker.isPicking() && showBanner && !bannerDismissed,
+        theme,
+        redactionEnabled: hook?.getRedactionEnabled() ?? true,
+        redactionKeys: hook?.getRedactionKeys() ?? [],
       }
     },
 
@@ -819,6 +906,37 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           hoverRects = picker.isPicking() && hovered !== null && hovered.isConnected ? [rectOfElement(hovered)] : []
           recomputeFrozen()
           redraw()
+        },
+        undefined,
+      )
+    },
+
+    recordDomMutations(records) {
+      if (!options.redrawFlash.enabled || hook === null || hook === undefined || hook.getMode() !== "full") return
+      diagnostics.guard(
+        "redraw-flash",
+        () => {
+          const ids = componentsWithMutatedDom(records, (node) => hook.resolveDomComponent(node))
+          let changed = false
+          for (const id of ids) {
+            const range = hook.componentRecord(id)?.domRange ?? null
+            const rects = range === null ? [] : rectsOfDomRange(range)
+            if (rects.length === 0) continue
+            const existing = flashesById.get(id)
+            if (existing !== undefined) clearTimeout(existing.timer)
+            nextFlashSeq += 1
+            flashesById.set(id, {
+              rects,
+              seq: nextFlashSeq,
+              timer: setTimeout(() => {
+                flashesById.delete(id)
+                redraw()
+              }, REDRAW_FLASH_DURATION_MS),
+            })
+            changed = true
+          }
+          if (changed) redraw()
+          return undefined
         },
         undefined,
       )
@@ -1013,10 +1131,36 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       persist()
       redraw()
     },
+    setTheme(next) {
+      theme = next
+      persist()
+      redraw()
+    },
+    resetTheme() {
+      theme = options.theme
+      persist()
+      redraw()
+    },
+    setRedactionEnabled(enabled) {
+      hook?.setRedactionEnabled(enabled)
+      redraw()
+    },
+    addRedactionKey(key) {
+      const trimmed = key.trim()
+      if (trimmed.length === 0) return
+      hook?.addRedactionKey(trimmed)
+      if (!addedRedactionKeys.some((k) => k.toLowerCase() === trimmed.toLowerCase())) {
+        addedRedactionKeys = [...addedRedactionKeys, trimmed]
+      }
+      persist()
+      redraw()
+    },
 
     dispose() {
       unsubscribeTree?.()
       clearBannerTimer()
+      for (const { timer } of flashesById.values()) clearTimeout(timer)
+      flashesById.clear()
     },
   }
 

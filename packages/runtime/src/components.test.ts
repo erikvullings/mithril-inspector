@@ -18,7 +18,7 @@ beforeEach(() => {
 
 type Mode = "source" | "components" | "full"
 
-const setup = (opts: { events?: RuntimeEvent[]; mode?: Mode } = {}) => {
+const setup = (opts: { events?: RuntimeEvent[]; mode?: Mode; perfNow?: () => number; slowRenderThresholdMs?: number } = {}) => {
   const sources = createSourceRegistry()
   sources.registerModule(MODULE, {
     file: "/project/src/App.ts",
@@ -31,8 +31,20 @@ const setup = (opts: { events?: RuntimeEvent[]; mode?: Mode } = {}) => {
   const registry = createComponentRegistry(sources, {
     ...(opts.events ? { emit: (e: RuntimeEvent) => opts.events!.push(e) } : {}),
     ...(opts.mode ? { getMode: () => opts.mode! } : {}),
+    ...(opts.perfNow ? { perfNow: opts.perfNow } : {}),
+    ...(opts.slowRenderThresholdMs !== undefined ? { slowRenderThresholdMs: opts.slowRenderThresholdMs } : {}),
   })
   return { sources, registry }
+}
+
+/** Returns a `perfNow` stub that yields the given sequence of timestamps, one per call. */
+const perfNowSequence = (...values: number[]): (() => number) => {
+  let index = 0
+  return () => {
+    const value = values[index]
+    index += 1
+    return value ?? values[values.length - 1] ?? 0
+  }
 }
 
 const idOf = (registry: ReturnType<typeof createComponentRegistry>, state: object | undefined): ComponentId => {
@@ -854,7 +866,8 @@ describe("components-updated patch events (§9.4, task 0021)", () => {
     expect(events).toHaveLength(1)
     expect(events[0]?.type).toBe("components-updated")
     const patches = (events[0] as { type: "components-updated"; records: ComponentPatch[] }).records
-    expect(patches).toEqual([{ id, updateCount: 1, updatedAt: expect.any(Number) }])
+    // mode: source (setup()'s default) never measures render duration.
+    expect(patches).toEqual([{ id, updateCount: 1, updatedAt: expect.any(Number), renderDuration: null, slowRenderCount: 0 }])
   })
 
   it("omits domRange and childIds from the patch when neither changed", () => {
@@ -1466,5 +1479,149 @@ describe("component view source resolution (§9.3, task 0019)", () => {
 
     const id = idOf(registry, usage.state as object)
     expect(registry.viewSourceOf(id)).toBeNull()
+  })
+})
+
+describe("render-duration tracking and slow-render warnings (§17 diagnostics, task 0029)", () => {
+  it("stays null/zero and never calls perfNow outside mode: full", () => {
+    const perfNow = vi.fn(perfNowSequence(0, 100, 200, 300))
+    const { registry } = setup({ mode: "components", perfNow })
+    const App: Component = { view: () => m("div") }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    const usage = m(Instrumented)
+    m.render(root, usage)
+    registry.flush()
+    m.render(root, m(Instrumented))
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.renderDuration).toBeNull()
+    expect(record?.slowRenderCount).toBe(0)
+    expect(perfNow).not.toHaveBeenCalled()
+  })
+
+  it("records a fast render's own duration without flagging it slow, in mode: full", () => {
+    // view() call #1: perfNow() called twice (start, end) -> 5ms.
+    const perfNow = perfNowSequence(0, 5)
+    const { registry } = setup({ mode: "full", perfNow })
+    const App: Component = { view: () => m("div") }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    const usage = m(Instrumented)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.renderDuration).toBe(5)
+    expect(record?.slowRenderCount).toBe(0)
+  })
+
+  it("flags a render exceeding the default 16ms threshold as slow, in mode: full", () => {
+    const perfNow = perfNowSequence(0, 20)
+    const { registry } = setup({ mode: "full", perfNow })
+    const App: Component = { view: () => m("div") }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    const usage = m(Instrumented)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    const record = registry.recordOf(id)
+    expect(record?.renderDuration).toBe(20)
+    expect(record?.slowRenderCount).toBe(1)
+  })
+
+  it("honours a custom slowRenderThresholdMs", () => {
+    const perfNow = perfNowSequence(0, 6)
+    const { registry } = setup({ mode: "full", perfNow, slowRenderThresholdMs: 5 })
+    const App: Component = { view: () => m("div") }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    const usage = m(Instrumented)
+    m.render(root, usage)
+    registry.flush()
+
+    const id = idOf(registry, usage.state as object)
+    expect(registry.recordOf(id)?.slowRenderCount).toBe(1)
+  })
+
+  it("accumulates slowRenderCount across multiple slow redraws, and updates renderDuration to the latest render", () => {
+    // Renders: mount (20ms, slow), redraw 1 (3ms, fast), redraw 2 (25ms, slow).
+    const perfNow = perfNowSequence(0, 20, 100, 103, 200, 225)
+    const { registry } = setup({ mode: "full", perfNow })
+    const App: Component<{ n: number }> = { view: (vnode) => m("div", vnode.attrs.n) }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    const usage = m(Instrumented, { n: 1 })
+    m.render(root, usage)
+    registry.flush()
+    const id = idOf(registry, usage.state as object)
+    expect(registry.recordOf(id)?.renderDuration).toBe(20)
+    expect(registry.recordOf(id)?.slowRenderCount).toBe(1)
+
+    m.render(root, m(Instrumented, { n: 2 }))
+    registry.flush()
+    expect(registry.recordOf(id)?.renderDuration).toBe(3)
+    expect(registry.recordOf(id)?.slowRenderCount).toBe(1)
+
+    m.render(root, m(Instrumented, { n: 3 }))
+    registry.flush()
+    expect(registry.recordOf(id)?.renderDuration).toBe(25)
+    expect(registry.recordOf(id)?.slowRenderCount).toBe(2)
+  })
+
+  it("isolates each component's own render duration from its descendants' (a slow child never inflates the parent's number)", () => {
+    // Parent's view() perfNow pair brackets ONLY its own call; Mithril invokes
+    // Child.view() afterward, during the surrounding render-tree walk, so the
+    // sequence below has Parent's pair (0, 2 -> 2ms) fully consumed before
+    // Child's own pair (10, 60 -> 50ms) is ever read.
+    const perfNow = perfNowSequence(0, 2, 10, 60)
+    const { registry } = setup({ mode: "full", perfNow })
+    const Child = registry.instrument(`${MODULE}:s2`, { view: () => m("span.leaf") } as Component)
+    const Parent = registry.instrument(`${MODULE}:s1`, { view: () => m("div.parent", m(Child)) } as Component)
+    m.render(root, m(Parent))
+    registry.flush()
+
+    const parentId = registry.resolveDomComponent(root.querySelector("div.parent")!)!
+    const childId = registry.resolveDomComponent(root.querySelector("span.leaf")!)!
+    expect(registry.recordOf(parentId)?.renderDuration).toBe(2)
+    expect(registry.recordOf(parentId)?.slowRenderCount).toBe(0)
+    expect(registry.recordOf(childId)?.renderDuration).toBe(50)
+    expect(registry.recordOf(childId)?.slowRenderCount).toBe(1)
+  })
+
+  it("times a route-resolver's render() call in mode: full", () => {
+    const perfNow = perfNowSequence(0, 30)
+    const { registry } = setup({ mode: "full", perfNow })
+    const resolverDef: RouteResolverDef = { render: () => m("div.page") }
+    const resolver = registry.instrument(`${MODULE}:s1`, resolverDef)
+    const output = resolver.render({ attrs: {} })
+    m.render(root, output as ReturnType<typeof m>)
+    registry.flush()
+
+    const id = idOf(registry, resolver as object)
+    const record = registry.recordOf(id)
+    expect(record?.renderDuration).toBe(30)
+    expect(record?.slowRenderCount).toBe(1)
+  })
+
+  it("includes renderDuration/slowRenderCount in components-updated patches", () => {
+    const events: RuntimeEvent[] = []
+    const perfNow = perfNowSequence(0, 4, 100, 120)
+    const { registry } = setup({ events, mode: "full", perfNow })
+    const App: Component<{ label: string }> = { view: (vnode) => m("div.app", vnode.attrs.label) }
+    const Instrumented = registry.instrument(`${MODULE}:s1`, App)
+    const usage = m(Instrumented, { label: "one" })
+    m.render(root, usage)
+    registry.flush()
+    const id = idOf(registry, usage.state as object)
+    events.length = 0
+
+    m.render(root, m(Instrumented, { label: "two" }))
+    registry.flush()
+
+    const patch = events.find((e) => e.type === "components-updated") as
+      | { type: "components-updated"; records: ComponentPatch[] }
+      | undefined
+    expect(patch?.records[0]).toMatchObject({ id, renderDuration: 20, slowRenderCount: 1 })
   })
 })

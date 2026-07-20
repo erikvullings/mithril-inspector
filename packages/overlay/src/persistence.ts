@@ -6,6 +6,7 @@
  * failure degrades to in-memory defaults.
  */
 
+import type { OverlayTheme } from "./options.js"
 import { PICKER_SHORTCUT_KEYS, type PickerShortcutKey, type PickerShortcutSetting } from "./shortcuts.js"
 
 /**
@@ -16,6 +17,7 @@ type PersistedTab = "components" | "history" | "settings"
 
 const PERSISTED_TABS: ReadonlySet<string> = new Set<PersistedTab>(["components", "history", "settings"])
 const PICKER_SHORTCUT_KEY_SET: ReadonlySet<string> = new Set(PICKER_SHORTCUT_KEYS)
+const PERSISTED_THEMES: ReadonlySet<string> = new Set<OverlayTheme>(["system", "light", "dark"])
 
 export interface OverlayPersistedState {
   /** Whether the panel is collapsed to the bottom toggle. */
@@ -38,6 +40,15 @@ export interface OverlayPersistedState {
   pickerShortcuts?: Partial<Record<PickerShortcutKey, PickerShortcutSetting>>
   /** Whether to show the picking-active banner (§18, Settings tab); absent keeps the app-configured `picker.showBanner` default. */
   showPickingBanner?: boolean
+  /** A user-picked theme override (Settings tab); absent keeps the app-configured `OverlayOptions.theme` default. */
+  theme?: OverlayTheme
+  /**
+   * Extra attrs/state redaction key patterns added from the Settings tab
+   * (§15), replayed onto the runtime hook on mount. Unlike the redaction
+   * on/off toggle, these persist across reloads — they only ever narrow what
+   * gets redacted, so persisting them can't leave secrets exposed.
+   */
+  extraRedactKeys?: readonly string[]
 }
 
 /** Validate one stored shortcut-setting entry, discarding anything malformed. */
@@ -109,6 +120,15 @@ export function loadOverlayState(storage: StorageLike | null = defaultStorage())
   if (pickerShortcuts !== undefined) state.pickerShortcuts = pickerShortcuts
 
   if (typeof record.showPickingBanner === "boolean") state.showPickingBanner = record.showPickingBanner
+
+  if (typeof record.theme === "string" && PERSISTED_THEMES.has(record.theme)) {
+    state.theme = record.theme as OverlayTheme
+  }
+
+  if (Array.isArray(record.extraRedactKeys)) {
+    const keys = record.extraRedactKeys.filter((k): k is string => typeof k === "string" && k.trim().length > 0)
+    if (keys.length > 0) state.extraRedactKeys = keys
+  }
 
   return state
 }

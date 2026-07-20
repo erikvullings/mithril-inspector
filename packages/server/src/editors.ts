@@ -74,16 +74,20 @@ function resolveCommandString(command: string): ResolvedEditor {
   return { command, args: isEditorAlias(alias) ? ALIAS_ARGS[alias] : fileOnlyArgs }
 }
 
+/** The out-of-the-box editor when neither an explicit option nor any environment variable picks one. */
+const DEFAULT_EDITOR: EditorAlias = "code"
+
 /**
  * Resolve which editor to launch (§10.3): the explicit `editor` option takes
  * priority; otherwise the first set environment variable in priority order
- * (`MITHRIL_INSPECTOR_EDITOR`, `LAUNCH_EDITOR`, `VISUAL`, `EDITOR`); `null`
- * when nothing is configured, so the caller can report `EDITOR_NOT_AVAILABLE`.
+ * (`MITHRIL_INSPECTOR_EDITOR`, `LAUNCH_EDITOR`, `VISUAL`, `EDITOR`); finally
+ * {@link DEFAULT_EDITOR} (VS Code) so the endpoint works out of the box —
+ * never `null`, since something is always configured one way or another.
  */
 export function resolveEditor(
   editorOption: EditorOption | undefined,
   env: Readonly<Record<string, string | undefined>>,
-): ResolvedEditor | null {
+): ResolvedEditor {
   if (editorOption !== undefined) {
     return typeof editorOption === "string"
       ? resolveCommandString(editorOption)
@@ -95,5 +99,5 @@ export function resolveEditor(
     if (value !== undefined && value.length > 0) return resolveCommandString(value)
   }
 
-  return null
+  return resolveCommandString(DEFAULT_EDITOR)
 }

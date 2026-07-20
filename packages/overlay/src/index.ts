@@ -8,6 +8,7 @@ export type { OverlayHandle, OverlayMountDeps } from "./overlay.js"
 export {
   DEFAULT_OVERLAY_OPTIONS,
   DEFAULT_PICKER_OPTIONS,
+  DEFAULT_REDRAW_FLASH_OPTIONS,
   resolveOverlayOptions,
 } from "./options.js"
 export type {
@@ -16,6 +17,7 @@ export type {
   OverlayOptionsInput,
   OverlayTheme,
   PickerOptions,
+  RedrawFlashOptions,
 } from "./options.js"
 
 // --- Runtime hook adapter ---------------------------------------------------
@@ -26,6 +28,7 @@ export type { OverlayHook } from "./hook.js"
 export { createOverlayController } from "./controller.js"
 export type {
   ClickEvent,
+  FlashEntry,
   HoverInfo,
   OverlayController,
   OverlayControllerDeps,
@@ -70,6 +73,8 @@ export { loadOverlayState, OVERLAY_STORAGE_KEY, saveOverlayState } from "./persi
 export type { OverlayPersistedState, StorageLike } from "./persistence.js"
 export { createComponentTreeStore } from "./tree.js"
 export type { ComponentTreeStore, PinnedRow, TreeRow } from "./tree.js"
+export { componentsWithMutatedDom } from "./redraw-flash.js"
+export type { DomMutationLike } from "./redraw-flash.js"
 export { isExpandable, pathKey, summarizeNode } from "./preview.js"
 export { createHistoryStore, diffPreviewNodes } from "./history.js"
 export type { HistoryDiffEntry, HistoryDiffKind, HistoryEntry, HistoryStore, HistoryStoreOptions } from "./history.js"

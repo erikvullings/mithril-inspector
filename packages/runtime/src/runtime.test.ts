@@ -200,6 +200,8 @@ describe("InspectorRuntime end-to-end", () => {
       createdAt: 0,
       updatedAt: 0,
       updateCount: 0,
+      renderDuration: null,
+      slowRenderCount: 0,
       domRange: null,
       childIds: [],
     })
@@ -377,6 +379,62 @@ describe("InspectorRuntime end-to-end", () => {
       const preview = redacting.attrsPreview(id) as { entries: Array<{ key: string; node: unknown }> }
       expect(preview.entries).toEqual([
         { key: "secretValue", node: { kind: "redacted", replacement: "HIDDEN" } },
+        { key: "label", node: { kind: "primitive", type: "string", value: "visible" } },
+      ])
+    })
+
+    it("setRedactionEnabled(false) turns off redaction live; a fresh runtime always starts enabled", () => {
+      interface SecretAttrs {
+        secretValue: string
+      }
+      const redacting = createRuntime({ schedule: () => {}, redact: { keys: ["secret"], replacement: "HIDDEN" } })
+      expect(redacting.getRedactionEnabled()).toBe(true)
+      redacting.registerSourceModule(MODULE, registration)
+      const App = redacting.component(`${MODULE}:s1`, { view: () => m("div") } as Component<SecretAttrs>)
+      const usage = m(App, { secretValue: "shh" })
+      m.render(root, usage)
+      redacting.flush()
+      const id = redacting.components.idOf(usage.state as object)!
+
+      redacting.setRedactionEnabled(false)
+      expect(redacting.getRedactionEnabled()).toBe(false)
+      const revealed = redacting.attrsPreview(id) as { entries: Array<{ key: string; node: unknown }> }
+      expect(revealed.entries).toEqual([{ key: "secretValue", node: { kind: "primitive", type: "string", value: "shh" } }])
+
+      redacting.setRedactionEnabled(true)
+      const hiddenAgain = redacting.attrsPreview(id) as { entries: Array<{ key: string; node: unknown }> }
+      expect(hiddenAgain.entries).toEqual([{ key: "secretValue", node: { kind: "redacted", replacement: "HIDDEN" } }])
+
+      // A brand-new runtime (the real-world equivalent of a full page reload,
+      // since createRuntime() is only ever called once per page load, §11.2)
+      // always starts back at enabled — the toggle is session-only by design.
+      expect(createRuntime().getRedactionEnabled()).toBe(true)
+    })
+
+    it("addRedactionKey extends the active redaction policy live, ignoring blanks and duplicates", () => {
+      interface SsnAttrs {
+        ssn: string
+        label: string
+      }
+      const redacting = createRuntime({ schedule: () => {}, redact: { keys: ["secret"], replacement: "HIDDEN" } })
+      expect(redacting.getRedactionKeys()).toEqual(["secret"])
+
+      redacting.addRedactionKey("ssn")
+      redacting.addRedactionKey("  ")
+      redacting.addRedactionKey("SSN") // case-insensitive duplicate of the one just added
+      redacting.addRedactionKey("Secret") // case-insensitive duplicate of a configured key
+      expect(redacting.getRedactionKeys()).toEqual(["secret", "ssn"])
+
+      redacting.registerSourceModule(MODULE, registration)
+      const App = redacting.component(`${MODULE}:s1`, { view: () => m("div") } as Component<SsnAttrs>)
+      const usage = m(App, { ssn: "123-45-6789", label: "visible" })
+      m.render(root, usage)
+      redacting.flush()
+      const id = redacting.components.idOf(usage.state as object)!
+
+      const preview = redacting.attrsPreview(id) as { entries: Array<{ key: string; node: unknown }> }
+      expect(preview.entries).toEqual([
+        { key: "ssn", node: { kind: "redacted", replacement: "HIDDEN" } },
         { key: "label", node: { kind: "primitive", type: "string", value: "visible" } },
       ])
     })

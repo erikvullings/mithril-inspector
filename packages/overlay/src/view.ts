@@ -127,6 +127,18 @@ function highlightLayer(state: OverlayViewState): Vnode {
   const rects: Vnode[] = []
   for (const rect of state.hoverRects) rects.push(m("div.mi-rect", { style: rectStyle(rect) }))
   for (const rect of state.frozenRects) rects.push(m("div.mi-rect.mi-rect-frozen", { style: rectStyle(rect) }))
+  // Keyed on `componentId:seq:index` (task 0030): `seq` bumps every time a
+  // still-flashing component mutates again, forcing Mithril to insert a
+  // fresh element rather than diff-reuse the previous one — the CSS fade
+  // animation only (re)plays on a freshly-inserted element, never on one
+  // that's merely patched in place after already reaching its end state.
+  for (const flash of state.flashes) {
+    flash.rects.forEach((rect, index) => {
+      rects.push(
+        m("div.mi-rect.mi-flash-rect", { key: `${flash.componentId}:${flash.seq}:${index}`, style: rectStyle(rect) }),
+      )
+    })
+  }
   return m("div.mi-highlight-layer", { "aria-hidden": "true" }, rects)
 }
 
@@ -340,6 +352,42 @@ function updateCountBadge(record: TreeRow["record"]): Children {
   return m("span.mi-badge-count", { title: `Updated ${record.updateCount} time(s)` }, `×${record.updateCount}`)
 }
 
+/** Formats a render duration to one decimal place, e.g. `2.3ms`. */
+function formatRenderDuration(ms: number): string {
+  return `${ms.toFixed(1)}ms`
+}
+
+/**
+ * Slow-render warning badge (§17 diagnostics, task 0029): hidden until at
+ * least one of this component's own `view()`/`render()` calls exceeded the
+ * runtime's slow-render threshold (`mode: "full"` only — `slowRenderCount`
+ * stays 0 in every other mode, so the badge never appears there).
+ */
+function slowRenderBadge(record: TreeRow["record"]): Children {
+  if (record.slowRenderCount <= 0) return null
+  const last = record.renderDuration === null ? "" : ` — last render ${formatRenderDuration(record.renderDuration)}`
+  return m(
+    "span.mi-badge-warn",
+    { title: `${record.slowRenderCount} slow render(s)${last}` },
+    `⚠ ${record.slowRenderCount}`,
+  )
+}
+
+/**
+ * The detail pane's own render-timing line (§17 diagnostics, task 0029):
+ * hidden entirely when nothing has been measured yet (`mode` isn't `"full"`,
+ * or the component hasn't rendered since selection) rather than showing a
+ * bare "not available" message — the tree row's badges already carry that
+ * signal, so an always-visible gate message here would be redundant noise.
+ */
+function renderTimingInfo(self: AncestryEntry | undefined): Children {
+  if (self === undefined || self.renderDuration === null) return null
+  return m("p.mi-render-timing" + (self.slowRenderCount > 0 ? ".mi-render-timing-slow" : ""), [
+    `Last render: ${formatRenderDuration(self.renderDuration)}`,
+    self.slowRenderCount > 0 ? ` · ${self.slowRenderCount} slow render(s)` : null,
+  ])
+}
+
 function pinButton(controller: OverlayController, id: ComponentId, pinned: boolean): Vnode {
   const label = pinned ? "Unpin component" : "Pin component"
   return m(
@@ -461,6 +509,7 @@ function treeRow(
         treeKeyBadge(record),
       ]),
       updateCountBadge(record),
+      slowRenderBadge(record),
       pinButton(controller, record.id, state.componentTree.pinned.some((p) => p.record.id === record.id)),
     ]),
   )
@@ -801,6 +850,7 @@ function detailPane(controller: OverlayController, state: OverlayViewState): Vno
           componentId !== null && sourceEntry !== undefined
             ? detailToolbar(controller, state, componentId, sourceEntry)
             : null,
+          renderTimingInfo(self),
           state.componentTree.gating.enabled
             ? [previewSectionBlock(controller, state, "attrs"), previewSectionBlock(controller, state, "state")]
             : null,
@@ -866,12 +916,127 @@ function bannerToggleRow(controller: OverlayController, state: OverlayViewState)
   ])
 }
 
+/**
+ * Read-only editor display (§10.3): the browser can never choose what the
+ * open-in-editor endpoint launches (§10.2 forbids the client from picking a
+ * command), so this only surfaces the currently resolved editor plus the
+ * config/env-var knobs to change it — no control to flip here.
+ */
+function editorInfoView(controller: OverlayController): Vnode {
+  return m("p.mi-editor-info.mi-muted", [
+    "Opens in ",
+    m("code.mi-mono", controller.options.editorCommand),
+    ". Change it with the ",
+    m("code.mi-mono", "editor"),
+    " plugin option, or the ",
+    m("code.mi-mono", "MITHRIL_INSPECTOR_EDITOR"),
+    ", ",
+    m("code.mi-mono", "LAUNCH_EDITOR"),
+    ", ",
+    m("code.mi-mono", "VISUAL"),
+    " or ",
+    m("code.mi-mono", "EDITOR"),
+    " environment variable (checked in that order).",
+  ])
+}
+
+const THEME_OPTIONS: readonly OverlayTheme[] = ["system", "light", "dark"]
+const THEME_LABELS: Record<OverlayTheme, string> = { system: "System", light: "Light", dark: "Dark" }
+
+/** Live theme switcher (§8.1): three-way toggle plus a "Reset to default" once it diverges from `options.theme`, mirroring the shortcut rows' pattern. */
+function themeRow(controller: OverlayController, state: OverlayViewState): Vnode {
+  return m("div.mi-row-check", [
+    m("span.mi-key", "Theme"),
+    THEME_OPTIONS.map((theme) =>
+      m(
+        "button.mi-btn-small",
+        {
+          type: "button",
+          class: state.theme === theme ? "mi-crumb-current" : undefined,
+          "aria-pressed": state.theme === theme,
+          onclick: () => controller.setTheme(theme),
+        },
+        THEME_LABELS[theme],
+      ),
+    ),
+    state.theme === controller.options.theme
+      ? null
+      : m(
+          "button.mi-btn-small",
+          { type: "button", title: "Reset to default", onclick: () => controller.resetTheme() },
+          "Reset",
+        ),
+  ])
+}
+
+/**
+ * Redaction on/off (§15, Settings tab): deliberately session-only — nothing
+ * here is persisted, so a full page reload always comes back enabled and
+ * never leaves real credentials exposed by default (task 0026 follow-up).
+ */
+function redactionToggleRow(controller: OverlayController, state: OverlayViewState): Vnode {
+  return m("div.mi-row-check", [
+    m("input#mi-redaction-enabled", {
+      type: "checkbox",
+      checked: state.redactionEnabled,
+      onclick: (event: Event) => controller.setRedactionEnabled((event.target as HTMLInputElement).checked),
+    }),
+    m("label", { for: "mi-redaction-enabled" }, "Redact attrs/state values matching a sensitive key pattern (password, token, secret, …)"),
+  ])
+}
+
+/**
+ * The active redaction key list plus an "add a pattern" field (§15). The
+ * input is deliberately uncontrolled (no `value` bound to Mithril state) so
+ * unrelated redraws elsewhere in the overlay — e.g. hover tracking — never
+ * clobber what the user is mid-typing; it's read once on submit instead.
+ */
+function redactionKeysView(controller: OverlayController, state: OverlayViewState): Vnode {
+  return m("div.mi-redact-keys", [
+    state.redactionKeys.length > 0
+      ? m("p.mi-mono.mi-muted", state.redactionKeys.join(", "))
+      : m("p.mi-muted", "No key patterns configured."),
+    m(
+      "form.mi-row-check",
+      {
+        onsubmit: (event: Event) => {
+          event.preventDefault()
+          const form = event.currentTarget as HTMLFormElement
+          const input = form.elements.namedItem("redactKey") as HTMLInputElement
+          controller.addRedactionKey(input.value)
+          input.value = ""
+        },
+      },
+      [
+        m("input.mi-mono", {
+          type: "text",
+          name: "redactKey",
+          placeholder: "Add a key pattern, e.g. ssn",
+          "aria-label": "Add a redaction key pattern",
+        }),
+        m("button.mi-btn-small", { type: "submit" }, "Add"),
+      ],
+    ),
+  ])
+}
+
 function settingsView(controller: OverlayController, state: OverlayViewState): Vnode {
   return m("div.mi-settings", [
+    m("div.mi-section-title", "Appearance"),
+    themeRow(controller, state),
+    m("hr.mi-hr"),
     m("div.mi-section-title", "Shortcuts"),
     m("p.mi-muted", "Rebind or disable any shortcut below — e.g. if your app already uses it. Changes apply immediately and persist across reloads."),
     PICKER_SHORTCUT_KEYS.map((key) => shortcutRow(controller, key, state.pickerShortcuts[key])),
     bannerToggleRow(controller, state),
+    m("hr.mi-hr"),
+    m("div.mi-section-title", "Editor"),
+    editorInfoView(controller),
+    m("hr.mi-hr"),
+    m("div.mi-section-title", "Privacy"),
+    redactionToggleRow(controller, state),
+    m("p.mi-muted", "This resets to on the next full reload — it never persists, so it can't leave secrets exposed by default."),
+    redactionKeysView(controller, state),
     m("hr.mi-hr"),
     m("div.mi-section-title", "Diagnostics"),
     diagnosticsView(state),
@@ -1141,7 +1306,7 @@ export function OverlayRoot(controller: OverlayController): Component<Record<str
   return {
     view() {
       const state = controller.getState()
-      const themeAttr = resolveThemeAttr(controller.options.theme)
+      const themeAttr = resolveThemeAttr(state.theme)
       const rootAttrs: Record<string, unknown> = {
         class: "mi-root",
         style: `--mi-z:${controller.options.zIndex};`,

@@ -52,6 +52,10 @@ export interface RuntimeOptions {
   /** Schedule a batched flush (default `queueMicrotask`); overridable in tests. */
   readonly schedule?: (flush: () => void) => void
   readonly now?: () => number
+  /** High-resolution clock for render-duration measurement (task 0029); overridable in tests (default `performance.now`). */
+  readonly perfNow?: () => number
+  /** A render slower than this (ms) bumps a component's `slowRenderCount` (task 0029, `mode: "full"` only). Default 16 — one 60fps frame budget. */
+  readonly slowRenderThresholdMs?: number
   /**
    * Expose a compact, path-free `data-mi="<qualifiedId>"` attribute on element
    * vnodes (§13). Off by default; the normal association path uses a WeakMap and
@@ -130,6 +134,21 @@ export interface InspectorRuntime extends MithrilInspectorHook {
   getMode(): InspectorMode
   /** The resolved attrs/state redaction policy (§15); Phase-3 consumers read this. */
   getRedactionConfig(): RedactionConfig
+  /**
+   * Turn attrs/state redaction on/off at runtime (Settings tab). Session-only
+   * by design — nothing here is persisted, so a full page reload always comes
+   * back `true` and never leaves real credentials exposed by default.
+   */
+  setRedactionEnabled(enabled: boolean): void
+  getRedactionEnabled(): boolean
+  /** The full active set of redacted key patterns: {@link RedactionConfig.keys} plus any added via {@link addRedactionKey}. */
+  getRedactionKeys(): readonly string[]
+  /**
+   * Add one more key pattern to redact (Settings tab), on top of the
+   * configured policy. Ignores a blank pattern or one already present
+   * (case-insensitive) rather than growing the list with junk.
+   */
+  addRedactionKey(key: string): void
   /** Exclude an overlay host element (and its subtree) from tracking (§8.2). */
   excludeHost(host: Node): void
   /** Whether an inspector feature is still enabled (§16). */
@@ -152,6 +171,8 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
   let mode: InspectorMode = options.mode ?? "source"
   const exposeDomAttributes = options.exposeDomAttributes ?? false
   const redaction: RedactionConfig = options.redact ?? { keys: [], replacement: DEFAULT_REDACTION_REPLACEMENT }
+  let redactionEnabled = true
+  let extraRedactionKeys: string[] = []
 
   // §13: stamp a compact, path-free `data-mi` attribute on element vnodes only.
   const exposeDomAttribute = (qualifiedId: string, vnode: unknown): void => {
@@ -214,6 +235,8 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
   const serializer: Serializer = createSerializer({
     redactKeys: redaction.keys,
     replacement: redaction.replacement,
+    isRedactionEnabled: () => redactionEnabled,
+    additionalRedactKeys: () => extraRedactionKeys,
     describeComponent: (value) => components.describeComponentValue(value),
   })
 
@@ -415,6 +438,24 @@ export function createRuntime(options: RuntimeOptions = {}): InspectorRuntime {
     },
     getRedactionConfig() {
       return redaction
+    },
+    setRedactionEnabled(enabled) {
+      redactionEnabled = enabled
+    },
+    getRedactionEnabled() {
+      return redactionEnabled
+    },
+    getRedactionKeys() {
+      return [...redaction.keys, ...extraRedactionKeys]
+    },
+    addRedactionKey(key) {
+      const trimmed = key.trim()
+      if (trimmed.length === 0) return
+      const lower = trimmed.toLowerCase()
+      const exists = redaction.keys.some((k) => k.toLowerCase() === lower) ||
+        extraRedactionKeys.some((k) => k.toLowerCase() === lower)
+      if (exists) return
+      extraRedactionKeys = [...extraRedactionKeys, trimmed]
     },
     excludeHost(host) {
       excludedHosts.add(host)

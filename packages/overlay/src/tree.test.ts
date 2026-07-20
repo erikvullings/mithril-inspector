@@ -17,6 +17,8 @@ function rec(overrides: Partial<ComponentRecord> & { id: ComponentId }): Compone
     createdAt: 0,
     updatedAt: 0,
     updateCount: 0,
+    renderDuration: null,
+    slowRenderCount: 0,
     domRange: null,
     childIds: [],
     ...overrides,

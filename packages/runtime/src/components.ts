@@ -73,6 +73,10 @@ interface InstanceRecord {
   readonly createdAt: number
   updatedAt: number
   updateCount: number
+  /** See `ComponentRecord.renderDuration` (task 0029) — `null` until measured. */
+  renderDuration: number | null
+  /** See `ComponentRecord.slowRenderCount` (task 0029). */
+  slowRenderCount: number
   // The domRange/childIds last sent to subscribers (in a components-added or
   // components-updated event), so `flush` can include only fields that
   // actually changed in a components-updated patch (§9.4 "no full-record
@@ -164,10 +168,19 @@ export interface ComponentRegistryOptions {
   readonly emit?: (event: RuntimeEvent) => void
   /** Clock injection for tests (default `Date.now`). */
   readonly now?: () => number
+  /**
+   * High-resolution monotonic clock for render-duration measurement (task
+   * 0029), injectable for deterministic tests (default `performance.now`).
+   * Only called in `mode: "full"` (§17 diagnostics) — never at the cost of
+   * two extra calls per render in the cheaper modes.
+   */
+  readonly perfNow?: () => number
   /** Called when a component renders, so the runtime can schedule a flush. */
   readonly onActivity?: () => void
   /** Live mode accessor (§17); default always reports `"source"`. */
   readonly getMode?: () => RegistryMode
+  /** A render slower than this (ms, own `view()`/`render()` time) bumps `slowRenderCount` (task 0029). Default 16 — one 60fps frame budget. */
+  readonly slowRenderThresholdMs?: number
 }
 
 /** Normalize a raw vnode `key` (`string | number | undefined` per Mithril, but read defensively) to the §9.1 wire shape. */
@@ -226,8 +239,10 @@ export function createComponentRegistry(
 ): ComponentRegistry {
   const emit = options.emit ?? (() => {})
   const now = options.now ?? Date.now
+  const perfNow = options.perfNow ?? (() => performance.now())
   const onActivity = options.onActivity ?? (() => {})
   const getMode = options.getMode ?? (() => "source")
+  const slowRenderThresholdMs = options.slowRenderThresholdMs ?? 16
   let nextInstance = 0
 
   // vnode.state is the one object Mithril carries across redraws, so it is the
@@ -288,6 +303,8 @@ export function createComponentRegistry(
       createdAt: timestamp,
       updatedAt: timestamp,
       updateCount: 0,
+      renderDuration: null,
+      slowRenderCount: 0,
       emittedDomRange: null,
       emittedChildIds: [],
       epoch,
@@ -349,6 +366,18 @@ export function createComponentRegistry(
     return record
   }
 
+  // §17 "diagnostics" is a `full`-mode-only concern: the two `perfNow()`
+  // calls this brackets never run in `source`/`components` mode, so a render
+  // duration outside `full` mode always stays `null` rather than a stale
+  // last-known number from before a mode switch (task 0029).
+  const timingEnabled = (): boolean => getMode() === "full"
+
+  /** Records one render's own duration and bumps `slowRenderCount` past the threshold (task 0029). */
+  const recordRenderDuration = (record: InstanceRecord, durationMs: number): void => {
+    record.renderDuration = durationMs
+    if (durationMs > slowRenderThresholdMs) record.slowRenderCount += 1
+  }
+
   /**
    * Build the composed component. The wrapper inherits from the original
    * definition (via `Object.create`) so any helper methods or state fields the
@@ -366,7 +395,15 @@ export function createComponentRegistry(
       record.latestVnode = vnode as Rendered
       scopeStack.push(record)
       try {
+        const timed = timingEnabled()
+        const start = timed ? perfNow() : 0
         const result = app.view.call(this, vnode)
+        // Bracketing only `app.view.call` (not `recordOwnedVnodes` below)
+        // measures the application's own function — and nothing a descendant
+        // component's own `view()` does, since Mithril invokes those only
+        // after this call has already returned (during the surrounding
+        // render-tree walk, not nested inside it).
+        if (timed) recordRenderDuration(record, perfNow() - start)
         recordOwnedVnodes(record, result)
         return result
       } finally {
@@ -489,7 +526,10 @@ export function createComponentRegistry(
       }
       scopeStack.push(record)
       try {
+        const timed = timingEnabled()
+        const start = timed ? perfNow() : 0
         const result = def.render.call(this, vnode)
+        if (timed) recordRenderDuration(record, perfNow() - start)
         record.latestVnode = result as Rendered
         recordOwnedVnodes(record, result)
         return result
@@ -664,6 +704,8 @@ export function createComponentRegistry(
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
       updateCount: record.updateCount,
+      renderDuration: record.renderDuration,
+      slowRenderCount: record.slowRenderCount,
       domRange: range,
       childIds: [...record.childIds],
     }
@@ -774,7 +816,13 @@ export function createComponentRegistry(
           const record = byId.get(id)
           if (record === undefined || !isVisible(record)) continue
           const range = record.latestVnode === null ? null : domRangeOf(record.latestVnode)
-          const patch: ComponentPatch = { id, updateCount: record.updateCount, updatedAt: record.updatedAt }
+          const patch: ComponentPatch = {
+            id,
+            updateCount: record.updateCount,
+            updatedAt: record.updatedAt,
+            renderDuration: record.renderDuration,
+            slowRenderCount: record.slowRenderCount,
+          }
           if (!domRangeEqual(record.emittedDomRange, range)) {
             patch.domRange = range
             record.emittedDomRange = range

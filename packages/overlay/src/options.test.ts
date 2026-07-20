@@ -43,6 +43,16 @@ describe("resolveOverlayOptions", () => {
     expect(options.componentTree).toEqual({ enabled: false, captureAttrs: false, captureState: false })
   })
 
+  it("defaults redrawFlash to disabled (task 0030, opt-in per REQUIREMENTS.md §17/task 0026)", () => {
+    const options = resolveOverlayOptions()
+    expect(options.redrawFlash).toEqual({ enabled: false })
+  })
+
+  it("lets redrawFlash be turned on explicitly", () => {
+    const options = resolveOverlayOptions({ redrawFlash: { enabled: true } })
+    expect(options.redrawFlash).toEqual({ enabled: true })
+  })
+
   it("overrides top-level fields and ignores explicit undefined", () => {
     const options = resolveOverlayOptions({ defaultOpen: true, theme: undefined })
     expect(options.defaultOpen).toBe(true)
@@ -53,5 +63,10 @@ describe("resolveOverlayOptions", () => {
     resolveOverlayOptions({ defaultOpen: true, picker: { enabled: false } })
     expect(DEFAULT_OVERLAY_OPTIONS.defaultOpen).toBe(false)
     expect(DEFAULT_OVERLAY_OPTIONS.picker.enabled).toBe(true)
+  })
+
+  it("defaults editorCommand to \"code\" and lets an adapter override it (§10.3)", () => {
+    expect(resolveOverlayOptions().editorCommand).toBe("code")
+    expect(resolveOverlayOptions({ editorCommand: "webstorm" }).editorCommand).toBe("webstorm")
   })
 })

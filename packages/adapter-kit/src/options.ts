@@ -1,5 +1,6 @@
 import type { InspectorMode, RedactionConfig } from "@mithril-inspector/runtime"
 import type { OverlayOptionsInput, OverlayTheme } from "@mithril-inspector/overlay"
+import { resolveEditor } from "@mithril-inspector/server"
 import type { EditorOption, InspectorServerOptions, PathMapping } from "@mithril-inspector/server"
 import type { FilterPattern, TransformOptions } from "@mithril-inspector/transform"
 
@@ -27,7 +28,7 @@ export interface MithrilInspectorOptions {
   editor?: EditorOption
   pathMappings?: PathMapping[]
 
-  /** Performance/feature mode (§17). Defaults to `"source"` for the first release. */
+  /** Performance/feature mode (§17). Defaults to `"full"`; users can dial it back per §17's budget. */
   mode?: InspectorMode
 
   ui?: {
@@ -49,6 +50,11 @@ export interface MithrilInspectorOptions {
     enabled?: boolean
     captureAttrs?: boolean
     captureState?: boolean
+  }
+
+  /** Redraw-flash visualization (§21 Phase 5, task 0030). Off by default — unlike `componentTree`, `mode: "full"` alone never turns it on. */
+  redrawFlash?: {
+    enabled?: boolean
   }
 
   source?: {
@@ -107,6 +113,10 @@ export interface ResolvedComponentTreeOptions {
   readonly captureState: boolean
 }
 
+export interface ResolvedRedrawFlashOptions {
+  readonly enabled: boolean
+}
+
 export interface ResolvedSourceOptions {
   readonly elements: boolean
   readonly components: boolean
@@ -130,10 +140,17 @@ export interface ResolvedInspectorOptions {
   readonly ui: ResolvedUiOptions
   readonly picker: ResolvedPickerOptions
   readonly componentTree: ResolvedComponentTreeOptions
+  readonly redrawFlash: ResolvedRedrawFlashOptions
   readonly source: ResolvedSourceOptions
   readonly mithrilImports: readonly string[]
   readonly hyperscriptIdentifiers: readonly string[]
   readonly redact: RedactionConfig
+  /**
+   * The editor command the open-in-editor endpoint will actually launch
+   * (§10.3), resolved once here for display in the overlay's Settings tab
+   * (read-only — §10.2 forbids the browser from choosing what runs server-side).
+   */
+  readonly editorCommand: string
 }
 
 /** The serializable config injected into the runtime bootstrap module (§15). */
@@ -156,9 +173,10 @@ export function resolveInspectorOptions(
   const ui = options.ui ?? {}
   const picker = options.picker ?? {}
   const componentTree = options.componentTree ?? {}
+  const redrawFlash = options.redrawFlash ?? {}
   const source = options.source ?? {}
   const redact = options.redact ?? {}
-  const mode = options.mode ?? "source"
+  const mode = options.mode ?? "full"
 
   return {
     enabled: options.enabled ?? env.NODE_ENV !== "production",
@@ -171,6 +189,7 @@ export function resolveInspectorOptions(
     pathMappings: options.pathMappings ?? [],
     mode,
     debug: options.debug ?? false,
+    editorCommand: resolveEditor(options.editor, env).command,
     ui: {
       enabled: ui.enabled ?? true,
       defaultOpen: ui.defaultOpen ?? false,
@@ -185,12 +204,19 @@ export function resolveInspectorOptions(
       continuous: picker.continuous ?? false,
     },
     componentTree: {
-      enabled: componentTree.enabled ?? false,
+      enabled: componentTree.enabled ?? true,
       // §17 defines "full" mode itself as including attrs/state, so both
       // default to on once mode resolves to "full" — still overridable
       // explicitly (e.g. full mode's other diagnostics without attrs/state).
       captureAttrs: componentTree.captureAttrs ?? mode === "full",
       captureState: componentTree.captureState ?? mode === "full",
+    },
+    // Task 0030 / REQUIREMENTS.md §21 Phase 5: unlike componentTree above,
+    // `mode: "full"` alone never defaults this on — task 0026's own
+    // acceptance criterion requires the whole redraw/timing-visuals category
+    // to be opt-in, not just gated by mode.
+    redrawFlash: {
+      enabled: redrawFlash.enabled ?? false,
     },
     source: {
       elements: source.elements ?? true,
@@ -237,6 +263,10 @@ export function toOverlayOptionsInput(resolved: ResolvedInspectorOptions): Overl
       captureAttrs: resolved.componentTree.captureAttrs,
       captureState: resolved.componentTree.captureState,
     },
+    redrawFlash: {
+      enabled: resolved.redrawFlash.enabled,
+    },
+    editorCommand: resolved.editorCommand,
   }
 }
 

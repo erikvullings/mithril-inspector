@@ -100,8 +100,10 @@ describe("resolveEditor", () => {
     expect(editor?.command).toBe("nvim")
   })
 
-  it("returns null when nothing is configured", () => {
-    expect(resolveEditor(undefined, {})).toBeNull()
+  it("falls back to VS Code when nothing is configured", () => {
+    const editor = resolveEditor(undefined, {})
+    expect(editor.command).toBe("code")
+    expect(editor.args(LOCATION)).toEqual(["-g", "/project/src/foo.ts:17:5"])
   })
 
   it("matches a known alias by basename when the env var is a full path", () => {

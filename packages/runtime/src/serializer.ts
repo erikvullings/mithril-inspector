@@ -53,6 +53,15 @@ export interface SerializerOptions {
   /** Replacement text shown in place of a redacted value (default `"[redacted]"`). */
   readonly replacement?: string
   /**
+   * Live check for whether redaction is active at all — the Settings tab's
+   * session-only on/off toggle (never persisted, so a reload always comes
+   * back enabled). Defaults to always-enabled; omitting this keeps the §15
+   * "never silently off" guarantee intact.
+   */
+  readonly isRedactionEnabled?: () => boolean
+  /** Live-read additional key patterns on top of {@link redactKeys} — the Settings tab's user-added patterns (task 0026 follow-up). */
+  readonly additionalRedactKeys?: () => readonly string[]
+  /**
    * Recognize a value as a Mithril component definition the caller
    * instrumented (object/closure/class/route-resolver) and resolve its
    * display name, checked before the generic function/object handling for
@@ -122,10 +131,14 @@ export function createSerializer(options: SerializerOptions = {}): Serializer {
   const redactionKeys = configuredKeys.length > 0 ? configuredKeys : DEFAULT_REDACTION_KEYS
   const replacement = options.replacement ?? DEFAULT_REPLACEMENT
   const describeComponent = options.describeComponent
+  const isRedactionEnabled = options.isRedactionEnabled ?? (() => true)
+  const additionalRedactKeys = options.additionalRedactKeys ?? (() => [])
 
   const shouldRedact = (key: string): boolean => {
+    if (!isRedactionEnabled()) return false
     const lower = key.toLowerCase()
-    return redactionKeys.some((pattern) => lower.includes(pattern.toLowerCase()))
+    if (redactionKeys.some((pattern) => lower.includes(pattern.toLowerCase()))) return true
+    return additionalRedactKeys().some((pattern) => lower.includes(pattern.toLowerCase()))
   }
 
   interface Page<T> {

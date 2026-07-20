@@ -26,6 +26,8 @@ export function overlayCss(): string {
   --mi-danger: #b42318;
   --mi-highlight: #1a56db;
   --mi-highlight-fill: rgba(26, 86, 219, 0.12);
+  --mi-flash: #d946ef;
+  --mi-flash-fill: rgba(217, 70, 239, 0.22);
   --mi-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
   --mi-radius: 8px;
   --mi-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -55,6 +57,8 @@ export function overlayCss(): string {
     --mi-danger: #ff6b60;
     --mi-highlight: #7aa2ff;
     --mi-highlight-fill: rgba(122, 162, 255, 0.16);
+    --mi-flash: #f0abfc;
+    --mi-flash-fill: rgba(240, 171, 252, 0.26);
     --mi-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
   }
 }
@@ -72,6 +76,8 @@ export function overlayCss(): string {
   --mi-danger: #ff6b60;
   --mi-highlight: #7aa2ff;
   --mi-highlight-fill: rgba(122, 162, 255, 0.16);
+  --mi-flash: #f0abfc;
+  --mi-flash-fill: rgba(240, 171, 252, 0.26);
   --mi-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
 }
 
@@ -413,6 +419,25 @@ export function overlayCss(): string {
 }
 .mi-rect-frozen { border-style: dashed; }
 
+/* --- Redraw-flash visualization (§9.3, task 0030) ------------------------ */
+/* Opt-in (OverlayOptions.redrawFlash), mode:"full" only. A brief highlight
+   over a component's DOM range when it actually mutated this redraw — not
+   every component whose view() merely ran. Removal is always timer-driven
+   (controller.ts), independent of whether the animation itself plays, so the
+   existing global prefers-reduced-motion rule below (which zeroes every
+   animation under .mi-root) still leaves a short, static, non-animated flash
+   rather than nothing at all (§18) — no separate reduced-motion check needed
+   here. */
+.mi-flash-rect {
+  border-color: var(--mi-flash);
+  background: var(--mi-flash-fill);
+  animation: mi-flash-fade 400ms ease-out forwards;
+}
+@keyframes mi-flash-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 /* --- Hover badge (§8.5) -------------------------------------------------- */
 .mi-hover-badge {
   position: fixed;
@@ -496,6 +521,19 @@ export function overlayCss(): string {
   border-radius: 999px;
   padding: 0 5px;
 }
+.mi-badge-warn {
+  color: var(--mi-danger);
+  font-size: 11px;
+  border: 1px solid var(--mi-danger);
+  border-radius: 999px;
+  padding: 0 5px;
+}
+.mi-render-timing {
+  color: var(--mi-muted);
+  font-size: 12px;
+  margin: 4px 0;
+}
+.mi-render-timing-slow { color: var(--mi-danger); }
 .mi-pin-btn {
   appearance: none;
   border: 0;

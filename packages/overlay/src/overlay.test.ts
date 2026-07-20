@@ -29,6 +29,8 @@ function componentRecord(overrides: Partial<ComponentRecord> & { id: ComponentId
     createdAt: 0,
     updatedAt: 0,
     updateCount: 0,
+    renderDuration: null,
+    slowRenderCount: 0,
     domRange: null,
     childIds: [],
     ...overrides,
@@ -55,6 +57,10 @@ function fakeHook(over: Partial<OverlayHook> = {}): OverlayHook & { excluded: No
     getSnapshot: () => ({ components: new Map(), vnodes: new Map(), modules: new Map(), domAssociations: new Map() }),
     subscribe: () => () => {},
     getMode: () => "source",
+    getRedactionEnabled: () => true,
+    setRedactionEnabled: () => {},
+    getRedactionKeys: () => [],
+    addRedactionKey: () => {},
     attrsPreview: () => null,
     statePreview: () => null,
     expandPreview: () => null,
@@ -158,6 +164,81 @@ describe("mountInspectorOverlay — panel (§8.3)", () => {
     handle!.controller.setActiveTab("settings")
     render()
     expect(handle!.shadowRoot.querySelector(".mi-diagnostics")?.textContent).toContain("kaboom")
+  })
+
+  it("switches the effective theme live from the Settings tab (§8.1)", () => {
+    handle = mountInspectorOverlay({ theme: "system" }, { hook: fakeHook() })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("settings")
+    render()
+    expect(handle!.shadowRoot.querySelector(".mi-root")?.getAttribute("data-theme")).toBeNull()
+
+    const darkButton = Array.from(handle!.shadowRoot.querySelectorAll(".mi-btn-small")).find(
+      (b) => b.textContent === "Dark",
+    ) as HTMLElement
+    darkButton.click()
+    render()
+    expect(handle!.shadowRoot.querySelector(".mi-root")?.getAttribute("data-theme")).toBe("dark")
+  })
+
+  it("toggles attrs/state redaction live from the Settings tab, session-only (§15)", () => {
+    const setRedactionEnabled = vi.fn()
+    handle = mountInspectorOverlay({}, { hook: fakeHook({ getRedactionEnabled: () => true, setRedactionEnabled }) })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("settings")
+    render()
+
+    const checkbox = handle!.shadowRoot.querySelector("#mi-redaction-enabled") as HTMLInputElement
+    expect(checkbox.checked).toBe(true)
+    checkbox.click()
+    expect(setRedactionEnabled).toHaveBeenCalledWith(false)
+  })
+
+  it("adds a redaction key pattern from the Settings tab form and clears the input (§15)", () => {
+    // The fake hook's addRedactionKey actually mutates `keys` (like the real
+    // runtime would) so the controller's own post-submit redraw() picks up
+    // the change — the overlay renders through its own scoped m.render(),
+    // not the global m.redraw() this file's render() helper drives.
+    const addRedactionKey = vi.fn()
+    const keys = ["password"]
+    handle = mountInspectorOverlay(
+      {},
+      {
+        hook: fakeHook({
+          getRedactionKeys: () => keys,
+          addRedactionKey: (k) => {
+            addRedactionKey(k)
+            keys.push(k)
+          },
+        }),
+      },
+    )
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("settings")
+    render()
+    expect(handle!.shadowRoot.querySelector(".mi-redact-keys")?.textContent).toContain("password")
+
+    const input = handle!.shadowRoot.querySelector('input[name="redactKey"]') as HTMLInputElement
+    input.value = "ssn"
+    const form = input.closest("form") as HTMLFormElement
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
+
+    expect(addRedactionKey).toHaveBeenCalledWith("ssn")
+    expect(input.value).toBe("")
+    expect(handle!.shadowRoot.querySelector(".mi-redact-keys")?.textContent).toContain("password, ssn")
+  })
+
+  it("shows the resolved editor read-only in Settings, with override instructions (§10.2, §10.3)", () => {
+    handle = mountInspectorOverlay({ editorCommand: "webstorm" }, { hook: fakeHook() })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("settings")
+    render()
+    const editorInfo = handle!.shadowRoot.querySelector(".mi-editor-info")
+    expect(editorInfo?.textContent).toContain("webstorm")
+    expect(editorInfo?.textContent).toContain("MITHRIL_INSPECTOR_EDITOR")
+    // Read-only: nothing here lets the browser pick an editor (§10.2) — only the shortcut
+    // rows elsewhere in Settings are interactive, and this section has none of its own.
+    expect(editorInfo?.querySelector("input, select, button")).toBeNull()
   })
 })
 
@@ -474,6 +555,26 @@ describe("mountInspectorOverlay — Components tab tree (§9, §9.3, §9.4, task
     expect(handle!.shadowRoot.querySelector(".mi-badge-count")?.textContent).toBe("×3")
   })
 
+  it("shows a slow-render warning badge in the tree once slowRenderCount is positive, hidden otherwise (§17 diagnostics, task 0029)", () => {
+    const fast = componentRecord({ id: "c:1" as ComponentId, displayName: "Fast", renderDuration: 2, slowRenderCount: 0 })
+    const slow = componentRecord({
+      id: "c:2" as ComponentId,
+      displayName: "Slow",
+      renderDuration: 42.1,
+      slowRenderCount: 3,
+    })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([fast, slow]) })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    render()
+
+    const badges = handle!.shadowRoot.querySelectorAll(".mi-badge-warn")
+    expect(badges.length).toBe(1)
+    expect(badges[0]?.textContent).toBe("⚠ 3")
+    expect(badges[0]?.getAttribute("title")).toBe("3 slow render(s) — last render 42.1ms")
+  })
+
   it("shows the disabled message instead of the tree when componentTree.enabled is false", () => {
     const hook = fakeHook({ getSnapshot: () => snapshotOf([componentRecord({ id: "c:1" as ComponentId })]) })
     handle = mountInspectorOverlay({ componentTree: { enabled: false } }, { hook })
@@ -591,6 +692,50 @@ describe("mountInspectorOverlay — Components tab tree (§9, §9.3, §9.4, task
     appRow.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }))
     render()
     expect(handle!.shadowRoot.querySelectorAll('[role="treeitem"]').length).toBe(2)
+  })
+
+  it("shows the selected component's last render duration in the detail pane, flagged once it's slow (§17 diagnostics, task 0029)", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const app = componentRecord({
+      id: "c:1" as ComponentId,
+      displayName: "App",
+      domRange: { first: el, last: el },
+      renderDuration: 42.1,
+      slowRenderCount: 3,
+    })
+    const hook = fakeHook({
+      getSnapshot: () => snapshotOf([app]),
+      componentRecord: () => app,
+      componentAncestry: () => [app],
+    })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    render()
+
+    const timing = handle!.shadowRoot.querySelector(".mi-render-timing")
+    expect(timing?.textContent).toBe("Last render: 42.1ms · 3 slow render(s)")
+    expect(timing?.classList.contains("mi-render-timing-slow")).toBe(true)
+  })
+
+  it("omits the render-timing line entirely until a render has actually been measured", () => {
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: el, last: el } })
+    const hook = fakeHook({
+      getSnapshot: () => snapshotOf([app]),
+      componentRecord: () => app,
+      componentAncestry: () => [app],
+    })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("components")
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    render()
+
+    expect(handle!.shadowRoot.querySelector(".mi-render-timing")).toBeNull()
   })
 
   it("shows a mode:full gating message for attrs/state until the runtime is in full mode", () => {
@@ -953,5 +1098,130 @@ describe("mountInspectorOverlay — modal <dialog> detection (§8.2 known limita
     dialog.setAttribute("open", "")
     await new Promise<void>((resolve) => queueMicrotask(resolve))
     expect(controller.diagnostics.list()).toHaveLength(0)
+  })
+})
+
+describe("mountInspectorOverlay — redraw-flash visualization (task 0030)", () => {
+  // MutationObserver callbacks land in a microtask, then the controller's own
+  // rAF-throttled scheduler drains them (mirrors the stale-highlight-cleanup
+  // test above, which documents the same two-step wait).
+  async function waitForFlashProcessing(): Promise<void> {
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  }
+
+  function trackedTarget(): HTMLElement {
+    const el = document.createElement("span")
+    stubRect(el, { left: 3, top: 4, width: 20, height: 10 })
+    document.body.appendChild(el)
+    return el
+  }
+
+  it("shows a brief flash over a component's DOM range when its DOM actually mutates (attribute patch, no node replacement)", async () => {
+    const target = trackedTarget()
+    handle = mountInspectorOverlay(
+      { redrawFlash: { enabled: true } },
+      {
+        hook: fakeHook({
+          getMode: () => "full",
+          resolveDomComponent: (node) => (node === target ? ("c:1" as ComponentId) : null),
+          componentRecord: (id) => componentRecord({ id, domRange: { first: target, last: target } }),
+        }),
+      },
+    )
+
+    target.setAttribute("data-x", "1")
+    await waitForFlashProcessing()
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(1)
+  })
+
+  it("stays off by default (redrawFlash.enabled defaults to false)", async () => {
+    const target = trackedTarget()
+    handle = mountInspectorOverlay(
+      {},
+      {
+        hook: fakeHook({
+          getMode: () => "full",
+          resolveDomComponent: (node) => (node === target ? ("c:1" as ComponentId) : null),
+          componentRecord: (id) => componentRecord({ id, domRange: { first: target, last: target } }),
+        }),
+      },
+    )
+
+    target.setAttribute("data-x", "1")
+    await waitForFlashProcessing()
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(0)
+  })
+
+  it("stays off when mode isn't full, even with redrawFlash.enabled: true", async () => {
+    const target = trackedTarget()
+    handle = mountInspectorOverlay(
+      { redrawFlash: { enabled: true } },
+      {
+        hook: fakeHook({
+          getMode: () => "components",
+          resolveDomComponent: (node) => (node === target ? ("c:1" as ComponentId) : null),
+          componentRecord: (id) => componentRecord({ id, domRange: { first: target, last: target } }),
+        }),
+      },
+    )
+
+    target.setAttribute("data-x", "1")
+    await waitForFlashProcessing()
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(0)
+  })
+
+  it("never flashes on the overlay's own shadow-rooted DOM mutations, even when every node would otherwise resolve to a component", async () => {
+    const target = trackedTarget()
+    // Deliberately permissive: resolves *any* node to a component, so an
+    // observed flash here would prove the observer actually saw a shadow-
+    // internal mutation, not merely that resolution happened to reject it.
+    handle = mountInspectorOverlay(
+      { redrawFlash: { enabled: true } },
+      {
+        hook: fakeHook({
+          getMode: () => "full",
+          resolveDomComponent: () => "c:1" as ComponentId,
+          componentRecord: (id) => componentRecord({ id, domRange: { first: target, last: target } }),
+        }),
+      },
+    )
+
+    // Expanding the docked panel mutates a large amount of DOM inside the
+    // overlay's own shadow root.
+    handle!.controller.toggleCollapsed()
+    render()
+    await waitForFlashProcessing()
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(0)
+  })
+
+  it("dispose() disconnects the observer", async () => {
+    const target = trackedTarget()
+    handle = mountInspectorOverlay(
+      { redrawFlash: { enabled: true } },
+      {
+        hook: fakeHook({
+          getMode: () => "full",
+          resolveDomComponent: (node) => (node === target ? ("c:1" as ComponentId) : null),
+          componentRecord: (id) => componentRecord({ id, domRange: { first: target, last: target } }),
+        }),
+      },
+    )
+
+    const controller = handle!.controller
+    handle!.dispose()
+    handle = null
+
+    target.setAttribute("data-x", "1")
+    await waitForFlashProcessing()
+    expect(controller.getState().flashes).toEqual([])
   })
 })

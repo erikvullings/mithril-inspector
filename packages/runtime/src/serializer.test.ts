@@ -444,6 +444,41 @@ describe("createSerializer (§7.4 safe serialization)", () => {
       ])
     })
 
+    it("skips redaction entirely while isRedactionEnabled() returns false (Settings tab toggle)", () => {
+      let enabled = true
+      const serializer = createSerializer({ isRedactionEnabled: () => enabled })
+      const value = { password: "hunter2" }
+      expect((serializer.serialize(value) as PreviewObjectNode).entries).toEqual([
+        { key: "password", node: { kind: "redacted", replacement: "[redacted]" } },
+      ])
+
+      enabled = false
+      expect((serializer.serialize(value) as PreviewObjectNode).entries).toEqual([
+        { key: "password", node: { kind: "primitive", type: "string", value: "hunter2" } },
+      ])
+
+      enabled = true
+      expect((serializer.serialize(value) as PreviewObjectNode).entries).toEqual([
+        { key: "password", node: { kind: "redacted", replacement: "[redacted]" } },
+      ])
+    })
+
+    it("also redacts a live-added key on top of the configured patterns (Settings tab)", () => {
+      let extra: readonly string[] = []
+      const serializer = createSerializer({ redactKeys: ["password"], additionalRedactKeys: () => extra })
+      const value = { password: "hunter2", ssn: "123-45-6789" }
+      expect((serializer.serialize(value) as PreviewObjectNode).entries).toEqual([
+        { key: "password", node: { kind: "redacted", replacement: "[redacted]" } },
+        { key: "ssn", node: { kind: "primitive", type: "string", value: "123-45-6789" } },
+      ])
+
+      extra = ["ssn"]
+      expect((serializer.serialize(value) as PreviewObjectNode).entries).toEqual([
+        { key: "password", node: { kind: "redacted", replacement: "[redacted]" } },
+        { key: "ssn", node: { kind: "redacted", replacement: "[redacted]" } },
+      ])
+    })
+
     it("refuses to descend into a redacted key even via expand (no back-door leak)", () => {
       const serializer = createSerializer()
       const obj = { password: { inner: "leaked" } }

@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { createOverlayController, type ClickEvent, type OverlayControllerDeps } from "./controller.js"
 import type { OverlayHook } from "./hook.js"
 import { resolveOverlayOptions, type OverlayOptionsInput } from "./options.js"
+import type { DomMutationLike } from "./redraw-flash.js"
 
 const elementSource: SourceLocation = {
   moduleId: "m:abc",
@@ -49,6 +50,10 @@ function fakeHook(overrides: Partial<OverlayHook> = {}): FakeHook {
     getSnapshot: () => ({ components: new Map(), vnodes: new Map(), modules: new Map(), domAssociations: new Map() }),
     subscribe: () => () => {},
     getMode: () => "source",
+    getRedactionEnabled: () => true,
+    setRedactionEnabled: () => {},
+    getRedactionKeys: () => [],
+    addRedactionKey: () => {},
     attrsPreview: () => null,
     statePreview: () => null,
     expandPreview: () => null,
@@ -70,6 +75,8 @@ function componentRecord(overrides: Partial<ComponentRecord> & { id: ComponentId
     createdAt: 0,
     updatedAt: 0,
     updateCount: 0,
+    renderDuration: null,
+    slowRenderCount: 0,
     domRange: null,
     childIds: [],
     ...overrides,
@@ -465,6 +472,84 @@ describe("overlay controller — Settings tab: live picker shortcut editing", ()
   })
 })
 
+describe("overlay controller — Settings tab: live theme override (§8.1)", () => {
+  it("getState().theme seeds from the app-configured options.theme", () => {
+    const { controller } = setup({ options: { theme: "dark" } })
+    expect(controller.getState().theme).toBe("dark")
+  })
+
+  it("setTheme overrides the effective theme immediately, without touching options.theme", () => {
+    const { controller } = setup({ options: { theme: "system" } })
+    controller.setTheme("light")
+    expect(controller.getState().theme).toBe("light")
+    expect(controller.options.theme).toBe("system")
+  })
+
+  it("resetTheme reverts to the app-configured options.theme, discarding a Settings-tab override", () => {
+    const { controller } = setup({ options: { theme: "dark" } })
+    controller.setTheme("light")
+    controller.resetTheme()
+    expect(controller.getState().theme).toBe("dark")
+  })
+
+  it("persists a theme override and restores it for a fresh controller (e.g. after a Vite full-reload)", () => {
+    const storage = memoryStorage()
+    const first = setup({ storage, options: { theme: "system" } })
+    first.controller.setTheme("dark")
+
+    const second = setup({ storage, options: { theme: "system" } })
+    expect(second.controller.getState().theme).toBe("dark")
+  })
+})
+
+describe("overlay controller — Settings tab: live redaction toggle (§15)", () => {
+  it("getState().redactionEnabled reads live from the runtime hook, defaulting to true with no hook", () => {
+    const { controller: withHook } = setup({ hook: fakeHook({ getRedactionEnabled: () => false }) })
+    expect(withHook.getState().redactionEnabled).toBe(false)
+
+    const { controller: withoutHook } = setup({ hook: null })
+    expect(withoutHook.getState().redactionEnabled).toBe(true)
+  })
+
+  it("setRedactionEnabled forwards to the runtime hook and triggers a redraw", () => {
+    const setRedactionEnabled = vi.fn()
+    const { controller, redraw } = setup({ hook: fakeHook({ setRedactionEnabled }) })
+    controller.setRedactionEnabled(false)
+    expect(setRedactionEnabled).toHaveBeenCalledWith(false)
+    expect(redraw).toHaveBeenCalled()
+  })
+
+  it("getState().redactionKeys reads live from the runtime hook", () => {
+    const { controller } = setup({ hook: fakeHook({ getRedactionKeys: () => ["password", "ssn"] }) })
+    expect(controller.getState().redactionKeys).toEqual(["password", "ssn"])
+  })
+
+  it("addRedactionKey trims, forwards to the hook, and ignores a blank pattern", () => {
+    const addRedactionKey = vi.fn()
+    const { controller, redraw } = setup({ hook: fakeHook({ addRedactionKey }) })
+
+    controller.addRedactionKey("  ssn  ")
+    expect(addRedactionKey).toHaveBeenCalledWith("ssn")
+    expect(redraw).toHaveBeenCalled()
+
+    addRedactionKey.mockClear()
+    redraw.mockClear()
+    controller.addRedactionKey("   ")
+    expect(addRedactionKey).not.toHaveBeenCalled()
+    expect(redraw).not.toHaveBeenCalled()
+  })
+
+  it("persists added keys and replays them onto a fresh controller's hook (e.g. after a Vite full-reload)", () => {
+    const storage = memoryStorage()
+    const first = setup({ storage })
+    first.controller.addRedactionKey("ssn")
+
+    const addRedactionKey = vi.fn()
+    setup({ storage, hook: fakeHook({ addRedactionKey }) })
+    expect(addRedactionKey).toHaveBeenCalledWith("ssn")
+  })
+})
+
 describe("overlay controller — picking banner (§18)", () => {
   afterEach(() => {
     vi.useRealTimers()
@@ -596,6 +681,36 @@ describe("overlay controller — ancestry panel & reveal component (§9.1, §9.3
     expect(ancestry.map((a) => ({ id: a.id, name: a.name, mounted: a.mounted }))).toEqual([
       { id: "c:1", name: { name: "App", inferred: false }, mounted: true },
       { id: "c:2", name: { name: "UserCard", inferred: true }, mounted: false },
+    ])
+  })
+
+  it("carries each record's renderDuration/slowRenderCount through to its ancestry entry (§17 diagnostics, task 0029)", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+
+    const appRecord = componentRecord({ id: "c:1" as ComponentId, displayName: "App", renderDuration: 2.5, slowRenderCount: 0 })
+    const userCardRecord = componentRecord({
+      id: "c:2" as ComponentId,
+      displayName: "UserCard",
+      renderDuration: 42.1,
+      slowRenderCount: 3,
+    })
+    const hook = fakeHook({
+      resolveDomComponent: () => "c:2" as ComponentId,
+      componentRecord: (id) => (id === "c:2" ? userCardRecord : appRecord),
+      componentAncestry: () => [appRecord, userCardRecord],
+    })
+    const { controller, setHits } = setup({ hook, options: { picker: { openOnClick: false } } })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+
+    const { ancestry } = controller.getState()
+    expect(ancestry.map((a) => ({ id: a.id, renderDuration: a.renderDuration, slowRenderCount: a.slowRenderCount }))).toEqual([
+      { id: "c:1", renderDuration: 2.5, slowRenderCount: 0 },
+      { id: "c:2", renderDuration: 42.1, slowRenderCount: 3 },
     ])
   })
 
@@ -1224,5 +1339,146 @@ describe("persistence across a reload (task 0022 follow-up)", () => {
     const state = after.controller.getState()
     expect(state.activeTab).toBe("components")
     expect(state.componentTree.search).toBe("UserCard")
+  })
+})
+
+describe("Redraw-flash visualization (task 0030)", () => {
+  const domNode = (): HTMLElement => {
+    const node = document.createElement("div")
+    stubRect(node, { left: 1, top: 2, width: 30, height: 40 })
+    document.body.appendChild(node)
+    return node
+  }
+
+  const record = (target: Node, addedNodes: readonly Node[] = []): DomMutationLike => ({ target, addedNodes })
+
+  function flashHook(overrides: Partial<OverlayHook> = {}): { hook: FakeHook; node: HTMLElement } {
+    const node = domNode()
+    const hook = fakeHook({
+      getMode: () => "full",
+      resolveDomComponent: (n) => (n === node ? ("c:1" as ComponentId) : null),
+      componentRecord: (id) => componentRecord({ id, domRange: { first: node, last: node } }),
+      ...overrides,
+    })
+    return { hook, node }
+  }
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("flashes the component a mutation resolves to, with its current DOM-range rects", () => {
+    const { hook, node } = flashHook()
+    const { controller, redraw } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+
+    controller.recordDomMutations([record(node)])
+
+    expect(controller.getState().flashes).toEqual([
+      { componentId: "c:1", seq: expect.any(Number), rects: [{ left: 1, top: 2, width: 30, height: 40 }] },
+    ])
+    expect(redraw).toHaveBeenCalled()
+  })
+
+  it("does nothing when no mutation resolves to a tracked component", () => {
+    const { hook } = flashHook({ resolveDomComponent: () => null })
+    const { controller, redraw } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+
+    controller.recordDomMutations([record(document.createElement("span"))])
+
+    expect(controller.getState().flashes).toEqual([])
+    expect(redraw).not.toHaveBeenCalled()
+  })
+
+  it("skips a resolved component with no current DOM range (e.g. already unmounted)", () => {
+    const { hook, node } = flashHook({ componentRecord: (id) => componentRecord({ id, domRange: null }) })
+    const { controller, redraw } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+
+    controller.recordDomMutations([record(node)])
+
+    expect(controller.getState().flashes).toEqual([])
+    expect(redraw).not.toHaveBeenCalled()
+  })
+
+  it("stays off by default (redrawFlash.enabled defaults to false) even in mode: full", () => {
+    const { hook, node } = flashHook()
+    const { controller, redraw } = setup({ hook }) // no redrawFlash override -> default false
+
+    controller.recordDomMutations([record(node)])
+
+    expect(controller.getState().flashes).toEqual([])
+    expect(redraw).not.toHaveBeenCalled()
+  })
+
+  it("stays off when mode isn't full, even with redrawFlash.enabled: true", () => {
+    const { hook, node } = flashHook({ getMode: () => "components" })
+    const { controller, redraw } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+
+    controller.recordDomMutations([record(node)])
+
+    expect(controller.getState().flashes).toEqual([])
+    expect(redraw).not.toHaveBeenCalled()
+  })
+
+  it("clears a flash automatically after its brief duration", () => {
+    vi.useFakeTimers()
+    const { hook, node } = flashHook()
+    const { controller } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+
+    controller.recordDomMutations([record(node)])
+    expect(controller.getState().flashes).toHaveLength(1)
+
+    vi.advanceTimersByTime(10_000)
+    expect(controller.getState().flashes).toEqual([])
+  })
+
+  it("refreshes (not duplicates) a still-flashing component and bumps its seq so the CSS animation restarts", () => {
+    vi.useFakeTimers()
+    const { hook, node } = flashHook()
+    const { controller } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+
+    controller.recordDomMutations([record(node)])
+    const first = controller.getState().flashes[0]!
+
+    vi.advanceTimersByTime(50) // well within the flash duration
+    controller.recordDomMutations([record(node)])
+    const flashes = controller.getState().flashes
+    expect(flashes).toHaveLength(1)
+    expect(flashes[0]!.seq).not.toBe(first.seq)
+
+    // The refreshed timer, not the original one, governs expiry: advancing
+    // just past the *original* duration from the first mutation must not
+    // clear it early.
+    vi.advanceTimersByTime(360)
+    expect(controller.getState().flashes).toHaveLength(1)
+  })
+
+  it("unions multiple components mutated in one batch (multi-root, task 0030 acceptance)", () => {
+    const idA = "c:1" as ComponentId
+    const idB = "c:2" as ComponentId
+    const nodeA = domNode()
+    const nodeB = domNode()
+    const hook = fakeHook({
+      getMode: () => "full",
+      resolveDomComponent: (n) => (n === nodeA ? idA : n === nodeB ? idB : null),
+      componentRecord: (id) => componentRecord({ id, domRange: { first: id === idA ? nodeA : nodeB, last: id === idA ? nodeA : nodeB } }),
+    })
+    const { controller } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+
+    controller.recordDomMutations([record(nodeB), record(nodeA)])
+
+    const ids = controller.getState().flashes.map((f) => f.componentId).sort()
+    expect(ids).toEqual([idA, idB].sort())
+  })
+
+  it("dispose() clears pending flash timers without throwing or redrawing afterwards", () => {
+    vi.useFakeTimers()
+    const { hook, node } = flashHook()
+    const { controller, redraw } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+    controller.recordDomMutations([record(node)])
+    redraw.mockClear()
+
+    expect(() => controller.dispose()).not.toThrow()
+    vi.advanceTimersByTime(10_000)
+    expect(redraw).not.toHaveBeenCalled()
   })
 })

@@ -69,6 +69,20 @@ export interface ComponentTreeOptions {
   readonly captureState: boolean
 }
 
+/**
+ * Redraw-flash visualization (task 0030, REQUIREMENTS.md §21 Phase 5): a
+ * brief highlight over a component's DOM range when its own DOM actually
+ * mutated this redraw — not merely when its `view()` ran. Off by default,
+ * unlike {@link ComponentTreeOptions}'s permissive package-level default:
+ * task 0026's own acceptance criterion requires this whole diagnostics
+ * category to be opt-in. Also requires `mode: "full"` (checked live against
+ * the runtime hook, not duplicated here) — this flag alone only controls
+ * whether the overlay is even willing to install its `MutationObserver`.
+ */
+export interface RedrawFlashOptions {
+  readonly enabled: boolean
+}
+
 export interface OverlayOptions {
   readonly enabled: boolean
   /** Start expanded to the docked panel rather than collapsed to the toggle (§8.1). */
@@ -79,8 +93,17 @@ export interface OverlayOptions {
   readonly closedShadowRoot: boolean
   readonly picker: PickerOptions
   readonly componentTree: ComponentTreeOptions
+  readonly redrawFlash: RedrawFlashOptions
   /** Rolling buffer size for the State History tab (task 0027) — oldest snapshots drop once exceeded. */
   readonly historyLimit: number
+  /**
+   * The editor command the open-in-editor endpoint will launch (§10.3),
+   * shown read-only in the Settings tab. The overlay never lets the user
+   * change this from the browser — §10.2 forbids the client from choosing
+   * what the server runs; override it via the `editor` option or an
+   * `MITHRIL_INSPECTOR_EDITOR`/`LAUNCH_EDITOR`/`VISUAL`/`EDITOR` env var instead.
+   */
+  readonly editorCommand: string
 }
 
 export type DeepPartial<T> = {
@@ -112,6 +135,10 @@ export const DEFAULT_COMPONENT_TREE_OPTIONS: ComponentTreeOptions = {
   captureState: true,
 }
 
+export const DEFAULT_REDRAW_FLASH_OPTIONS: RedrawFlashOptions = {
+  enabled: false,
+}
+
 export const DEFAULT_OVERLAY_OPTIONS: OverlayOptions = {
   enabled: true,
   defaultOpen: false,
@@ -122,17 +149,20 @@ export const DEFAULT_OVERLAY_OPTIONS: OverlayOptions = {
   closedShadowRoot: false,
   picker: DEFAULT_PICKER_OPTIONS,
   componentTree: DEFAULT_COMPONENT_TREE_OPTIONS,
+  redrawFlash: DEFAULT_REDRAW_FLASH_OPTIONS,
   historyLimit: 50,
+  editorCommand: "code",
 }
 
 /** Merge partial input over the defaults, resolving the nested picker/componentTree blocks. */
 export function resolveOverlayOptions(input: OverlayOptionsInput = {}): OverlayOptions {
-  const { picker: pickerInput, componentTree: componentTreeInput, ...rest } = input
+  const { picker: pickerInput, componentTree: componentTreeInput, redrawFlash: redrawFlashInput, ...rest } = input
   return {
     ...DEFAULT_OVERLAY_OPTIONS,
     ...omitUndefined(rest),
     picker: { ...DEFAULT_PICKER_OPTIONS, ...omitUndefined(pickerInput ?? {}) },
     componentTree: { ...DEFAULT_COMPONENT_TREE_OPTIONS, ...omitUndefined(componentTreeInput ?? {}) },
+    redrawFlash: { ...DEFAULT_REDRAW_FLASH_OPTIONS, ...omitUndefined(redrawFlashInput ?? {}) },
   }
 }
 

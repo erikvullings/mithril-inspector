@@ -179,6 +179,37 @@ export function mountInspectorOverlay(
   const modalObserver = MutationObserverImpl ? new MutationObserverImpl(checkModalState) : null
   modalObserver?.observe(doc.documentElement, { subtree: true, attributes: true, attributeFilter: ["open"] })
 
+  // --- Redraw-flash visualization (task 0030) -----------------------------
+  // Opt-in (`redrawFlash.enabled`) and `mode: "full"` only — decided once
+  // here, since the overlay has no live mode setter to react to (`getMode()`
+  // is read-only from this side). This is the *only* gate: no runtime-side
+  // opt-in exists or is needed, since installing the observer at all is
+  // entirely this package's own decision. Reuses the same "observe
+  // `doc.body`, `subtree: true`" pattern as `domObserver` above (which
+  // already relies on — and this task's own investigation re-confirmed —
+  // shadow boundaries being opaque to a light-DOM `MutationObserver`, so the
+  // overlay's own shadow-rooted UI is never observed here); unlike
+  // `domObserver`, this one also needs `attributes`/`characterData` since a
+  // component's DOM most commonly mutates in place (an attribute or text
+  // patch), not via node replacement.
+  const redrawFlashActive = resolved.redrawFlash.enabled && (hook?.getMode() ?? "source") === "full"
+  let pendingFlashRecords: MutationRecord[] = []
+  const flashScheduler = createFrameScheduler(() => {
+    const records = pendingFlashRecords
+    pendingFlashRecords = []
+    controller.recordDomMutations(records)
+  })
+  const MutationObserverImplForFlash = (globalThis as unknown as { MutationObserver?: typeof MutationObserver })
+    .MutationObserver
+  const flashObserver =
+    redrawFlashActive && MutationObserverImplForFlash
+      ? new MutationObserverImplForFlash((records) => {
+          pendingFlashRecords.push(...records)
+          flashScheduler.request()
+        })
+      : null
+  flashObserver?.observe(doc.body, { childList: true, attributes: true, characterData: true, subtree: true })
+
   let disposed = false
   return {
     controller,
@@ -197,6 +228,8 @@ export function mountInspectorOverlay(
       win?.removeEventListener("resize", onScrollOrResize)
       domObserver?.disconnect()
       modalObserver?.disconnect()
+      flashScheduler.cancel()
+      flashObserver?.disconnect()
       controller.dispose()
       m.render(mountPoint, [])
       host.remove()

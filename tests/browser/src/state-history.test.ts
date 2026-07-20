@@ -88,9 +88,13 @@ describe("State History tab (task 0027)", () => {
 
   it("shows a gating message instead of a timeline once a component is watched but mode isn't full", async () => {
     // componentTree stays enabled (so a component can be selected in the tree
-    // at all), but mode defaults to "source" — the same gate the Components
-    // tab's own Attrs/State sections use (task 0022), reused as-is here.
-    const gated = await createScenario({ componentTree: { enabled: true, captureAttrs: false, captureState: false } })
+    // at all); mode is pinned to "source" explicitly (the adapter now
+    // defaults to "full") — the same gate the Components tab's own
+    // Attrs/State sections use (task 0022), reused as-is here.
+    const gated = await createScenario({
+      mode: "source",
+      componentTree: { enabled: true, captureAttrs: false, captureState: false },
+    })
     try {
       const page = gated.page()
       await openComponentsTab(page)

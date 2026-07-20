@@ -23,3 +23,17 @@ REQUIREMENTS.md §21 Phase 5 ("consider"): redraw flash visualization, per-compo
 
 ## Agent Notes
 - 2026-07-15: task created from REQUIREMENTS.md conversion; no work started.
+- 2026-07-20 claude: Split off "update count" and "slow-component warnings"
+  into their own task, `TASKS/0029`. Update count turned out to already be
+  shipped (task 0017's `ComponentRecord.updateCount` + its tree-row badge,
+  predates this task) — 0029 only had to add render timing + slow-render
+  warnings. Remaining Phase 5 candidates (redraw flash, per-component render
+  timing beyond a single latest value, route inspection, the DevTools
+  extension bridge) are still open/unscoped; see 0029's own "Limitations and
+  follow-ups" for what it deliberately left out.
+- 2026-07-20 claude: Split off "redraw flash" into its own task, `TASKS/0030`
+  — an open design/investigation task (unlike 0029, no implementation
+  started), since the detection mechanism is a genuine open choice between a
+  `MutationObserver`-based approach and reusing the existing `domRange` diff,
+  each with real tradeoffs not yet prototyped against this codebase. Route
+  inspection and the DevTools extension bridge remain unscoped.

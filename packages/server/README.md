@@ -40,8 +40,10 @@ app.use(
 
 Supported editor aliases: `code`, `code-insiders`, `cursor`, `windsurf`,
 `webstorm`, plus a custom `{ command, args: (location) => string[] }` shape
-for anything else. With no `editor` option, `resolveEditor` falls back to the
-`VISUAL`/`EDITOR` environment variables.
+for anything else. With no `editor` option, `resolveEditor` checks
+`MITHRIL_INSPECTOR_EDITOR`, `LAUNCH_EDITOR`, `VISUAL`, then `EDITOR` in that
+order, and finally falls back to `"code"` (VS Code) so the endpoint works out
+of the box — it never reports `EDITOR_NOT_AVAILABLE` on its own.
 
 ## Standalone server (§12.3)
 

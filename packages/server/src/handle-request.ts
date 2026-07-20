@@ -89,12 +89,6 @@ export async function handleInspectorRequest(
   const mappedPath = applyPathMappings(resolvedFile.path, options.pathMappings ?? [])
 
   const editor = resolveEditor(options.editor, options.env ?? process.env)
-  if (editor === null) {
-    return buildErrorResponse(
-      "EDITOR_NOT_AVAILABLE",
-      "No editor is configured. Set the editor option or an editor environment variable.",
-    )
-  }
 
   const launch = options.launchEditorProcess ?? spawnEditorProcess
   try {

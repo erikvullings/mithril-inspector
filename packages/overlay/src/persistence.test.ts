@@ -97,6 +97,29 @@ describe("overlay persistence", () => {
     expect(loadOverlayState(storage)).toEqual({})
   })
 
+  it("round-trips a theme override and ignores an unknown value", () => {
+    const storage = memoryStorage()
+    saveOverlayState({ theme: "dark" }, storage)
+    expect(loadOverlayState(storage)).toEqual({ theme: "dark" })
+
+    const bad = memoryStorage({ [OVERLAY_STORAGE_KEY]: JSON.stringify({ theme: "solarized" }) })
+    expect(loadOverlayState(bad)).toEqual({})
+  })
+
+  it("round-trips extra redaction keys and drops blank/non-string entries", () => {
+    const storage = memoryStorage()
+    saveOverlayState({ extraRedactKeys: ["ssn", "creditCard"] }, storage)
+    expect(loadOverlayState(storage)).toEqual({ extraRedactKeys: ["ssn", "creditCard"] })
+
+    const dirty = memoryStorage({
+      [OVERLAY_STORAGE_KEY]: JSON.stringify({ extraRedactKeys: ["ssn", "  ", 42, ""] }),
+    })
+    expect(loadOverlayState(dirty)).toEqual({ extraRedactKeys: ["ssn"] })
+
+    const allBlank = memoryStorage({ [OVERLAY_STORAGE_KEY]: JSON.stringify({ extraRedactKeys: ["  "] }) })
+    expect(loadOverlayState(allBlank)).toEqual({})
+  })
+
   it("degrades to {} and does not throw when storage access throws (§16)", () => {
     const throwing: StorageLike = {
       getItem: vi.fn(() => {

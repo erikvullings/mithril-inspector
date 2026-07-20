@@ -129,7 +129,8 @@ module (ADR-106) — no re-instrumentation needed.
 mode: "source"      // default — element/source mapping and editor navigation only
 mode: "components"  // + component-instance tracking: class and route-resolver
                      //   kinds, render-ordered childIds (see below)
-mode: "full"         // scaffolding — same as "components" today
+mode: "full"         // + render-duration tracking and slow-render warnings
+                     //   (§17 "diagnostics", task 0029; see below)
 ```
 
 Object and closure component instance-tracking (nearest-component lookup,
@@ -201,6 +202,35 @@ whole lifetime (Mithril only reuses a `state` object across renders when the
 key matches; a changed key allocates a new instance instead), so unlike
 `domRange`/`childIds` it's never repatched via `ComponentPatch`.
 
+## Render-duration tracking and slow-render warnings (§17 diagnostics, task 0029)
+
+In `mode: "full"` only, `ComponentRecord.renderDuration` is the most recent
+`view()`/route-resolver `render()` call's own wall-clock duration in
+milliseconds, and `slowRenderCount` is the cumulative count of renders whose
+duration exceeded `RuntimeOptions.slowRenderThresholdMs` (default `16` — one
+60fps frame budget). Both stay `null`/`0` in `"source"`/`"components"` mode:
+the two `performance.now()` calls this needs are skipped entirely there, so
+the feature costs nothing outside `full` mode (§17 "opt-in, off by default").
+
+The measurement brackets only the application's own `view.call`/`render.call`
+— nothing a descendant component's own `view()` does, and nothing the
+inspector's own bookkeeping (`recordOwnedVnodes`) does either. This isolation
+falls out of Mithril's own render order rather than needing any extra
+subtraction: Mithril calls a component's `view()` to get its returned vnode
+tree, and only *afterward* — while walking that returned tree during the same
+render pass — does it call a child component vnode's own `view()`. So a
+child's `view()` call happens strictly after the parent's `view()` call has
+already returned its own stack frame, never nested inside it; a slow child
+never inflates its ancestors' `renderDuration` numbers, and each component's
+number reflects only its own function body's cost (see
+`components.test.ts`'s "isolates each component's own render duration from
+its descendants'" test for this proved against real Mithril rendering, not
+just asserted).
+
+Injectable via `RuntimeOptions.perfNow` (default `performance.now`) for
+deterministic tests, mirroring `RuntimeOptions.now`'s existing pattern for
+`createdAt`/`updatedAt`.
+
 ## Ancestry and component-view source (task 0019)
 
 `ComponentRegistry.ancestryOf(id)` returns the root-first ancestor chain for a
@@ -248,14 +278,15 @@ type RuntimeEvent =
 - **`components-updated`** carries a `ComponentPatch` per instance whose
   `updateCount` was bumped this batch (an `onupdate` firing, or — since a
   route-resolver has no `onupdate`-equivalent hook — a repeated `render()`
-  call on an already-allocated resolver). `id`/`updateCount`/`updatedAt` are
-  always present; `domRange`/`childIds` are included only when they actually
-  changed since the last emitted record for that instance (§9.4 "no
-  full-record spam") — `attrs`/`state` are deliberately never pushed through
-  this stream, consistent with §7.4's lazy, pull-based
-  `attrsPreview`/`statePreview` (task 0020). An instance also added or removed
-  within the same batch (e.g. two redraws before one flush) is reported once,
-  via `components-added`/`components-removed`, not additionally here.
+  call on an already-allocated resolver). `id`/`updateCount`/`updatedAt`/
+  `renderDuration`/`slowRenderCount` (task 0029, see below) are always
+  present; `domRange`/`childIds` are included only when they actually changed
+  since the last emitted record for that instance (§9.4 "no full-record
+  spam") — `attrs`/`state` are deliberately never pushed through this stream,
+  consistent with §7.4's lazy, pull-based `attrsPreview`/`statePreview` (task
+  0020). An instance also added or removed within the same batch (e.g. two
+  redraws before one flush) is reported once, via
+  `components-added`/`components-removed`, not additionally here.
 - **`dom-associated`** carries one `DomAssociation` per node (re)tagged by
   `source()` this flush, covering every node in a single event regardless of
   how many were touched. Skipped entirely (not even built) when nobody is
@@ -369,10 +400,14 @@ to the raw value rather than breaking the preview (§16).
   works.
 - Route-resolver tracking is runtime-only pending a transform change (see
   `kind: "route-resolver"` above).
-- `mode: "full"` is scaffolding — identical to `"components"` today; a
-  dedicated diagnostics view (§17 `full` definition) is still pending. Safe
-  attrs/state serialization itself (task 0020, see above) does not depend on
-  `mode` — `attrsPreview`/`statePreview` work for any tracked instance.
+- `mode: "full"` additionally activates render-duration tracking and
+  slow-render warnings (§17 diagnostics, task 0029, see above) on top of
+  everything `"components"` does. Redraw-flash visualization, per-render
+  timing beyond the single most-recent value, and route inspection (the rest
+  of REQUIREMENTS.md §21 Phase 5's "consider" list, see `TASKS/0026`) remain
+  unscoped follow-ups. Safe attrs/state serialization itself (task 0020, see
+  above) does not depend on `mode` — `attrsPreview`/`statePreview` work for
+  any tracked instance.
 - `inspectSource` and per-node vnode ids in `getSnapshot` are placeholders for
   later phases.
 - `mode: "components"`'s §17 "<20% median redraw overhead" target is

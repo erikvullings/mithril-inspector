@@ -14,7 +14,7 @@ describe("resolveInspectorOptions", () => {
     const resolved = resolveInspectorOptions({}, { NODE_ENV: "development" })
     expect(resolved.enabled).toBe(true)
     expect(resolved.includeInProduction).toBe(false)
-    expect(resolved.mode).toBe("source")
+    expect(resolved.mode).toBe("full")
     expect(resolved.debug).toBe(false)
     expect(resolved.ui).toEqual({
       enabled: true,
@@ -28,7 +28,8 @@ describe("resolveInspectorOptions", () => {
       openOnClick: false,
       continuous: false,
     })
-    expect(resolved.componentTree).toEqual({ enabled: false, captureAttrs: false, captureState: false })
+    expect(resolved.componentTree).toEqual({ enabled: true, captureAttrs: true, captureState: true })
+    expect(resolved.redrawFlash).toEqual({ enabled: false })
     expect(resolved.source).toEqual({
       elements: true,
       components: true,
@@ -40,6 +41,17 @@ describe("resolveInspectorOptions", () => {
     expect(resolved.hyperscriptIdentifiers).toEqual(["m"])
     expect(resolved.projectRoots).toEqual([])
     expect(resolved.pathMappings).toEqual([])
+    expect(resolved.editorCommand).toBe("code")
+  })
+
+  it("resolves editorCommand from an explicit editor option, overriding env vars (§10.3)", () => {
+    expect(
+      resolveInspectorOptions({ editor: "webstorm" }, { NODE_ENV: "development", EDITOR: "vim" }).editorCommand,
+    ).toBe("webstorm")
+  })
+
+  it("resolves editorCommand from the environment-variable fallback chain when no editor option is set (§10.3)", () => {
+    expect(resolveInspectorOptions({}, { NODE_ENV: "development", EDITOR: "vim" }).editorCommand).toBe("vim")
   })
 
   it("defaults componentTree.captureAttrs/captureState to true when mode is \"full\" (§17, \"full\" itself means attrs/state)", () => {
@@ -49,12 +61,12 @@ describe("resolveInspectorOptions", () => {
 
   it("does not default captureAttrs/captureState to true for \"source\"/\"components\" modes", () => {
     expect(resolveInspectorOptions({ mode: "source" }, { NODE_ENV: "development" }).componentTree).toEqual({
-      enabled: false,
+      enabled: true,
       captureAttrs: false,
       captureState: false,
     })
     expect(resolveInspectorOptions({ mode: "components" }, { NODE_ENV: "development" }).componentTree).toEqual({
-      enabled: false,
+      enabled: true,
       captureAttrs: false,
       captureState: false,
     })
@@ -65,7 +77,16 @@ describe("resolveInspectorOptions", () => {
       { mode: "full", componentTree: { captureState: false } },
       { NODE_ENV: "development" },
     )
-    expect(resolved.componentTree).toEqual({ enabled: false, captureAttrs: true, captureState: false })
+    expect(resolved.componentTree).toEqual({ enabled: true, captureAttrs: true, captureState: false })
+  })
+
+  it("defaults redrawFlash.enabled to false even in mode: \"full\" (task 0030, opt-in per REQUIREMENTS.md §17/task 0026 — unlike componentTree, mode alone never turns this on)", () => {
+    expect(resolveInspectorOptions({ mode: "full" }, { NODE_ENV: "development" }).redrawFlash).toEqual({ enabled: false })
+  })
+
+  it("lets redrawFlash be turned on explicitly", () => {
+    const resolved = resolveInspectorOptions({ redrawFlash: { enabled: true } }, { NODE_ENV: "development" })
+    expect(resolved.redrawFlash).toEqual({ enabled: true })
   })
 
   it("defaults `enabled` off in production (§2.1)", () => {
@@ -156,9 +177,9 @@ describe("derived configuration builders", () => {
     expect(overlay.picker?.toggleShortcut).toBe("Alt+Shift+M")
   })
 
-  it("toOverlayOptionsInput maps componentTree, defaulting the tree off (task 0022)", () => {
+  it("toOverlayOptionsInput maps componentTree, defaulting the tree on (task 0022)", () => {
     const resolved = toOverlayOptionsInput(resolveInspectorOptions({}, { NODE_ENV: "development" }))
-    expect(resolved.componentTree).toEqual({ enabled: false, captureAttrs: false, captureState: false })
+    expect(resolved.componentTree).toEqual({ enabled: true, captureAttrs: true, captureState: true })
   })
 
   it("toOverlayOptionsInput passes through an explicit componentTree opt-in", () => {
@@ -171,6 +192,21 @@ describe("derived configuration builders", () => {
       captureAttrs: true,
       captureState: false,
     })
+  })
+
+  it("toOverlayOptionsInput maps redrawFlash, defaulting it off (task 0030)", () => {
+    const resolved = toOverlayOptionsInput(resolveInspectorOptions({}, { NODE_ENV: "development" }))
+    expect(resolved.redrawFlash).toEqual({ enabled: false })
+  })
+
+  it("toOverlayOptionsInput passes through an explicit redrawFlash opt-in", () => {
+    const resolved = resolveInspectorOptions({ redrawFlash: { enabled: true } }, { NODE_ENV: "development" })
+    expect(toOverlayOptionsInput(resolved).redrawFlash).toEqual({ enabled: true })
+  })
+
+  it("toOverlayOptionsInput passes the resolved editor command through for the Settings tab (§10.3)", () => {
+    const resolved = resolveInspectorOptions({ editor: "webstorm" }, { NODE_ENV: "development" })
+    expect(toOverlayOptionsInput(resolved).editorCommand).toBe("webstorm")
   })
 
   it("toServerOptions binds the endpoint to the resolved root and passes editor/mappings (§10.2)", () => {

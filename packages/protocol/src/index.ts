@@ -100,6 +100,18 @@ export interface ComponentRecord {
   createdAt: number
   updatedAt: number
   updateCount: number
+  /**
+   * The most recent `view()`/route-resolver `render()` call's own wall-clock
+   * duration in milliseconds — measured around just that function call, so a
+   * slow descendant never inflates an ancestor's number (Mithril calls a
+   * child's `view()` only after the parent's own call has already returned,
+   * during the surrounding render-tree walk, not nested inside it). `null`
+   * when never measured: `mode` isn't `"full"` (§17 diagnostics), or the
+   * instance hasn't rendered yet (task 0029).
+   */
+  renderDuration: number | null
+  /** Cumulative count of renders whose {@link renderDuration} exceeded the runtime's slow-render threshold (task 0029). */
+  slowRenderCount: number
   domRange: DomRange | null
   childIds: ComponentId[]
 }
@@ -117,6 +129,8 @@ export interface ComponentPatch {
   mounted?: boolean
   updatedAt?: number
   updateCount?: number
+  renderDuration?: number | null
+  slowRenderCount?: number
   domRange?: DomRange | null
   childIds?: ComponentId[]
 }

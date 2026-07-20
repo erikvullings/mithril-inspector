@@ -156,13 +156,14 @@ describe("handleInspectorRequest", () => {
     expect(errorCodeOf(response.body)).toBe("INVALID_LINE_COLUMN")
   })
 
-  it("reports EDITOR_NOT_AVAILABLE when nothing is configured", async () => {
+  it("falls back to VS Code when nothing is configured", async () => {
+    const launch = vi.fn().mockResolvedValue(undefined)
     const response = await handleInspectorRequest(
       jsonRequest({ file: "src/foo.ts", line: 1, column: 1 }),
-      { root, env: {}, launchEditorProcess: vi.fn().mockResolvedValue(undefined) },
+      { root, env: {}, launchEditorProcess: launch },
     )
-    expect(response.status).toBe(503)
-    expect(errorCodeOf(response.body)).toBe("EDITOR_NOT_AVAILABLE")
+    expect(response.status).toBe(200)
+    expect(launch).toHaveBeenCalledWith("code", expect.anything())
   })
 
   it("reports EDITOR_LAUNCH_FAILED when the launcher rejects", async () => {

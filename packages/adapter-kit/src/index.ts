@@ -23,6 +23,7 @@ export type {
   ResolvedComponentTreeOptions,
   ResolvedInspectorOptions,
   ResolvedPickerOptions,
+  ResolvedRedrawFlashOptions,
   ResolvedSourceOptions,
   ResolvedUiOptions,
   RuntimeBootstrapConfig,

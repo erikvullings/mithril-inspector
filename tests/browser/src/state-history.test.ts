@@ -47,7 +47,7 @@ describe("State History tab (task 0027)", () => {
     expect(counterIndex).toBeGreaterThanOrEqual(0)
     await shadowClick(page, ".mi-tree-name", counterIndex)
 
-    await page.click(mi('.mi-sidebar-btn[aria-label="State History"]'))
+    await page.click(mi('.mi-sidebar-btn[aria-label="History"]'))
     await waitForShadowPresence(page, ".mi-history", true)
     // Selecting a component seeds one entry with its current state (task 0028)
     // rather than leaving the buffer empty until the next redraw.
@@ -69,17 +69,18 @@ describe("State History tab (task 0027)", () => {
     )
 
     // Switching the watched component (back to the Components tab, selecting
-    // Greeting) resets the buffer and reseeds it with Greeting's own current
-    // state — the History tab is scoped to whichever component is currently
+    // a UserCard instance — real attrs, unlike Greeting's empty state/attrs)
+    // resets the buffer and reseeds it with that component's own current
+    // attrs — the History tab is scoped to whichever component is currently
     // selected, not a global log.
     await page.click(mi('.mi-sidebar-btn[aria-label="Components"]'))
     await waitForShadowPresence(page, ".mi-tree-search", true)
     const namesAgain = await shadowTextAll(page, ".mi-tree-name")
-    const greetingIndex = namesAgain.findIndex((n) => n === "Greeting")
-    expect(greetingIndex).toBeGreaterThanOrEqual(0)
-    await shadowClick(page, ".mi-tree-name", greetingIndex)
+    const userCardIndex = namesAgain.findIndex((n) => n.startsWith("UserCard"))
+    expect(userCardIndex).toBeGreaterThanOrEqual(0)
+    await shadowClick(page, ".mi-tree-name", userCardIndex)
 
-    await page.click(mi('.mi-sidebar-btn[aria-label="State History"]'))
+    await page.click(mi('.mi-sidebar-btn[aria-label="History"]'))
     await waitForShadowPresence(page, ".mi-history", true)
     const reseeded = await shadowTextAll(page, ".mi-history-list li")
     expect(reseeded).toHaveLength(1)
@@ -104,7 +105,7 @@ describe("State History tab (task 0027)", () => {
       expect(counterIndex).toBeGreaterThanOrEqual(0)
       await shadowClick(page, ".mi-tree-name", counterIndex)
 
-      await page.click(mi('.mi-sidebar-btn[aria-label="State History"]'))
+      await page.click(mi('.mi-sidebar-btn[aria-label="History"]'))
       await waitForShadowPresence(page, ".mi-history", true)
       const text = (await page.$eval(mi(".mi-history"), (el) => el.textContent)) ?? ""
       expect(text).toContain('Enable mode: "full"')

@@ -75,7 +75,18 @@ export function mithrilInspector(
         if (!shouldAttemptTransform(id)) return null
         const result = transformMithrilModule({ id, code, ...transformOptions })
         if (result === null) return null
-        return { code: result.code, ...(result.map !== undefined ? { map: result.map } : {}) }
+        if (result.map === undefined) return { code: result.code }
+        // Normalize sourcesContent: Rollup expects string[] not (string | null)[]
+        const sourcesContent = result.map.sourcesContent?.filter((s): s is string => s !== null)
+        const map = {
+          version: result.map.version,
+          file: result.map.file,
+          sources: result.map.sources,
+          sourcesContent,
+          names: result.map.names,
+          mappings: result.map.mappings,
+        }
+        return { code: result.code, map } as any
       },
     },
   }

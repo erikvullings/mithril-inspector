@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/protocol",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared serializable types and protocol constants for Mithril Inspector, with no bundler dependencies.",
   "type": "module",
   "license": "MIT",
@@ -12,7 +12,13 @@
     "directory": "packages/protocol"
   },
   "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
-  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "protocol"],
+  "keywords": [
+    "mithril",
+    "mithril.js",
+    "devtools",
+    "inspector",
+    "protocol"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -22,7 +28,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm build",

@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/vite",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Zero-config Vite plugin for Mithril Inspector — combines the transform, runtime, overlay and server packages.",
   "type": "module",
   "license": "MIT",
@@ -52,9 +52,9 @@
   "devDependencies": {
     "@types/connect": "^3.4.38",
     "@types/mithril": "^2.2.8",
-    "@types/node": "^24.0.14",
+    "@types/node": "^26.1.1",
     "mithril": "^2.3.8",
     "vite": "^8.1.5",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.10"
   }
 }

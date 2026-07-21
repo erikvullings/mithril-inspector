@@ -14,8 +14,8 @@
     "@jridgewell/trace-mapping": "^0.3.31",
     "esbuild": "^0.28.1",
     "@types/mithril": "^2.2.8",
-    "magic-string": "^0.30.21",
+    "magic-string": "^1.0.0",
     "mithril": "^2.3.8",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.10"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/webpack",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The Webpack and Rspack integration for Mithril Inspector — a thin adapter over the shared transform, runtime and server packages (§4, §12.5).",
   "type": "module",
   "license": "MIT",
@@ -12,7 +12,16 @@
     "directory": "packages/webpack"
   },
   "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
-  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "webpack", "webpack-plugin", "rspack", "rspack-plugin"],
+  "keywords": [
+    "mithril",
+    "mithril.js",
+    "devtools",
+    "inspector",
+    "webpack",
+    "webpack-plugin",
+    "rspack",
+    "rspack-plugin"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -22,7 +31,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm build",
@@ -34,8 +45,12 @@
     "@rspack/core": ">=1.0.0"
   },
   "peerDependenciesMeta": {
-    "webpack": { "optional": true },
-    "@rspack/core": { "optional": true }
+    "webpack": {
+      "optional": true
+    },
+    "@rspack/core": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@mithril-inspector/adapter-kit": "workspace:*",
@@ -46,11 +61,11 @@
     "@mithril-inspector/transform": "workspace:*"
   },
   "devDependencies": {
-    "@rspack/core": "^2.1.4",
+    "@rspack/core": "^2.1.5",
     "@types/mithril": "^2.2.8",
-    "@types/node": "^24.0.14",
+    "@types/node": "^26.1.1",
     "mithril": "^2.3.8",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.10",
     "webpack": "^5.108.4"
   }
 }

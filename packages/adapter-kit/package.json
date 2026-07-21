@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/adapter-kit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared, bundler-neutral option resolution and virtual-module utilities for Mithril Inspector's build-tool adapters (Vite, Rollup, ...).",
   "type": "module",
   "license": "MIT",
@@ -12,7 +12,14 @@
     "directory": "packages/adapter-kit"
   },
   "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
-  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "adapter", "internal"],
+  "keywords": [
+    "mithril",
+    "mithril.js",
+    "devtools",
+    "inspector",
+    "adapter",
+    "internal"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -22,7 +29,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm build",
@@ -37,7 +46,7 @@
     "@mithril-inspector/transform": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.0.14",
-    "vitest": "^3.2.4"
+    "@types/node": "^26.1.1",
+    "vitest": "^4.1.10"
   }
 }

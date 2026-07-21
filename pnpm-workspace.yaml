@@ -5,6 +5,26 @@ packages:
   - "tests/integration"
   - "tests/fixtures/spikes/*"
 
+allowBuilds:
+  esbuild: true
+  puppeteer: true
+
+minimumReleaseAgeExclude:
+  - '@rspack/binding-darwin-arm64@2.1.5'
+  - '@rspack/binding-darwin-x64@2.1.5'
+  - '@rspack/binding-linux-arm64-gnu@2.1.5'
+  - '@rspack/binding-linux-arm64-musl@2.1.5'
+  - '@rspack/binding-linux-riscv64-gnu@2.1.5'
+  - '@rspack/binding-linux-riscv64-musl@2.1.5'
+  - '@rspack/binding-linux-x64-gnu@2.1.5'
+  - '@rspack/binding-linux-x64-musl@2.1.5'
+  - '@rspack/binding-wasm32-wasi@2.1.5'
+  - '@rspack/binding-win32-arm64-msvc@2.1.5'
+  - '@rspack/binding-win32-ia32-msvc@2.1.5'
+  - '@rspack/binding-win32-x64-msvc@2.1.5'
+  - '@rspack/binding@2.1.5'
+  - '@rspack/core@2.1.5'
+
 # Puppeteer's postinstall script downloads its bundled Chromium (tests/browser, task 0015).
 onlyBuiltDependencies:
   - puppeteer

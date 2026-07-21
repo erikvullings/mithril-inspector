@@ -45,7 +45,12 @@ export function runMithrilInspectorLoader(
       callback(null, source, inputSourceMap)
       return
     }
-    callback(null, result.code, result.map ?? inputSourceMap)
+    // Normalize sourcesContent: webpack expects string[] not (string | null)[]
+    let map = result.map ?? inputSourceMap
+    if (map && typeof map === "object" && "sourcesContent" in map && Array.isArray(map.sourcesContent)) {
+      map = { ...map, sourcesContent: map.sourcesContent.filter((s): s is string => s !== null) }
+    }
+    callback(null, result.code, map)
   } catch (error) {
     callback(error instanceof Error ? error : new Error(String(error)))
   }

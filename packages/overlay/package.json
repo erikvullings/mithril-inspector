@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/overlay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The in-page inspector UI for Mithril Inspector — element picker, highlight overlay and source tooltip.",
   "type": "module",
   "license": "MIT",
@@ -12,7 +12,13 @@
     "directory": "packages/overlay"
   },
   "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
-  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "overlay"],
+  "keywords": [
+    "mithril",
+    "mithril.js",
+    "devtools",
+    "inspector",
+    "overlay"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -22,7 +28,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
@@ -38,6 +46,6 @@
     "@mithril-inspector/runtime": "workspace:*",
     "@types/mithril": "^2.2.8",
     "jsdom": "^29.1.1",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.10"
   }
 }

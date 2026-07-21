@@ -90,7 +90,18 @@ export function mithrilInspector(
       if (result === null) return null
       // Remember this file's stable module id so HMR can invalidate it (ADR-106).
       moduleIds.record(result.metadata.file, result.metadata.id)
-      return { code: result.code, ...(result.map !== undefined ? { map: result.map } : {}) }
+      if (result.map === undefined) return { code: result.code }
+      // Normalize sourcesContent and file property for Vite's source map requirements
+      const sourcesContent = result.map.sourcesContent?.filter((s): s is string => s !== null)
+      const map = {
+        version: result.map.version,
+        file: result.map.file || undefined,
+        sources: result.map.sources,
+        sourcesContent,
+        names: result.map.names,
+        mappings: result.map.mappings,
+      }
+      return { code: result.code, map } as any
     },
 
     handleHotUpdate(ctx: HmrContext) {

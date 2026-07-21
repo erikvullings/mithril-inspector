@@ -138,8 +138,20 @@ export function mithrilInspector(
         const code = await readFile(args.path, "utf8")
         const result = transformMithrilModule({ id: args.path, code, ...transformOptions })
         if (result === null) return null
-        const contents =
-          result.map !== undefined ? `${result.code}\n//# sourceMappingURL=${result.map.toUrl()}\n` : result.code
+        let contents = result.code
+        // Normalize sourcesContent: esbuild/magic-string expects string[] not (string | null)[]
+        if (result.map !== undefined) {
+          const sourcesContent = result.map.sourcesContent?.filter((s): s is string => s !== null)
+          const map = {
+            version: result.map.version,
+            file: result.map.file,
+            sources: result.map.sources,
+            sourcesContent,
+            names: result.map.names,
+            mappings: result.map.mappings,
+          }
+          contents = `${result.code}\n//# sourceMappingURL=${(map as any).toUrl()}\n`
+        }
         return { contents, loader: loaderForPath(args.path), resolveDir: dirname(args.path) }
       })
 

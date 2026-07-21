@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/runtime",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Runtime source registry, component registry and lifecycle-hook composition for Mithril Inspector.",
   "type": "module",
   "license": "MIT",
@@ -12,7 +12,13 @@
     "directory": "packages/runtime"
   },
   "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
-  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "runtime"],
+  "keywords": [
+    "mithril",
+    "mithril.js",
+    "devtools",
+    "inspector",
+    "runtime"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -22,7 +28,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm build",
@@ -36,6 +44,6 @@
     "@types/mithril": "^2.2.8",
     "jsdom": "^29.1.1",
     "mithril": "^2.3.8",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.10"
   }
 }

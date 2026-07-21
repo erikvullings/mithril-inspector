@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/transform",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Bundler-neutral AST source instrumentation for Mithril Inspector component detection.",
   "type": "module",
   "license": "MIT",
@@ -12,7 +12,14 @@
     "directory": "packages/transform"
   },
   "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
-  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "ast", "source-transform"],
+  "keywords": [
+    "mithril",
+    "mithril.js",
+    "devtools",
+    "inspector",
+    "ast",
+    "source-transform"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -35,7 +42,7 @@
     "@babel/parser": "^8.0.4",
     "@mithril-inspector/protocol": "workspace:*",
     "@rollup/pluginutils": "^5.4.0",
-    "magic-string": "^0.30.21"
+    "magic-string": "^1.0.0"
   },
   "devDependencies": {
     "@ampproject/remapping": "^2.3.0",
@@ -44,6 +51,6 @@
     "@types/mithril": "^2.2.8",
     "esbuild": "^0.28.1",
     "mithril": "^2.3.8",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.10"
   }
 }

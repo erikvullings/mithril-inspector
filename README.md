@@ -10,7 +10,7 @@ Developer tooling for inspecting Mithril.js applications.
 
 <img width="1395" height="767" alt="image" src="https://github.com/user-attachments/assets/90836c39-b035-4fa6-96d4-50fd22be9ced" />
 
-## Quick start (§24)
+## Quick start
 
 Install the Vite plugin as a dev dependency:
 
@@ -18,8 +18,7 @@ Install the Vite plugin as a dev dependency:
 pnpm add -D @mithril-inspector/vite
 ```
 
-Add it to `vite.config.ts` — no other application-code changes are required
-(§2.2):
+Add it to `vite.config.ts` — no other application-code changes are required:
 
 ```ts
 import { defineConfig } from "vite"
@@ -47,7 +46,7 @@ select without triggering the app's own click handler — the result shows in
 the docked panel's tree/detail view in place — then use the "Open in editor"
 icon to jump straight to that line in VS Code.
 
-### Shortcuts (§8.4, §8.7)
+### Shortcuts
 
 | Action | Default | What it does |
 | --- | --- | --- |
@@ -64,18 +63,18 @@ Settings tab — changes apply immediately and persist across reloads. Not
 click (opening the native context menu) before it ever reaches the page.
 
 The plugin is dev-only by default (`enabled` follows `NODE_ENV`) and adds no
-runtime, overlay or editor endpoint to production builds (§20.1.12).
+runtime, overlay or editor endpoint to production builds.
 
 ## Other bundlers
 
-`@mithril-inspector/rollup` (§12.3, task 0023) is a thin Rollup adapter over
+`@mithril-inspector/rollup` is a thin Rollup adapter over
 the same transform/runtime — AST transformation, virtual runtime/overlay
 module resolution, watch mode and source maps, dev-only by default (active
 only in `rollup --watch`/`rollup.watch()` unless `includeInProduction`).
 Rollup has no HTML-injection or dev-server hooks, so overlay mounting and
 editor launching need one extra step each — see `packages/rollup/README.md`.
 
-`@mithril-inspector/esbuild` (§12.4, task 0024) is the same adapter built on
+`@mithril-inspector/esbuild` is the same adapter built on
 `build.onResolve`/`build.onLoad`/`build.onEnd` — dev-only by default (active
 unless `NODE_ENV=production` or the build is `minify`d, unless
 `includeInProduction`). esbuild has no HTML-injection hook either, and no
@@ -84,7 +83,7 @@ dev-server hook to hang the open-in-editor endpoint on, so it ships an opt-in
 server reusing `@mithril-inspector/server` — see `packages/esbuild/README.md`
 and `apps/playground-esbuild` for a working example.
 
-`@mithril-inspector/webpack` (§12.5, task 0025) is one plugin that runs
+`@mithril-inspector/webpack` is one plugin that runs
 unmodified on both webpack and Rspack — a loader (`enforce: "pre"`) for
 transformation, `EntryPlugin`-based entry injection for the runtime/overlay
 bootstrap, and `devServer.setupMiddlewares` wiring for the open-in-editor
@@ -98,20 +97,23 @@ writes the runtime/overlay bootstrap to real files under
 divergences, all verified against real `webpack()` and `rspack()` builds in
 `tests/integration/`.
 
-## Status: 0.1.0 (Phase 1–3 — source inspector, component tracking, state history)
+## Status: 0.1.0
 
-Beyond the 0.1.0-alpha.1 source inspector (AST source instrumentation, the
-runtime source registry, DOM/source association, the picker, highlight,
-source tooltip and the Vite editor middleware), this release adds
-component-instance tracking with a full ancestry chain, a lazy/redacted
-attrs-state preview tree, an expandable component tree UI, and a read-only
-State History tab. See `CHANGELOG.md` for the full list and known
-limitations, and `TASKS/0016-mvp-acceptance-alpha-release.md` for the
-original alpha acceptance checklist.
+Implemented in the current version:
 
-REQUIREMENTS.md §20.2's quality gate for an initial **stable** release
-requires testing against at least two nontrivial Mithril applications; only
-the `apps/playground-vite` playground has been exercised so far.
+- Source inspector end to end: AST instrumentation, runtime source registry,
+  DOM/source association, picker, highlight, tooltip, and open-in-editor.
+- Component tracking: stable component IDs, display-name resolution,
+  route-resolver coverage, and ancestry reconstruction.
+- Overlay UI: ancestry panel, expandable component tree, attrs/state preview,
+  and read-only state history with diff-focused UX.
+- Diagnostics currently shipped: update counters, last render duration,
+  slow-render warnings, and redraw-flash visualization (all opt-in,
+  development-time features).
+- Bundler adapters: Vite, Rollup, esbuild, and webpack/Rspack.
+- Test coverage across package unit tests plus browser/integration suites.
+
+See `CHANGELOG.md` for release notes and known limitations.
 
 ## Development
 

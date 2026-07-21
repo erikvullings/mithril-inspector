@@ -1,6 +1,6 @@
 # Vite playground
 
-The manual test bed for Mithril Inspector (task 0014, REQUIREMENTS.md §4, §25):
+The manual test bed for Mithril Inspector (task 0014):
 a small routed Mithril 2.x + TypeScript app that exercises every §19.2 fixture
 scenario, wired up with **zero application-code changes** beyond
 `vite.config.ts`:

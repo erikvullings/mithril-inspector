@@ -1,7 +1,7 @@
 # @mithril-inspector/webpack
 
-The webpack and Rspack integration for Mithril Inspector (REQUIREMENTS.md §4,
-§12.5). A thin adapter over the shared transform (`@mithril-inspector/transform`)
+The webpack and Rspack integration for Mithril Inspector. A thin adapter over
+the shared transform (`@mithril-inspector/transform`)
 and runtime (`@mithril-inspector/runtime`) — same option shape and
 instrumentation behaviour as `@mithril-inspector/vite`/`rollup`/`esbuild`,
 reused via `@mithril-inspector/adapter-kit` rather than reimplemented (§12.1,

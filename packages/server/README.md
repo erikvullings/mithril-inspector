@@ -1,7 +1,7 @@
 # @mithril-inspector/server
 
-Open-in-editor middleware for Mithril Inspector (REQUIREMENTS.md §4, §10,
-§12.2). Framework-neutral: `handleInspectorRequest` takes and returns plain
+Open-in-editor middleware for Mithril Inspector. Framework-neutral:
+`handleInspectorRequest` takes and returns plain
 data, and `createInspectorMiddleware` adapts it to a Connect-compatible
 handler (what Vite's dev server uses). No Vite dependency itself (ADR-004) —
 `@mithril-inspector/vite` is the only current consumer.

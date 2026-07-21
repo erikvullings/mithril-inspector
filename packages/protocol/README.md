@@ -1,7 +1,7 @@
 # @mithril-inspector/protocol
 
-Shared, serializable types and protocol constants for Mithril Inspector
-(REQUIREMENTS.md §7). This package has no bundler dependencies and no runtime
+Shared, serializable types and protocol constants for Mithril Inspector.
+This package has no bundler dependencies and no runtime
 behavior of its own (ADR-004) — every other package (`transform`, `runtime`,
 `overlay`, `server`, `vite`) depends on it for a common vocabulary instead of
 duplicating type definitions.

@@ -1,6 +1,6 @@
 # @mithril-inspector/overlay
 
-The in-page inspector UI for Mithril Inspector (REQUIREMENTS.md §4, §8). It is
+The in-page inspector UI for Mithril Inspector. It is
 itself written in Mithril.js and mounts into an isolated shadow root, so it adds
 no global styles and cannot clash with the host application's CSS. No Vite or
 bundler dependencies (ADR-004): it depends only on `@mithril-inspector/protocol`
@@ -152,8 +152,8 @@ runtime stripped, §2.1). `deps` lets you inject a `hook`, `document` and
   closest read-only analog to
   [meiosis-tracer](https://github.com/foxdonut/meiosis-tracer)'s timeline this
   package offers. There is deliberately no rewind/replay: pushing a historical
-  snapshot back into a live app is out of scope (REQUIREMENTS.md §3.3 lists
-  time-travel debugging as an explicit non-goal), and unlike this package's
+  snapshot back into a live app is out of scope (time-travel debugging is an
+  explicit non-goal), and unlike this package's
   other instrumentation, meiosis-tracer's own time-travel needs a live
   reference to the app's actual state stream handed to it — something no
   zero-app-code-change strategy this project uses can obtain on its own.

@@ -1,7 +1,7 @@
 # esbuild playground
 
-The manual test bed for `@mithril-inspector/esbuild` (task 0024,
-REQUIREMENTS.md §4, §12.4, §25): a small Mithril 2.x + TypeScript app built
+The manual test bed for `@mithril-inspector/esbuild` (task 0024): a small
+Mithril 2.x + TypeScript app built
 with a plain `esbuild.context()`/`.watch()` script rather than a framework CLI
 — esbuild has no dev-server/HTML-injection hooks of its own, so
 `scripts/dev.mjs` wires up the plugin's `devServer` option to reuse

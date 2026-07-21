@@ -1,6 +1,6 @@
 # @mithril-inspector/vite
 
-The Vite integration for Mithril Inspector (REQUIREMENTS.md §4, §11). It only
+The Vite integration for Mithril Inspector. It only
 *integrates* the bundler-neutral layers (§5) — the shared transform
 (`@mithril-inspector/transform`), the runtime (`@mithril-inspector/runtime`), the
 overlay (`@mithril-inspector/overlay`) and the open-in-editor server

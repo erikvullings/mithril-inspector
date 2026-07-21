@@ -1,6 +1,6 @@
 # @mithril-inspector/esbuild
 
-The esbuild integration for Mithril Inspector (REQUIREMENTS.md §4, §12.4). A
+The esbuild integration for Mithril Inspector. A
 thin adapter over the shared transform (`@mithril-inspector/transform`) and
 runtime (`@mithril-inspector/runtime`) — same option shape and instrumentation
 behaviour as `@mithril-inspector/vite`/`@mithril-inspector/rollup`, reused via

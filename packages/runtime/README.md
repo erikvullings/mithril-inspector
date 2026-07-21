@@ -1,7 +1,7 @@
 # @mithril-inspector/runtime
 
 Runtime registration, component tracking, vnode ownership and DOM/source
-association for Mithril Inspector (REQUIREMENTS.md §4, §7). No UI, and no Vite or
+association for Mithril Inspector. No UI, and no Vite or
 bundler dependencies (ADR-004) — the only dependency is
 `@mithril-inspector/protocol`. It composes the mechanisms validated by the
 Phase 0 spikes: vnode→DOM association (ADR-101), fragment-root components
@@ -404,7 +404,7 @@ to the raw value rather than breaking the preview (§16).
   slow-render warnings (§17 diagnostics, task 0029, see above) on top of
   everything `"components"` does. Redraw-flash visualization, per-render
   timing beyond the single most-recent value, and route inspection (the rest
-  of REQUIREMENTS.md §21 Phase 5's "consider" list, see `TASKS/0026`) remain
+  of the remaining Phase 5 diagnostics list (see `TASKS/0026`) remain
   unscoped follow-ups. Safe attrs/state serialization itself (task 0020, see
   above) does not depend on `mode` — `attrsPreview`/`statePreview` work for
   any tracked instance.

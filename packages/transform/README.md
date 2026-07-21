@@ -1,7 +1,7 @@
 # @mithril-inspector/transform
 
-Bundler-neutral AST source instrumentation for Mithril Inspector (REQUIREMENTS.md
-§4, §6). No Vite, Rollup, webpack or esbuild dependency (ADR-004) — a bundler
+Bundler-neutral AST source instrumentation for Mithril Inspector. No Vite,
+Rollup, webpack or esbuild dependency (ADR-004) — a bundler
 adapter (today: `@mithril-inspector/vite`) calls `transformMithrilModule`
 directly from its own load/transform hook and is responsible for wiring the
 result into whatever plugin API it targets.

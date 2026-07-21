@@ -141,27 +141,25 @@ or a filtered `pnpm dev`/watch if you set one up) is picked up by the
 consumer project immediately, no re-linking needed. It does **not** validate
 what actually ends up in the published tarball (the `files` allow-list,
 missing `dependencies`, etc.) — use the tarball approach below before you
-actually cut a release.
-
-```sh
-# in this repo, for the adapter plus every shared package it depends on
-for pkg in webpack adapter-kit overlay protocol runtime server transform; do
-  pnpm --filter "@mithril-inspector/$pkg" exec pnpm link --global
-done
-```
+actually cut a release. pnpm v11 removed `pnpm link --global`; link the
+package directories into the consumer by path instead.
 
 ```sh
 # in the consumer (Vite/Rspack/etc.) project
-pnpm link --global \
-  @mithril-inspector/webpack @mithril-inspector/adapter-kit \
-  @mithril-inspector/overlay @mithril-inspector/protocol \
-  @mithril-inspector/runtime @mithril-inspector/server \
-  @mithril-inspector/transform
+MI_REPO=/absolute/path/to/mithril-inspector
+for pkg in vite adapter-kit overlay protocol runtime server transform; do
+  pnpm link "$MI_REPO/packages/$pkg"
+done
 ```
 
-You only need to link the *adapter* you're actually testing (swap `webpack`
-for `vite`/`rollup`/`esbuild`) plus the six shared packages — always the same
+You only need to link the *adapter* you're actually testing (swap `vite`
+for `webpack`/`rollup`/`esbuild`) plus the six shared packages — always the same
 six regardless of which adapter.
+
+If the consumer project prints `[WARN] The "pnpm" field in package.json is no
+longer read by pnpm`, that warning is about the consumer project's own
+configuration, not these linked packages: move settings such as
+`pnpm.overrides` into the consumer root's `pnpm-workspace.yaml`.
 
 ### Closest to a real install: `pnpm pack`
 

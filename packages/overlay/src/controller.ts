@@ -273,13 +273,23 @@ export interface OverlayController {
   refreshHighlight(): void
 
   /**
+   * Whether the redraw-flash detector (task 0030) would currently do
+   * anything with a mutation batch: the live `redrawFlashEnabled` setting
+   * (Settings tab checkbox) is on and the runtime is in `mode: "full"`. The
+   * caller (`overlay.ts`) checks this on every observed batch, before doing
+   * any work, so its `MutationObserver` can stay attached unconditionally
+   * (mode has no live change signal to react to) while still costing nothing
+   * beyond the observer's own dispatch when the feature is off or gated.
+   */
+  isRedrawFlashActive(): boolean
+
+  /**
    * Feed a batch of observed DOM mutations through to the redraw-flash
-   * detector (task 0030) — a no-op unless the live `redrawFlashEnabled`
-   * setting (Settings tab checkbox, seeded from `options.redrawFlash.enabled`)
-   * is on and the runtime is in `mode: "full"`. The caller (`overlay.ts`) owns
-   * the actual `MutationObserver`/rAF throttling — it installs unconditionally
-   * in `mode: "full"` so toggling this on later takes effect immediately —
-   * this is pure attribution + timed state.
+   * detector (task 0030) — pure attribution + timed state; the caller
+   * (`overlay.ts`) is expected to have already checked {@link isRedrawFlashActive}
+   * before collecting `records`, but this re-checks it too as a defensive
+   * no-op guard against a batch that went stale in flight (e.g. the setting
+   * flipped off between the observer callback and this rAF-scheduled flush).
    */
   recordDomMutations(records: readonly DomMutationLike[]): void
 
@@ -515,6 +525,8 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   let activeTab: OverlayTab = persisted.activeTab ?? "components"
   let showBanner = persisted.showPickingBanner ?? options.picker.showBanner
   let redrawFlashEnabled = persisted.redrawFlashEnabled ?? options.redrawFlash.enabled
+  const isRedrawFlashActive = (): boolean =>
+    redrawFlashEnabled && hook !== null && hook !== undefined && hook.getMode() === "full"
   let theme: OverlayTheme = persisted.theme ?? options.theme
 
   // §15: extra redaction keys added from the Settings tab persist across
@@ -996,6 +1008,8 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
       )
     },
 
+    isRedrawFlashActive,
+
     recordDomMutations(records) {
       if (!redrawFlashEnabled || hook === null || hook === undefined || hook.getMode() !== "full") return
       diagnostics.guard(
@@ -1222,6 +1236,13 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     },
     setRedrawFlashEnabled(enabled) {
       redrawFlashEnabled = enabled
+      if (!enabled) {
+        // Turning the toggle off should hide any flash still animating, not
+        // just stop new ones from starting — otherwise the checkbox's "takes
+        // effect immediately" doesn't hold for whatever was already in flight.
+        for (const { timer } of flashesById.values()) clearTimeout(timer)
+        flashesById.clear()
+      }
       persist()
       redraw()
     },

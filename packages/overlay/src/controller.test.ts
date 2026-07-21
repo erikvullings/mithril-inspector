@@ -1661,4 +1661,47 @@ describe("Redraw-flash visualization (task 0030)", () => {
     vi.advanceTimersByTime(10_000)
     expect(redraw).not.toHaveBeenCalled()
   })
+
+  it("setRedrawFlashEnabled(false) clears an in-flight flash immediately instead of waiting out its timer", () => {
+    vi.useFakeTimers()
+    const { hook, node } = flashHook()
+    const { controller } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+
+    controller.recordDomMutations([record(node)])
+    expect(controller.getState().flashes).toHaveLength(1)
+
+    controller.setRedrawFlashEnabled(false)
+
+    expect(controller.getState().flashes).toEqual([])
+  })
+
+  it("setRedrawFlashEnabled(false) cancels the pending timer, not just the visible list, so it can't fire a stray redraw later", () => {
+    vi.useFakeTimers()
+    const { hook, node } = flashHook()
+    const { controller, redraw } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+    controller.recordDomMutations([record(node)])
+    controller.setRedrawFlashEnabled(false)
+    redraw.mockClear()
+
+    vi.advanceTimersByTime(10_000)
+
+    expect(redraw).not.toHaveBeenCalled()
+  })
+
+  describe("isRedrawFlashActive()", () => {
+    it("mirrors the same enabled + mode: \"full\" gate recordDomMutations checks", () => {
+      const { hook } = flashHook()
+      const { controller } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+      expect(controller.isRedrawFlashActive()).toBe(true)
+
+      controller.setRedrawFlashEnabled(false)
+      expect(controller.isRedrawFlashActive()).toBe(false)
+    })
+
+    it("is false outside mode: \"full\" even when the setting is on", () => {
+      const { hook } = flashHook({ getMode: () => "components" })
+      const { controller } = setup({ hook, options: { redrawFlash: { enabled: true } } })
+      expect(controller.isRedrawFlashActive()).toBe(false)
+    })
+  })
 })

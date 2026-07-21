@@ -78,10 +78,13 @@ export interface ComponentTreeOptions {
  * category to be opt-in. Also requires `mode: "full"` (checked live against
  * the runtime hook, not duplicated here). This value only seeds the initial
  * on/off state — it's live-toggleable from the Settings tab thereafter
- * (`OverlayController.setRedrawFlashEnabled`), and that live value, not this
- * one, is what the overlay actually re-checks on each drained mutation
- * batch; the `MutationObserver` itself installs unconditionally in
- * `mode: "full"` so a later Settings-tab toggle takes effect immediately.
+ * (`OverlayController.setRedrawFlashEnabled`), and that live value (not this
+ * one) plus the live `mode: "full"` check are what
+ * `OverlayController.isRedrawFlashActive` re-evaluates on every observed
+ * mutation batch; the `MutationObserver` itself installs unconditionally
+ * (regardless of mode or this setting) so that a later Settings-tab toggle,
+ * or a later transition into `mode: "full"`, both take effect immediately
+ * without needing to reinstall it.
  */
 export interface RedrawFlashOptions {
   readonly enabled: boolean

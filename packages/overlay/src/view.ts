@@ -768,9 +768,14 @@ function previewNodeView(ctx: PreviewContext, node: PreviewNode, isRoot = false)
   return m("span.mi-preview-value", summarizeNode(node))
 }
 
+/** Shared "not available outside mode: full" hint (§17) — every §11.1 gate message leads with this same check. */
+function fullModeHint(verb: string, label: string): string {
+  return `Enable mode: "full" to ${verb} ${label}.`
+}
+
 /** One of the two gating reasons attrs/state can be unavailable, or `null` when available (§11.1, §17). */
 function previewGateMessage(gating: ComponentTreeGating, label: string): string | null {
-  if (!gating.fullMode) return `Enable mode: "full" to inspect ${label}.`
+  if (!gating.fullMode) return fullModeHint("inspect", label)
   const captured = label === "attrs" ? gating.captureAttrs : gating.captureState
   if (!captured) return `${label} capture is disabled (componentTree.capture${label === "attrs" ? "Attrs" : "State"}).`
   return null
@@ -784,7 +789,7 @@ function previewGateMessage(gating: ComponentTreeGating, label: string): string 
  * whichever one is available.
  */
 function historyGateMessage(gating: ComponentTreeGating): string | null {
-  if (!gating.fullMode) return 'Enable mode: "full" to see this component\'s history.'
+  if (!gating.fullMode) return fullModeHint("see", "this component's history")
   if (!gating.captureAttrs && !gating.captureState) {
     return "Attrs/state capture is disabled (componentTree.captureAttrs / componentTree.captureState)."
   }
@@ -921,16 +926,41 @@ function shortcutRow(controller: OverlayController, key: PickerShortcutKey, sett
   ])
 }
 
+/**
+ * Shared shape for a Settings-tab on/off row (§18, §15, task 0030): a
+ * checkbox bound to a live boolean plus its label, and an optional muted
+ * hint line underneath (e.g. why it's currently disabled). Used by every
+ * plain on/off toggle in the Settings tab — rows with more than a checkbox
+ * to manage (the picker shortcut rows above, which also have a text input
+ * and a reset button) build their own markup instead.
+ */
+function checkboxSettingRow(
+  id: string,
+  checked: boolean,
+  label: string,
+  onChange: (checked: boolean) => void,
+  hint?: { readonly disabled: boolean; readonly message: string },
+): Vnode {
+  return m("div.mi-row-check", [
+    m(`input#${id}`, {
+      type: "checkbox",
+      checked,
+      disabled: hint?.disabled ?? false,
+      onclick: (event: Event) => onChange((event.target as HTMLInputElement).checked),
+    }),
+    m("label", { for: id }, label),
+    hint?.disabled === true ? m("p.mi-muted", hint.message) : null,
+  ])
+}
+
 /** Toggle for the picking-active banner (§18) — a plain on/off, unlike the shortcut rows above (nothing to type or reset). */
 function bannerToggleRow(controller: OverlayController, state: OverlayViewState): Vnode {
-  return m("div.mi-row-check", [
-    m("input#mi-show-banner", {
-      type: "checkbox",
-      checked: state.showPickingBanner,
-      onclick: (event: Event) => controller.setShowPickingBanner((event.target as HTMLInputElement).checked),
-    }),
-    m("label", { for: "mi-show-banner" }, 'Show the "Inspecting…" banner while picking (auto-hides after a few seconds)'),
-  ])
+  return checkboxSettingRow(
+    "mi-show-banner",
+    state.showPickingBanner,
+    'Show the "Inspecting…" banner while picking (auto-hides after a few seconds)',
+    (checked) => controller.setShowPickingBanner(checked),
+  )
 }
 
 /**
@@ -944,16 +974,13 @@ function bannerToggleRow(controller: OverlayController, state: OverlayViewState)
  */
 function redrawFlashToggleRow(controller: OverlayController, state: OverlayViewState): Vnode {
   const fullMode = state.componentTree.gating.fullMode
-  return m("div.mi-row-check", [
-    m("input#mi-redraw-flash-enabled", {
-      type: "checkbox",
-      checked: state.redrawFlashEnabled,
-      disabled: !fullMode,
-      onclick: (event: Event) => controller.setRedrawFlashEnabled((event.target as HTMLInputElement).checked),
-    }),
-    m("label", { for: "mi-redraw-flash-enabled" }, "Flash a component's DOM region when it actually mutates (not just when its view() runs)"),
-    fullMode ? null : m("p.mi-muted", 'Enable mode: "full" to use redraw-flash visualization.'),
-  ])
+  return checkboxSettingRow(
+    "mi-redraw-flash-enabled",
+    state.redrawFlashEnabled,
+    "Flash a component's DOM region when it actually mutates (not just when its view() runs)",
+    (checked) => controller.setRedrawFlashEnabled(checked),
+    { disabled: !fullMode, message: fullModeHint("use", "redraw-flash visualization") },
+  )
 }
 
 /**
@@ -1015,14 +1042,12 @@ function themeRow(controller: OverlayController, state: OverlayViewState): Vnode
  * never leaves real credentials exposed by default (task 0026 follow-up).
  */
 function redactionToggleRow(controller: OverlayController, state: OverlayViewState): Vnode {
-  return m("div.mi-row-check", [
-    m("input#mi-redaction-enabled", {
-      type: "checkbox",
-      checked: state.redactionEnabled,
-      onclick: (event: Event) => controller.setRedactionEnabled((event.target as HTMLInputElement).checked),
-    }),
-    m("label", { for: "mi-redaction-enabled" }, "Redact attrs/state values matching a sensitive key pattern (password, token, secret, …)"),
-  ])
+  return checkboxSettingRow(
+    "mi-redaction-enabled",
+    state.redactionEnabled,
+    "Redact attrs/state values matching a sensitive key pattern (password, token, secret, …)",
+    (checked) => controller.setRedactionEnabled(checked),
+  )
 }
 
 /**

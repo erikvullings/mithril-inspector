@@ -180,22 +180,26 @@ export function mountInspectorOverlay(
   modalObserver?.observe(doc.documentElement, { subtree: true, attributes: true, attributeFilter: ["open"] })
 
   // --- Redraw-flash visualization (task 0030) -----------------------------
-  // `mode: "full"` only — decided once here, since the overlay has no live
-  // mode setter to react to (`getMode()` is read-only from this side). The
-  // on/off switch itself (`redrawFlash.enabled`, live-toggleable from the
-  // Settings tab) is *not* checked here: it's re-read live inside
-  // `controller.recordDomMutations` on every drained batch, so flipping the
-  // Settings checkbox takes effect immediately without an observer
-  // reinstall. Installing the observer is still gated on `mode: "full"`
-  // alone, since that's this package's own decision, independent of the
-  // live setting. Reuses the same "observe `doc.body`, `subtree: true`"
-  // pattern as `domObserver` above (which already relies on — and this
-  // task's own investigation re-confirmed — shadow boundaries being opaque
-  // to a light-DOM `MutationObserver`, so the overlay's own shadow-rooted UI
-  // is never observed here); unlike `domObserver`, this one also needs
+  // Attached unconditionally (mirroring `domObserver` above) rather than
+  // gated on `mode: "full"` at mount time: unlike the Settings-tab
+  // `redrawFlashEnabled` toggle, `getMode()` has no live change signal for
+  // the overlay to react to, so deciding "capable" once here would leave the
+  // feature permanently broken for any session that starts outside
+  // `mode: "full"` and transitions into it later (the runtime's `setMode()`
+  // is a supported live call) — the observer would simply never have been
+  // created to pick it up. Instead both the mode and the live
+  // `redrawFlashEnabled` setting are re-checked cheaply, via
+  // `controller.isRedrawFlashActive()`, inside the observer callback itself
+  // — before any of the array-copy/rAF-scheduling work below — so a session
+  // that never turns the feature on (or isn't in `mode: "full"`) pays only
+  // the browser's own MutationObserver dispatch cost, not the attribution
+  // pipeline. Reuses the same "observe `doc.body`, `subtree: true`" pattern
+  // as `domObserver` above (which already relies on — and this task's own
+  // investigation re-confirmed — shadow boundaries being opaque to a
+  // light-DOM `MutationObserver`, so the overlay's own shadow-rooted UI is
+  // never observed here); unlike `domObserver`, this one also needs
   // `attributes`/`characterData` since a component's DOM most commonly
   // mutates in place (an attribute or text patch), not via node replacement.
-  const redrawFlashCapable = (hook?.getMode() ?? "source") === "full"
   let pendingFlashRecords: MutationRecord[] = []
   const flashScheduler = createFrameScheduler(() => {
     const records = pendingFlashRecords
@@ -204,13 +208,13 @@ export function mountInspectorOverlay(
   })
   const MutationObserverImplForFlash = (globalThis as unknown as { MutationObserver?: typeof MutationObserver })
     .MutationObserver
-  const flashObserver =
-    redrawFlashCapable && MutationObserverImplForFlash
-      ? new MutationObserverImplForFlash((records) => {
-          pendingFlashRecords.push(...records)
-          flashScheduler.request()
-        })
-      : null
+  const flashObserver = MutationObserverImplForFlash
+    ? new MutationObserverImplForFlash((records) => {
+        if (!controller.isRedrawFlashActive()) return
+        pendingFlashRecords.push(...records)
+        flashScheduler.request()
+      })
+    : null
   flashObserver?.observe(doc.body, { childList: true, attributes: true, characterData: true, subtree: true })
 
   let disposed = false

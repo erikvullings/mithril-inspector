@@ -2,7 +2,7 @@ import type { ComponentId, ComponentRecord, RuntimeEvent, SourceLocation } from 
 import m from "mithril"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import type { OverlayHook } from "./hook.js"
+import type { OverlayHook, OverlayInspectorMode } from "./hook.js"
 import { HOST_ID, mountInspectorOverlay, type OverlayHandle } from "./overlay.js"
 
 const source: SourceLocation = {
@@ -1312,6 +1312,52 @@ describe("mountInspectorOverlay — redraw-flash visualization (task 0030)", () 
 
     target.setAttribute("data-x", "1")
     await waitForFlashProcessing()
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(0)
+  })
+
+  it("starts working once the runtime transitions into mode: \"full\" after mount, even though it wasn't full at mount time", async () => {
+    const target = trackedTarget()
+    let mode: OverlayInspectorMode = "components"
+    handle = mountInspectorOverlay(
+      { redrawFlash: { enabled: true } },
+      {
+        hook: fakeHook({
+          getMode: () => mode,
+          resolveDomComponent: (node) => (node === target ? ("c:1" as ComponentId) : null),
+          componentRecord: (id) => componentRecord({ id, domRange: { first: target, last: target } }),
+        }),
+      },
+    )
+
+    mode = "full"
+    target.setAttribute("data-x", "1")
+    await waitForFlashProcessing()
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(1)
+  })
+
+  it("hides an in-flight flash immediately when turned off mid-animation, instead of waiting out its timer", async () => {
+    const target = trackedTarget()
+    handle = mountInspectorOverlay(
+      { redrawFlash: { enabled: true } },
+      {
+        hook: fakeHook({
+          getMode: () => "full",
+          resolveDomComponent: (node) => (node === target ? ("c:1" as ComponentId) : null),
+          componentRecord: (id) => componentRecord({ id, domRange: { first: target, last: target } }),
+        }),
+      },
+    )
+
+    target.setAttribute("data-x", "1")
+    await waitForFlashProcessing()
+    render()
+    expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(1)
+
+    handle!.controller.setRedrawFlashEnabled(false)
     render()
 
     expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(0)

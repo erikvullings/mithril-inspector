@@ -26,7 +26,7 @@ function hookFn(hook: unknown): (...args: never[]) => unknown {
 const DEV_ENV = { NODE_ENV: "development" } as const
 
 function plugins(options: MithrilInspectorOptions = {}): Plugin[] {
-  return mithrilInspector(options, DEV_ENV)
+  return mithrilInspector(options, DEV_ENV) as Plugin[]
 }
 const pre = (options: MithrilInspectorOptions = {}): Plugin =>
   plugins(options).find((p) => p.name === "mithril-inspector:pre")!
@@ -71,7 +71,7 @@ describe("build-mode exclusion (§2.1, §20.1.12)", () => {
   })
 
   it("is fully inactive when disabled", () => {
-    for (const p of mithrilInspector({ enabled: false }, DEV_ENV)) {
+    for (const p of mithrilInspector({ enabled: false }, DEV_ENV) as Plugin[]) {
       expect(applies(p, serveEnv)).toBe(false)
       expect(applies(p, buildEnv)).toBe(false)
     }

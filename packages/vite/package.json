@@ -12,7 +12,14 @@
     "directory": "packages/vite"
   },
   "bugs": "https://github.com/erikvullings/mithril-inspector/issues",
-  "keywords": ["mithril", "mithril.js", "devtools", "inspector", "vite", "vite-plugin"],
+  "keywords": [
+    "mithril",
+    "mithril.js",
+    "devtools",
+    "inspector",
+    "vite",
+    "vite-plugin"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -22,7 +29,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm build",
@@ -45,7 +54,7 @@
     "@types/mithril": "^2.2.8",
     "@types/node": "^24.0.14",
     "mithril": "^2.3.8",
-    "vite": "^7.3.6",
+    "vite": "^8.1.5",
     "vitest": "^3.2.4"
   }
 }

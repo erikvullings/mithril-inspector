@@ -20,7 +20,8 @@ describe("@mithril-inspector/vite", () => {
   it("returns a Vite plugin array (§11.1)", () => {
     const result = mithrilInspector({}, { NODE_ENV: "development" })
     expect(Array.isArray(result)).toBe(true)
-    expect(result.map((p) => p.name)).toEqual(["mithril-inspector:pre", "mithril-inspector:serve"])
+    const plugins = result as Array<{ name: string }>
+    expect(plugins.map((p) => p.name)).toEqual(["mithril-inspector:pre", "mithril-inspector:serve"])
   })
 
   it("re-exports the virtual module specifiers", () => {

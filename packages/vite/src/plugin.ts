@@ -1,4 +1,4 @@
-import type { ConfigEnv, HmrContext, Plugin, ResolvedConfig, ViteDevServer } from "vite"
+import type { ConfigEnv, HmrContext, Plugin, PluginOption, ResolvedConfig, ViteDevServer } from "vite"
 
 import {
   loadVirtualModule,
@@ -45,7 +45,7 @@ import {
 export function mithrilInspector(
   options: MithrilInspectorOptions = {},
   env: Readonly<Record<string, string | undefined>> = process.env,
-): Plugin[] {
+): PluginOption[] {
   const resolved = resolveInspectorOptions(options, env)
 
   // Config that does not depend on the resolved Vite root — precomputed once.

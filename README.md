@@ -2,6 +2,14 @@
 
 Developer tooling for inspecting Mithril.js applications.
 
+## Jumping to the source location
+
+<img width="1395" height="767" alt="image" src="https://github.com/user-attachments/assets/98951fbf-4b7b-437a-939d-2ba6f433f18a" />
+
+## Examining state or attribute changes
+
+<img width="1395" height="767" alt="image" src="https://github.com/user-attachments/assets/90836c39-b035-4fa6-96d4-50fd22be9ced" />
+
 ## Quick start (§24)
 
 Install the Vite plugin as a dev dependency:

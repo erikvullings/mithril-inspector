@@ -305,7 +305,8 @@ export function overlayCss(): string {
   flex: 0 0 auto;
   border-right: 1px solid var(--mi-border);
   padding: 10px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 .mi-detail-pane { flex: 1; min-width: 0; padding: 10px 14px; overflow: auto; }
 .mi-detail-empty { display: flex; flex-direction: column; gap: 4px; padding-top: 8px; }
@@ -548,7 +549,8 @@ export function overlayCss(): string {
 .mi-render-timing {
   color: var(--mi-muted);
   font-size: 12px;
-  margin: 4px 0;
+  margin-left: 4px;
+  font-family: var(--mi-font);
 }
 .mi-render-timing-slow { color: var(--mi-danger); }
 .mi-pin-btn {
@@ -614,10 +616,25 @@ export function overlayCss(): string {
  * that key -- each further level of expansion nests its own .mi-preview-row
  * inside this one, so indentation naturally compounds with depth.
  */
-.mi-preview-row { flex-basis: 100%; padding-left: 14px; margin-top: 2px; }
+/*
+ * min-width: 0 overrides the flex item's automatic minimum size (which
+ * otherwise falls back to its content's min-content width): without it, a
+ * nested collapsed container's own nowrap/ellipsis summary two levels down
+ * (e.g. an array item's compact object preview) can bubble up and force this
+ * row wider than the pane, breaking both the ellipsis truncation and the
+ * pane's own width.
+ */
+.mi-preview-row { flex-basis: 100%; min-width: 0; padding-left: 14px; margin-top: 2px; }
 .mi-preview-getter { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mi-mono); }
 .mi-preview-value { font-family: var(--mi-mono); word-break: break-word; }
 .mi-preview-component-link {
+  /* display: inline (not the button default of inline-block) so this still
+     reads as an ordinary run of text when it sits inside a collapsed
+     container's own single-line .mi-preview-inline summary (task 0031
+     follow-up) — a component link can appear inline mid-sentence there,
+     e.g. "component: <HomePage>", and needs to wrap/truncate with its
+     surrounding text rather than as an isolated box. */
+  display: inline;
   appearance: none;
   border: 0;
   background: transparent;

@@ -1,4 +1,4 @@
-import type { PreviewNode, PreviewPath } from "@mithril-inspector/protocol"
+import type { PreviewComponentNode, PreviewNode, PreviewPath } from "@mithril-inspector/protocol"
 
 /**
  * Pure formatting helpers for the safe-serializer preview tree (§7.4, §15,
@@ -81,23 +81,30 @@ function childNodesOf(node: ContainerNode): readonly PreviewNode[] {
   }
 }
 
+/** Whether `node` is a component reference the UI can open in the editor — only reachable via its own expanded row, never from flat `summarizeNode` text (see {@link containerNeedsToggle}). */
+function isClickableComponentNode(node: PreviewNode): boolean {
+  return node.kind === "component" && node.location !== null
+}
+
 /**
  * Whether expanding `node` would reveal anything not already visible in its
  * collapsed `compactContainerPreview` summary — i.e. whether a "+"
  * expand/collapse toggle is worth showing at all. False when the compact
  * preview already spells out every entry in full (nothing paginated away,
  * no entry count elided past {@link COMPACT_PREVIEW_MAX_ENTRIES}) and none
- * of those entries is itself a container or a getter/max-depth stub that
- * only shows a shallow one-line summary — e.g. `grammarSlugs: [
+ * of those entries is itself a container, a getter/max-depth stub, or a
+ * clickable component reference — e.g. `grammarSlugs: [
  * "personal-pronouns" ]` needs no toggle, the compact form already is the
- * full picture. A container whose count is hidden, or that holds a nested
- * container/expandable value only reachable by expanding this one first,
- * still needs the toggle.
+ * full picture. A container whose count is hidden, that holds a nested
+ * container/expandable value only reachable by expanding this one first, or
+ * that holds a component reference (whose click-to-open affordance only
+ * exists on its own expanded row, not in the compact text) still needs the
+ * toggle.
  */
 export function containerNeedsToggle(node: ContainerNode): boolean {
   if (node.truncated) return true
   if (totalCountOf(node) > COMPACT_PREVIEW_MAX_ENTRIES) return true
-  return childNodesOf(node).some((child) => isContainerNode(child) || isExpandable(child))
+  return childNodesOf(node).some((child) => isContainerNode(child) || isExpandable(child) || isClickableComponentNode(child))
 }
 
 /** How many entries/items a container has already fetched, for the "N more" pagination label. */
@@ -126,19 +133,47 @@ export function formatIndexLabel(index: number, total: number): string {
 /** How many entries/items {@link compactContainerPreview} inlines before falling back to a trailing "…". */
 const COMPACT_PREVIEW_MAX_ENTRIES = 5
 
-function joinCompact(parts: readonly string[], hasMore: boolean): string {
-  if (parts.length === 0) return hasMore ? "…" : ""
-  return hasMore ? `${parts.join(", ")}, …` : parts.join(", ")
+/**
+ * One piece of a compact container preview (§7.4): either literal text, or a
+ * `component`-kind child rendered as its own segment instead of being folded
+ * into surrounding text — lets a caller (the overlay's UI layer) render that
+ * one piece as a clickable "open in editor" link inline, before the
+ * container is ever expanded, while `compactContainerPreview` below still
+ * collapses every segment down to plain text for callers that just want a
+ * string (log lines, tests, {@link summarizeNode} composition).
+ */
+export type CompactPreviewSegment = { readonly kind: "text"; readonly text: string } | { readonly kind: "component"; readonly node: PreviewComponentNode }
+
+function textSegment(text: string): CompactPreviewSegment {
+  return { kind: "text", text }
+}
+
+/** A node's own compact-preview segment: its real `summarizeNode` text, except a `component` node keeps its identity so the caller can render it specially. */
+function segmentForNode(node: PreviewNode): CompactPreviewSegment {
+  return node.kind === "component" ? { kind: "component", node } : textSegment(summarizeNode(node))
+}
+
+/** Joins each entry's own segment list with ", " separators and a trailing "…" once more was elided, mirroring `Array.prototype.join`'s comma-joining but at the segment level instead of the string level. */
+function joinCompactSegments(entries: readonly (readonly CompactPreviewSegment[])[], hasMore: boolean): CompactPreviewSegment[] {
+  if (entries.length === 0) return hasMore ? [textSegment("…")] : []
+  const out: CompactPreviewSegment[] = []
+  entries.forEach((segments, i) => {
+    if (i > 0) out.push(textSegment(", "))
+    out.push(...segments)
+  })
+  if (hasMore) out.push(textSegment(", …"))
+  return out
 }
 
 /**
- * A one-line, devtools-console-style preview of a container's already-loaded
- * shallow contents (§7.4) — e.g. `{ id: 1, label: "Write the changelog",
- * done: false }` — built purely from data the initial `serialize()` already
- * returned, no `expandPreview` round-trip. Nested containers within it are
- * shown via their own `summarizeNode` type summary (`Array(2)`, `User`, …),
- * not recursed into, matching the one-level-deep convention of a devtools
- * console object preview.
+ * The segment-level form of {@link compactContainerPreview} (§7.4): the same
+ * one-line, devtools-console-style shallow preview, but as an ordered list of
+ * text/component pieces instead of one joined string, so a `component`-kind
+ * direct child (e.g. `component: <HomePage>`) can be singled out and
+ * rendered as a real clickable element instead of inert text. Nested
+ * containers are still shown via their own `summarizeNode` type summary
+ * (`Array(2)`, `User`, …), not recursed into — same one-level-deep
+ * convention as the string form.
  *
  * A non-object's `TypeName(N)` count prefix (`Array(14)`, `Map(2)`, …) is
  * only included when {@link containerNeedsToggle} would show a "+" for this
@@ -147,39 +182,58 @@ function joinCompact(parts: readonly string[], hasMore: boolean): string {
  * already unambiguous between map/set/array), so the prefix would only
  * repeat information the toggle-less summary already shows in full.
  */
-export function compactContainerPreview(node: ContainerNode): string {
+export function compactContainerSegments(node: ContainerNode): CompactPreviewSegment[] {
   const shownMore = (total: number, shown: number): boolean => node.truncated || total > shown
   const countPrefix = containerNeedsToggle(node) ? `${summarizeNode(node)} ` : ""
   switch (node.kind) {
     case "object": {
       const shown = node.entries.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
-      const body = joinCompact(
-        shown.map((entry) => `${entry.key}: ${summarizeNode(entry.node)}`),
+      const body = joinCompactSegments(
+        shown.map((entry) => [textSegment(`${entry.key}: `), segmentForNode(entry.node)]),
         shownMore(node.entries.length, shown.length),
       )
       const prefix = node.className !== "Object" ? `${node.className} ` : ""
-      return body === "" ? `${prefix}{}` : `${prefix}{ ${body} }`
+      return body.length === 0 ? [textSegment(`${prefix}{}`)] : [textSegment(`${prefix}{ `), ...body, textSegment(" }")]
     }
     case "array":
     case "typed-array": {
       const shown = node.items.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
-      const body = joinCompact(shown.map((item) => summarizeNode(item)), shownMore(node.items.length, shown.length))
-      return body === "" ? `${countPrefix}[]` : `${countPrefix}[ ${body} ]`
+      const body = joinCompactSegments(
+        shown.map((item) => [segmentForNode(item)]),
+        shownMore(node.items.length, shown.length),
+      )
+      return body.length === 0 ? [textSegment(`${countPrefix}[]`)] : [textSegment(`${countPrefix}[ `), ...body, textSegment(" ]")]
     }
     case "map": {
       const shown = node.entries.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
-      const body = joinCompact(
-        shown.map((entry) => `${summarizeNode(entry.key)} => ${summarizeNode(entry.value)}`),
+      const body = joinCompactSegments(
+        shown.map((entry) => [segmentForNode(entry.key), textSegment(" => "), segmentForNode(entry.value)]),
         shownMore(node.entries.length, shown.length),
       )
-      return body === "" ? `${countPrefix}{}` : `${countPrefix}{ ${body} }`
+      return body.length === 0 ? [textSegment(`${countPrefix}{}`)] : [textSegment(`${countPrefix}{ `), ...body, textSegment(" }")]
     }
     case "set": {
       const shown = node.items.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
-      const body = joinCompact(shown.map((item) => summarizeNode(item)), shownMore(node.items.length, shown.length))
-      return body === "" ? `${countPrefix}{}` : `${countPrefix}{ ${body} }`
+      const body = joinCompactSegments(
+        shown.map((item) => [segmentForNode(item)]),
+        shownMore(node.items.length, shown.length),
+      )
+      return body.length === 0 ? [textSegment(`${countPrefix}{}`)] : [textSegment(`${countPrefix}{ `), ...body, textSegment(" }")]
     }
   }
+}
+
+/**
+ * A one-line, devtools-console-style preview of a container's already-loaded
+ * shallow contents (§7.4) — e.g. `{ id: 1, label: "Write the changelog",
+ * done: false }` — built purely from data the initial `serialize()` already
+ * returned, no `expandPreview` round-trip. Plain-text form of
+ * {@link compactContainerSegments}, for callers that just want a string.
+ */
+export function compactContainerPreview(node: ContainerNode): string {
+  return compactContainerSegments(node)
+    .map((segment) => (segment.kind === "text" ? segment.text : summarizeNode(segment.node)))
+    .join("")
 }
 
 /** A short one-line label for a node's own value (containers summarize their size, not their contents). */

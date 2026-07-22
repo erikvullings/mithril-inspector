@@ -291,6 +291,47 @@ describe("containerNeedsToggle (only show +/- when expanding reveals something n
     expect(containerNeedsToggle(arrayOfObjects)).toBe(true)
   })
 
+  it("is true when an entry is a component reference with a resolved location — the click-to-open link only exists on its own row, not in the compact text", () => {
+    const withComponent: ContainerNode = {
+      kind: "object",
+      className: "Object",
+      size: 1,
+      entries: [
+        {
+          key: "component",
+          node: {
+            kind: "component",
+            name: "HomePage",
+            inferred: false,
+            location: {
+              moduleId: "m:home",
+              sourceId: "s1",
+              absoluteFile: "/p/home.tsx",
+              relativeFile: "home.tsx",
+              line: 1,
+              column: 1,
+              kind: "component-declaration",
+            },
+          },
+        },
+      ],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    const unresolvedComponent: ContainerNode = {
+      kind: "object",
+      className: "Object",
+      size: 1,
+      entries: [{ key: "component", node: { kind: "component", name: "HomePage", inferred: false, location: null } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(containerNeedsToggle(withComponent)).toBe(true)
+    expect(containerNeedsToggle(unresolvedComponent)).toBe(false)
+  })
+
   it("is unaffected by a class instance's name alone — className doesn't gate the toggle", () => {
     const classInstance: ContainerNode = {
       kind: "object",

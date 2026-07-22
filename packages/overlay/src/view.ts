@@ -41,6 +41,7 @@ import type { MappingInfo, MappingPrecision } from "./mapping.js"
 import type { OverlayTheme } from "./options.js"
 import {
   compactContainerPreview,
+  compactContainerSegments,
   containerNeedsToggle,
   formatIndexLabel,
   isContainerNode,
@@ -260,16 +261,21 @@ function selectionMeta(state: OverlayViewState): Vnode {
  * The ancestry breadcrumb (§8.3, §9.1): root-first, each crumb a click target
  * that highlights that ancestor's own DOM range (`focusAncestor`) without
  * changing the shared selection — the toolbar's actions stay scoped to the
- * actually-selected/picked component throughout.
+ * actually-selected/picked component throughout. Trails the selected
+ * component's own render-timing (task 0029) as a muted suffix on the same
+ * row, e.g. "Layout › Nav (last render: 0.1ms)", instead of a separate line
+ * (§17 diagnostics polish) — folding it into the header this way saves the
+ * vertical space a dedicated `<p>` cost without losing the info.
  */
-function ancestryBreadcrumb(controller: OverlayController, state: OverlayViewState): Vnode {
+function ancestryBreadcrumb(controller: OverlayController, state: OverlayViewState, self: AncestryEntry | undefined): Vnode {
   if (state.ancestry.length === 0) {
     return m("p.mi-muted", "No owning component resolved for this element.")
   }
   // Each entry renders as one keyed group (separator + button) rather than
   // interleaving keyed buttons with unkeyed separators as flat siblings —
   // Mithril requires a fragment's children to be either all keyed or all
-  // unkeyed, and mixing the two throws at render time.
+  // unkeyed, and mixing the two throws at render time. The trailing timing
+  // suffix gets a key of its own for the same reason.
   const crumbs = state.ancestry.map((entry, index) => {
     const isLast = index === state.ancestry.length - 1
     const focused = entry.id === state.focusedAncestorId
@@ -293,7 +299,8 @@ function ancestryBreadcrumb(controller: OverlayController, state: OverlayViewSta
       ),
     ])
   })
-  return m("div.mi-breadcrumb", crumbs)
+  const timing = renderTimingInfo(self)
+  return m("div.mi-breadcrumb", timing === null ? crumbs : [...crumbs, m("span", { key: "render-timing" }, timing)])
 }
 
 /**
@@ -388,17 +395,19 @@ function slowRenderBadge(record: TreeRow["record"]): Children {
 }
 
 /**
- * The detail pane's own render-timing line (§17 diagnostics, task 0029):
- * hidden entirely when nothing has been measured yet (`mode` isn't `"full"`,
- * or the component hasn't rendered since selection) rather than showing a
- * bare "not available" message — the tree row's badges already carry that
- * signal, so an always-visible gate message here would be redundant noise.
+ * The selected component's render-timing suffix, trailed onto the breadcrumb
+ * row by {@link ancestryBreadcrumb} (§17 diagnostics, task 0029): hidden
+ * entirely when nothing has been measured yet (`mode` isn't `"full"`, or the
+ * component hasn't rendered since selection) rather than showing a bare "not
+ * available" message — the tree row's badges already carry that signal, so
+ * an always-visible gate message here would be redundant noise.
  */
 function renderTimingInfo(self: AncestryEntry | undefined): Children {
   if (self === undefined || self.renderDuration === null) return null
-  return m("p.mi-render-timing" + (self.slowRenderCount > 0 ? ".mi-render-timing-slow" : ""), [
-    `Last render: ${formatRenderDuration(self.renderDuration)}`,
+  return m("span.mi-render-timing" + (self.slowRenderCount > 0 ? ".mi-render-timing-slow" : ""), [
+    `(last render: ${formatRenderDuration(self.renderDuration)}`,
     self.slowRenderCount > 0 ? ` · ${self.slowRenderCount} slow render(s)` : null,
+    `)`,
   ])
 }
 
@@ -677,24 +686,46 @@ function toggleGlyphButton(glyph: "+" | "−", label: string, onclick: () => voi
 }
 
 /**
+ * The collapsed compact preview's own content (§7.4, task 0031 follow-up): a
+ * `component`-kind direct child (e.g. `component: <HomePage>`) renders as the
+ * same clickable "open in editor" link its own expanded row would give it,
+ * right inline in the one-line summary — so a component reference is
+ * reachable without expanding the container first. Everything else renders
+ * as plain text, same as {@link compactContainerPreview}'s string form.
+ */
+function compactPreviewChildren(ctx: PreviewContext, node: ContainerNode): Children {
+  return compactContainerSegments(node).map((segment) => {
+    if (segment.kind === "text") return segment.text
+    if (segment.node.location === null) return summarizeNode(segment.node)
+    const location = segment.node.location
+    return m(
+      "button.mi-preview-value.mi-preview-component-link",
+      { type: "button", title: "Open in editor", onclick: () => ctx.controller.openLocationInEditor(location) },
+      summarizeNode(segment.node),
+    )
+  })
+}
+
+/**
  * A nested (non-root) container's default, collapsed state (§7.4): a flat
  * "+" toggle plus a one-line devtools-style preview of its already-loaded
  * shallow contents (e.g. `{ id: 1, label: "Write the changelog", done: false
- * }`) — built locally from `compactContainerPreview`, no fetch needed — so
- * the contents are visible without expanding at all. Expanding is then a
- * pure local UI toggle (`togglePreviewExpanded`), independent of the
- * fetch-driven `attrsOverrides`/`stateOverrides` round-trip used only for
- * data past `maxDepth`/`maxEntries`. Returned as two sibling `Children`
- * (not one wrapping element) so both land directly in the entry's own
- * `<li>` flex row: the button stays glued right after "key: " while the
- * summary span (styles.ts's `.mi-preview-inline`, `flex: 1 1 0%`) truncates
- * its own text with an ellipsis to fit what's left of the current line,
- * instead of the whole button+text pair wrapping down together.
+ * }`) — built locally from {@link compactPreviewChildren}, no fetch needed —
+ * so the contents (component links included) are visible without expanding
+ * at all. Expanding is then a pure local UI toggle (`togglePreviewExpanded`),
+ * independent of the fetch-driven `attrsOverrides`/`stateOverrides`
+ * round-trip used only for data past `maxDepth`/`maxEntries`. Returned as two
+ * sibling `Children` (not one wrapping element) so both land directly in the
+ * entry's own `<li>` flex row: the button stays glued right after "key: "
+ * while the summary span (styles.ts's `.mi-preview-inline`, `flex: 1 1 0%`)
+ * truncates its own content with an ellipsis to fit what's left of the
+ * current line, instead of the whole button+text pair wrapping down
+ * together.
  */
 function collapsedContainerPreview(ctx: PreviewContext, node: ContainerNode, effective: ContainerNode): Children {
   return [
     toggleGlyphButton("+", "Expand", () => ctx.controller.togglePreviewExpanded(ctx.target, node.path)),
-    m("span.mi-preview-inline", compactContainerPreview(effective)),
+    m("span.mi-preview-inline", compactPreviewChildren(ctx, effective)),
   ]
 }
 
@@ -867,11 +898,10 @@ function detailPane(controller: OverlayController, state: OverlayViewState): Vno
         // that never resolved an owning component at all (§8.8-style).
         m("p.mi-muted", componentId !== null ? "Component is no longer tracked." : "No owning component resolved for this element.")
       : [
-          ancestryBreadcrumb(controller, state),
+          ancestryBreadcrumb(controller, state, self),
           componentId !== null && sourceEntry !== undefined
             ? detailToolbar(controller, state, componentId, sourceEntry)
             : null,
-          renderTimingInfo(self),
           state.componentTree.gating.enabled
             ? [previewSectionBlock(controller, state, "attrs"), previewSectionBlock(controller, state, "state")]
             : null,

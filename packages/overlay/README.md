@@ -102,8 +102,9 @@ runtime stripped). `deps` lets you inject a `hook`, `document` and
   and, once at least one of its own renders exceeded the runtime's
   slow-render threshold in `mode: "full"` (default 16ms — one 60fps frame
   budget, task 0029), a `⚠ N` warning badge with the latest
-  duration in its tooltip; the detail pane shows the same "Last render: Xms"
-  line (styled as a warning once slow) for the selected component. Both stay
+  duration in its tooltip; the detail pane trails the same "(last render:
+  Xms)" text (styled as a warning once slow) onto the breadcrumb row for the
+  selected component. Both stay
   hidden entirely outside `mode: "full"` — no gate message, since the tree's
   own badges already carry that signal. Rows can be expanded/collapsed (chevron, or `ArrowRight`/`ArrowLeft`;
   `ArrowUp`/`ArrowDown` move a roving `tabindex`, `Enter`/`Space` select — a

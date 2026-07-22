@@ -703,7 +703,7 @@ describe("mountInspectorOverlay — Components tab tree (§9, §9.3, §9.4, task
     expect(handle!.shadowRoot.querySelectorAll('[role="treeitem"]').length).toBe(2)
   })
 
-  it("shows the selected component's last render duration in the detail pane, flagged once it's slow (§17 diagnostics, task 0029)", () => {
+  it("shows the selected component's last render duration trailing the breadcrumb, flagged once it's slow (§17 diagnostics, task 0029)", () => {
     const el = document.createElement("div")
     document.body.appendChild(el)
     const app = componentRecord({
@@ -725,8 +725,10 @@ describe("mountInspectorOverlay — Components tab tree (§9, §9.3, §9.4, task
     render()
 
     const timing = handle!.shadowRoot.querySelector(".mi-render-timing")
-    expect(timing?.textContent).toBe("Last render: 42.1ms · 3 slow render(s)")
+    expect(timing?.textContent).toBe("(last render: 42.1ms · 3 slow render(s))")
     expect(timing?.classList.contains("mi-render-timing-slow")).toBe(true)
+    // Trails the breadcrumb row itself, not a separate line below it.
+    expect(handle!.shadowRoot.querySelector(".mi-breadcrumb .mi-render-timing")).not.toBeNull()
   })
 
   it("omits the render-timing line entirely until a render has actually been measured", () => {

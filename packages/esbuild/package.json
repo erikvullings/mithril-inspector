@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/esbuild",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "The esbuild integration for Mithril Inspector — a thin adapter over the shared transform, runtime and server packages (§4, §12.4).",
   "type": "module",
   "license": "MIT",

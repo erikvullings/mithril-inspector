@@ -1,10 +1,10 @@
 # @mithril-inspector/transform
 
 Bundler-neutral AST source instrumentation for Mithril Inspector. No Vite,
-Rollup, webpack or esbuild dependency (ADR-004) — a bundler
-adapter (today: `@mithril-inspector/vite`) calls `transformMithrilModule`
-directly from its own load/transform hook and is responsible for wiring the
-result into whatever plugin API it targets.
+Rollup, webpack or esbuild dependency (ADR-004) — a bundler adapter (`vite`,
+`rollup`, `esbuild`, `webpack`) calls `transformMithrilModule` directly from
+its own load/transform hook and is responsible for wiring the result into
+whatever plugin API it targets.
 
 ## What it does
 
@@ -12,10 +12,10 @@ Given a module's source text, `transformMithrilModule` walks the AST and:
 
 - tags every `m(...)` hyperscript call (standard calls; experimental JSX/TSX)
   with a stable per-call source id, without changing its return value or
-  argument evaluation order (§6.2, §20.1.13);
+  argument evaluation order;
 - detects object, closure, class and function component definitions and
   registers each one's declaration (and, when it has its own span, its
-  `view`) as a `component-declaration`/`component-view` source marker (§6.5);
+  `view`) as a `component-declaration`/`component-view` source marker;
 - injects a single `__miRegisterModule("m:<hash>", { file, relativeFile, sources })`
   call per module, keyed by a stable module id that survives HMR
   re-execution (ADR-106);

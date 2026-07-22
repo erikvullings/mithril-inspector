@@ -3,8 +3,9 @@
 Open-in-editor middleware for Mithril Inspector. Framework-neutral:
 `handleInspectorRequest` takes and returns plain
 data, and `createInspectorMiddleware` adapts it to a Connect-compatible
-handler (what Vite's dev server uses). No Vite dependency itself (ADR-004) —
-`@mithril-inspector/vite` is the only current consumer.
+handler (what Vite's and webpack's dev servers use). No bundler dependency
+itself (ADR-004) — every adapter (`vite`, `rollup`, `esbuild`, `webpack`)
+consumes it.
 
 ## What it does
 
@@ -12,7 +13,7 @@ Serves one endpoint, `POST /__mithril-inspector/open-in-editor`, that takes a
 `{ file, line, column }` body and launches the configured editor at that
 location. Everything else passes through untouched.
 
-Security (§10.2, §20.1.14, task 0011):
+Security:
 
 - **Path traversal prevention** — the requested file is resolved and checked
   against `root` (and any `projectRoots` for monorepos) before anything is
@@ -31,8 +32,8 @@ import { createInspectorMiddleware } from "@mithril-inspector/server"
 app.use(
   createInspectorMiddleware({
     root: projectRoot,
-    editor: "code", // alias | { command, args } | undefined (env-var fallback, §10.3)
-    projectRoots: [monorepoPackageRoot], // optional, §10.4
+    editor: "code", // alias | { command, args } | undefined (env-var fallback)
+    projectRoots: [monorepoPackageRoot], // optional, for monorepos
     pathMappings: [{ from: "/workspace", to: "/Users/me/project" }], // optional, remote/container dev
   }),
 )
@@ -45,7 +46,7 @@ for anything else. With no `editor` option, `resolveEditor` checks
 order, and finally falls back to `"code"` (VS Code) so the endpoint works out
 of the box — it never reports `EDITOR_NOT_AVAILABLE` on its own.
 
-## Standalone server (§12.3)
+## Standalone server
 
 Bundlers with no development-server hook of their own (e.g.
 `@mithril-inspector/rollup`) can start a small standalone HTTP server serving

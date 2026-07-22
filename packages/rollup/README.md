@@ -4,7 +4,7 @@ The Rollup integration for Mithril Inspector. A
 thin adapter over the shared transform (`@mithril-inspector/transform`) and
 runtime (`@mithril-inspector/runtime`) — same option shape and instrumentation
 behaviour as `@mithril-inspector/vite`, reused via
-`@mithril-inspector/adapter-kit` rather than reimplemented (§12.1, ADR-004).
+`@mithril-inspector/adapter-kit` rather than reimplemented (ADR-004).
 
 ## Usage
 
@@ -21,21 +21,21 @@ export default {
 
 `mithrilInspector(options?)` returns a **single** Rollup plugin (unlike the
 two-plugin array `@mithril-inspector/vite` returns — Rollup has no HTML
-transform hook to split off, §11.1 vs §12.3).
+transform hook to split off).
 
 ## What it does — and doesn't
 
-Per §12.3, this package covers:
+This package covers:
 
 - **AST transformation** — `transform` (registered with `order: "pre"` so it
-  sees the original TypeScript/JSX before any other transform lowers it,
-  §11.3 analog) calls the same `transformMithrilModule` every adapter uses.
+  sees the original TypeScript/JSX before any other transform lowers it)
+  calls the same `transformMithrilModule` every adapter uses.
 - **Runtime import resolution** — `resolveId`/`load` serve
   `virtual:mithril-inspector/runtime` and `.../overlay`, exactly like the Vite
-  plugin's virtual modules (§11.2).
+  plugin's virtual modules.
 - **Watch mode** — Rollup re-runs `transform`/`load` for changed files
   automatically in `--watch`/`rollup.watch()`; the shared transform's own
-  content-hash-keyed cache (§17) means a changed file simply produces a fresh
+  content-hash-keyed cache means a changed file simply produces a fresh
   cache entry, so no extra invalidation bookkeeping is needed here.
 - **Source maps** — the transform's map is passed straight through in the
   `transform` hook's return value.
@@ -44,12 +44,12 @@ It does **not** inject the overlay into an HTML page (Rollup has no
 `transformIndexHtml` equivalent) and does **not** register an open-in-editor
 endpoint itself (Rollup is not a development server) — see below.
 
-## Dev-only guard (§2.1 analog)
+## Dev-only guard
 
 Rollup has no `command === "build"` distinction the way Vite does; the
 closest equivalent is `this.meta.watchMode`, which is `true` only when Rollup
 is running via `--watch`/`rollup.watch()`. This plugin is active only when
-`enabled` (default: `NODE_ENV !== "production"`, §2.1) **and** either watch
+`enabled` (default: `NODE_ENV !== "production"`) **and** either watch
 mode is on or `includeInProduction` is set — so a plain one-off
 `rollup.rollup()`/`rollup build` never emits inspector code by default
 (verified by a real build in `tests/integration/`).
@@ -60,12 +60,11 @@ mithrilInspector({
 })
 ```
 
-## Editor launching (§12.3)
+## Editor launching
 
 Rollup isn't a development server, so — unlike the Vite plugin, which
 registers the open-in-editor endpoint itself via `configureServer` — this
-package does not start one for you. Pick one of the three patterns §12.3
-allows:
+package does not start one for you. Pick one of these three patterns:
 
 1. **Compatible dev-server integration.** If you already run your own
    Connect/Express/`node:http` dev server to serve the Rollup output, mount
@@ -88,8 +87,8 @@ allows:
    console.log(`Mithril Inspector editor endpoint: ${handle.url}`)
    ```
 
-   It binds to `127.0.0.1` only and adds no CORS headers (§10.2's security
-   posture), so the app page must reach it same-origin — pattern 3 covers
+   It binds to `127.0.0.1` only and adds no CORS headers, so the app page
+   must reach it same-origin — pattern 3 covers
    that.
 
 3. **A configured/proxied endpoint URL.** Since patterns 1–2 require the
@@ -114,7 +113,7 @@ if (process.env.NODE_ENV !== "production") {
 
 ## Options
 
-Same shape as `@mithril-inspector/vite` (§11.1) — see that package's README
+Same shape as `@mithril-inspector/vite` — see that package's README
 for the full option reference (`include`/`exclude`, `root`/`projectRoots`,
 `editor`, `pathMappings`, `mode`, `ui`, `picker`, `componentTree`, `source`,
 `mithrilImports`/`hyperscriptIdentifiers`, `debug`, `redact`). `ui`/`picker`

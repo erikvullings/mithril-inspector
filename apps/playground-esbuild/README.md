@@ -42,7 +42,7 @@ Open that URL. You should see:
 
 ## What's in `src/main.ts`
 
-A tiny app covering three of the component forms (§6.5) the transform
+A tiny app covering three of the component forms the transform
 supports: `Greeting` (**object**), `Counter` (**closure**, with a real
 `onclick` — useful for manually confirming picker clicks are suppressed) and
 `ItemList` (**closure**, a keyed list).
@@ -57,14 +57,14 @@ grep -r "__MITHRIL_INSPECTOR__\|__miRegisterModule\|__miSource\|mountInspectorOv
 
 `scripts/build.mjs` deliberately still wires the plugin up (unlike simply
 omitting it) with `minify: true` and no `includeInProduction` — proving the
-plugin's own dev-only/minify guard does the exclusion (§12.4 AC), not just
+plugin's own dev-only/minify guard does the exclusion, not just
 the absence of the plugin from the script. The `if (__DEV__) { ... }` guard
 around the overlay import in `main.ts` is dead-code-eliminated by esbuild once
 `define: { __DEV__: "false" }` makes the condition statically `false`, so the
 unresolvable `virtual:mithril-inspector/overlay` specifier never reaches
 esbuild's resolver in a build where the plugin isn't active to serve it.
 
-## No HMR (documented limitation, §25.9)
+## No HMR (documented limitation)
 
 Plain esbuild watch mode has no fine-grained module replacement — every
 change is a full rebuild, and the browser tab needs a manual reload to see

@@ -1,7 +1,7 @@
 # Vite playground
 
 The manual test bed for Mithril Inspector (task 0014):
-a small routed Mithril 2.x + TypeScript app that exercises every §19.2 fixture
+a small routed Mithril 2.x + TypeScript app that exercises every fixture
 scenario, wired up with **zero application-code changes** beyond
 `vite.config.ts`:
 
@@ -35,8 +35,8 @@ Open the printed local URL. You should see:
    details instead.
 5. Click **Open in editor**. By default (no `editor` option, no
    `EDITOR`/`VISUAL`/`LAUNCH_EDITOR`/`MITHRIL_INSPECTOR_EDITOR` env var) the
-   endpoint correctly reports "no editor configured" rather than guessing
-   (§10.3) — this is the intended zero-config behavior, not a bug. To see it
+   endpoint correctly reports "no editor configured" rather than guessing —
+   this is the intended zero-config behavior, not a bug. To see it
    actually open VS Code at the exact original `.ts` line, run with an editor
    configured, e.g.:
 
@@ -46,7 +46,7 @@ Open the printed local URL. You should see:
 
    or set `mithrilInspector({ editor: "code" })` in `vite.config.ts`.
 
-## Routes / scenarios covered (§19.2)
+## Routes / scenarios covered
 
 | Route             | File                              | Exercises                                              |
 | ----------------- | ---------------------------------- | ------------------------------------------------------- |
@@ -69,7 +69,7 @@ Two more scenarios aren't routes:
 - **Multiple mount roots** — `src/status-widget.ts` is mounted independently
   via a second `m.mount()` call in `main.ts`, next to the router's root.
 
-The mix of component forms (§6.5) required by the task is: **object**
+The mix of component forms required by the task is: **object**
 (`Greeting`, `HomePage`, `FragmentPage`, `TrustedHtmlPage`, `SvgPage`,
 `ScrollPage`, `TransformPage`, `Layout`, `StatusWidget`), **closure**
 (`Counter`, `ListPage`, `ShadowDomPage`, `Nav` — written as

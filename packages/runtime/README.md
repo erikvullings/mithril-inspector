@@ -11,7 +11,7 @@ Phase 0 spikes: vnode→DOM association (ADR-101), fragment-root components
 Phase 1 shipped the `"source"` mode: an element-to-source registry plus
 DOM/source association so the overlay can resolve a hovered DOM node to its
 original source location. Task 0017 (Phase 2) adds mounted component-instance
-IDs and parent-child tracking (`ComponentRecord`, §7.3) behind the `mode`
+IDs and parent-child tracking (`ComponentRecord`) behind the `mode`
 gate — see "Modes" below.
 
 ## Transform-facing contract
@@ -31,7 +31,7 @@ import {
 __miRegisterModule("m:<hash>", { file, relativeFile, sources })
 
 // Around every hyperscript call (returns the vnode unchanged; metadata lives
-// in a WeakMap, never in enumerable attrs, §6.2):
+// in a WeakMap, never in enumerable attrs):
 __miSource("m:<hash>:s2", m("article.user-card", …))
 
 // Around every component definition (returns the instrumented definition):
@@ -41,7 +41,7 @@ export const UserCard = __miComponent("m:<hash>:s1", { view: … })
 ## Global hook
 
 The runtime installs a single dev-only hook at `window.__MITHRIL_INSPECTOR__`
-(protocol version 1, §7.1) exposing the standard
+(protocol version 1) exposing the standard
 `registerModule` / `registerComponent` / `registerVNode` / `associateDom` /
 `disposeVNode` / `subscribe` / `getSnapshot` methods, plus a richer resolution
 API the overlay uses:
@@ -53,10 +53,10 @@ const hook = getInspectorHook()
 hook.resolveDomSource(node)     // nearest SourceLocation for a DOM node, or null
 hook.resolveDomComponent(node)  // nearest ComponentId owning a DOM node, or null
 hook.sourceOfVnode(vnode)       // source stamped on a specific vnode, or null
-hook.excludeHost(overlayHost)   // keep the overlay host out of tracking (§8.2)
-hook.setMode("source")          // "source" | "components" | "full" (§17, see "Modes" below)
+hook.excludeHost(overlayHost)   // keep the overlay host out of tracking
+hook.setMode("source")          // "source" | "components" | "full" (see "Modes" below)
 hook.invalidateModule("m:…")    // drop a module's stale sources on HMR (ADR-106)
-hook.getRedactionConfig()       // resolved { keys, replacement } policy (§15)
+hook.getRedactionConfig()       // resolved { keys, replacement } policy
 hook.getSnapshot()              // { components, vnodes, modules, domAssociations }
 ```
 
@@ -69,10 +69,9 @@ adapter:
 ```ts
 createRuntime({
   mode: "source",
-  exposeDomAttributes: true,           // §13: add a compact, path-free
-                                       // data-mi="m:<hash>:s2" attr to element
-                                       // vnodes (off by default)
-  redact: { keys: ["password"], replacement: "[redacted]" }, // §15 policy
+  exposeDomAttributes: true,  // add a compact, path-free data-mi="m:<hash>:s2"
+                               // attr to element vnodes (off by default)
+  redact: { keys: ["password"], replacement: "[redacted]" }, // redaction policy
 })
 ```
 
@@ -80,13 +79,13 @@ createRuntime({
 so the module's stale source table is dropped, and the re-executed module's own
 `registerModule` restores a fresh one (ADR-106).
 
-Associations are batched on a microtask after each render pass (§9.4); call
+Associations are batched on a microtask after each render pass; call
 `hook.flush()` to force one synchronously. All node/vnode/state keys are held
-weakly, and instance records are cleaned when a component unmounts (§17). Every
+weakly, and instance records are cleaned when a component unmounts. Every
 entry point runs inside an error boundary: a failure is caught, the host render
-is never broken, and a repeatedly-failing feature disables itself (§16).
+is never broken, and a repeatedly-failing feature disables itself.
 
-## Public API (§14)
+## Public API
 
 For application patterns the transform cannot reach:
 
@@ -94,22 +93,22 @@ For application patterns the transform cannot reach:
 import {
   inspectComponent,        // instrument a component explicitly (functional)
   setInspectorDisplayName, // override a component's display name (functional)
-  defineInspectorName,     // alias of setInspectorDisplayName — §9.2's spelling
+  defineInspectorName,     // alias of setInspectorDisplayName
   markInspectorHidden,     // hide a component from the tree
   setInspectorSerializer,  // attach an attrs/state redaction serializer
   inspectSource,           // reserved; returns the vnode unchanged in Phase 1
 } from "@mithril-inspector/runtime"
 ```
 
-## Display name resolution (§9.2, task 0018)
+## Display name resolution (task 0018)
 
 `ComponentRecord.displayName` resolves strictly in this order, stopping at the
 first tier that produces a name:
 
-1. an explicit inspector name (`setInspectorDisplayName`/`defineInspectorName`, §14);
+1. an explicit inspector name (`setInspectorDisplayName`/`defineInspectorName`);
 2. `component.displayName`;
-3. the variable/export name the transform discovered for the declaration (§6.5,
-   carried in `SourceLocation.displayName`);
+3. the variable/export name the transform discovered for the declaration
+   (carried in `SourceLocation.displayName`);
 4. the class name;
 5. the function name;
 6. a filename-derived name (the component's source file's basename, extension
@@ -117,26 +116,26 @@ first tier that produces a name:
 7. `"Anonymous"`.
 
 `ComponentRecord.displayNameInferred` is `true` for tiers 6–7 and `false`
-otherwise, so the overlay (0012) can mark a guessed name as inferred (§2.4)
+otherwise, so the overlay can mark a guessed name as inferred
 instead of presenting it as authoritative. Resolution reads live from the
 source registry on every call (never cached on the instance record), so a
 renamed declaration takes effect immediately after HMR re-registers its
 module (ADR-106) — no re-instrumentation needed.
 
-## Modes (§17, task 0017)
+## Modes (task 0017)
 
 ```ts
 mode: "source"      // default — element/source mapping and editor navigation only
 mode: "components"  // + component-instance tracking: class and route-resolver
                      //   kinds, render-ordered childIds (see below)
 mode: "full"         // + render-duration tracking and slow-render warnings
-                     //   (§17 "diagnostics", task 0029; see below)
+                     //   (task 0029; see below)
 ```
 
 Object and closure component instance-tracking (nearest-component lookup,
 parent/child linkage) predates this gate — it was pulled forward into
 `"source"` for the 0.1.0-alpha.1 release (task 0016) to support hover/basic
-ancestry (§20.1.5, §20.1.10) and stays unconditional in every mode, so it does
+ancestry and stays unconditional in every mode, so it does
 not regress. `mode: "components"`/`"full"` *additionally* activate class and
 route-resolver tracking, which task 0017 introduced already gated (there was
 no earlier alpha behavior to preserve for those two kinds).
@@ -148,7 +147,7 @@ no earlier alpha behavior to preserve for those two kinds).
 
 - **`object`** / **`closure`** — always tracked, any mode (see above).
 - **`anonymous`** — an `object`-shaped inline component with no discoverable
-  name at all (§2.4); a read-time refinement, not a separate wrap path.
+  name at all; a read-time refinement, not a separate wrap path.
 - **`class`** — tracked in `mode: "components"`/`"full"` via ADR-103's
   "prototype facade" mechanism, with one production caveat: a `class`
   constructor's own `.prototype` property is **non-writable** (unlike a plain
@@ -170,8 +169,8 @@ no earlier alpha behavior to preserve for those two kinds).
   carrier). Has no unmount signal (a resolver just stops being called when the
   route changes), so once allocated it stays `mounted: true` for the app's
   lifetime. **Runtime-only**: the transform doesn't yet detect `{render}`
-  object literals inside a real `m.route()` table (§6.5 only detects
-  `view`-shaped components), so this currently only activates through
+  object literals inside a real `m.route()` table (only `view`-shaped
+  components are detected today), so this currently only activates through
   `instrument()`/the public `inspectComponent()` API directly, not
   automatically for an app's actual route table — a follow-up transform
   change.
@@ -189,12 +188,12 @@ no earlier alpha behavior to preserve for those two kinds).
   affected.
 
 `childIds` is rebuilt in current render order on every flush (not creation
-order — ADR-103's own flagged follow-up), and `markInspectorHidden` (§14)
+order — ADR-103's own flagged follow-up), and `markInspectorHidden`
 excludes a component and its whole subtree from `recordOf`/`componentsSnapshot`/
 `resolveDomComponent` (filtered at read time, since hiding can be toggled
 independently of when a component was instrumented).
 
-`ComponentRecord.key` (task 0022, §9.1's own `UserCard key="42"` example) is the
+`ComponentRecord.key` (task 0022, e.g. `UserCard key="42"`) is the
 instance's vnode `key` attribute (`string | number`), or `null` when unkeyed —
 read straight off the `latestVnode` recorded at allocation/flush time, never
 recomputed or cached separately. A vnode's key is stable for the instance's
@@ -202,7 +201,7 @@ whole lifetime (Mithril only reuses a `state` object across renders when the
 key matches; a changed key allocates a new instance instead), so unlike
 `domRange`/`childIds` it's never repatched via `ComponentPatch`.
 
-## Render-duration tracking and slow-render warnings (§17 diagnostics, task 0029)
+## Render-duration tracking and slow-render warnings (task 0029)
 
 In `mode: "full"` only, `ComponentRecord.renderDuration` is the most recent
 `view()`/route-resolver `render()` call's own wall-clock duration in
@@ -210,7 +209,7 @@ milliseconds, and `slowRenderCount` is the cumulative count of renders whose
 duration exceeded `RuntimeOptions.slowRenderThresholdMs` (default `16` — one
 60fps frame budget). Both stay `null`/`0` in `"source"`/`"components"` mode:
 the two `performance.now()` calls this needs are skipped entirely there, so
-the feature costs nothing outside `full` mode (§17 "opt-in, off by default").
+the feature costs nothing outside `full` mode (opt-in, off by default).
 
 The measurement brackets only the application's own `view.call`/`render.call`
 — nothing a descendant component's own `view()` does, and nothing the
@@ -234,17 +233,16 @@ deterministic tests, mirroring `RuntimeOptions.now`'s existing pattern for
 ## Ancestry and component-view source (task 0019)
 
 `ComponentRegistry.ancestryOf(id)` returns the root-first ancestor chain for a
-mounted instance, including the instance itself as the last entry (§9.1
-example shape). It's consistent with `recordOf`'s hidden-subtree exclusion
-(§14): a component inside a hidden ancestor's subtree is itself not visible
-(`isVisible` already walks the whole chain checking every hidden flag), so its
-ancestry is `[]` rather than a chain with a gap where the hidden ancestor
-would have been.
+mounted instance, including the instance itself as the last entry. It's
+consistent with `recordOf`'s hidden-subtree exclusion: a component inside a
+hidden ancestor's subtree is itself not visible (`isVisible` already walks the
+whole chain checking every hidden flag), so its ancestry is `[]` rather than a
+chain with a gap where the hidden ancestor would have been.
 
 `ComponentRegistry.viewSourceOf(id)` resolves a component's `component-view`
-source location (§9.3's "component view" open target, distinct from the
+source location (the "component view" open target, distinct from the
 `component-declaration` location already on `ComponentRecord.source`). The
-transform (§6.5's `addComponent`) always registers a component's
+transform's `addComponent` always registers a component's
 `component-view` marker as the source id immediately following its
 `component-declaration` marker when the view has its own span; `viewSourceOf`
 derives that adjacent id from the instance's `qualifiedId` and returns the
@@ -255,11 +253,11 @@ spanned view).
 
 Both are exposed on `InspectorRuntime` as `componentAncestry`/
 `componentViewSource` and consumed by the overlay's ancestry panel and
-"Reveal component" action (0019/0012), which additionally resolves the
+"Reveal component" action, which additionally resolves the
 *rendered element*'s own exact mapping (`resolveDomSource` on the component's
-`domRange.first`) as the third and generally most-precise §9.3 open target.
+`domRange.first`) as the third and generally most-precise open target.
 
-## Batched runtime events (§9.4, task 0021)
+## Batched runtime events (task 0021)
 
 `subscribe(listener)` delivers coalesced `RuntimeEvent`s on every `flush()` —
 one notification per event type per flush, never one per changed record:
@@ -281,9 +279,9 @@ type RuntimeEvent =
   call on an already-allocated resolver). `id`/`updateCount`/`updatedAt`/
   `renderDuration`/`slowRenderCount` (task 0029, see below) are always
   present; `domRange`/`childIds` are included only when they actually changed
-  since the last emitted record for that instance (§9.4 "no full-record
-  spam") — `attrs`/`state` are deliberately never pushed through this stream,
-  consistent with §7.4's lazy, pull-based `attrsPreview`/`statePreview` (task
+  since the last emitted record for that instance (no full-record
+  spam) — `attrs`/`state` are deliberately never pushed through this stream,
+  consistent with the lazy, pull-based `attrsPreview`/`statePreview` (task
   0020). An instance also added or removed within the same batch (e.g. two
   redraws before one flush) is reported once, via
   `components-added`/`components-removed`, not additionally here.
@@ -295,13 +293,13 @@ type RuntimeEvent =
 - **`reset`** signals a full invalidation — the subscriber should discard
   everything and re-derive from a fresh `getSnapshot()`. Emitted by
   `resetTracking()` (below) and, if a subscriber is already listening, by the
-  §16 error boundary when a repeatedly-failing feature disables itself. A
+  error boundary when a repeatedly-failing feature disables itself. A
   `reset` fired with **no subscriber currently attached** is not silently
   dropped — it is delivered to whichever listener calls `subscribe()` next
   (a later subscriber does not also receive it).
 
 `resetTracking()` clears all component and DOM-association tracking and emits
-`reset` per the rule above. It is the primitive for two §16 scenarios:
+`reset` per the rule above. It is the primitive for two scenarios:
 
 - **HMR full-invalidation** — a caller-driven reset an adapter can call from a
   real "the whole module graph was invalidated" hook. Wiring an actual Vite
@@ -315,7 +313,7 @@ type RuntimeEvent =
   `window.__MITHRIL_INSPECTOR__` (a protocol-version mismatch — two different
   bundled copies of the inspector). It also logs a `console.warn` diagnostic
   and never touches the existing hook beyond reading its `protocolVersion`
-  (§16: its shape is untrusted). A *compatible*-version existing hook is
+  (its shape is untrusted). A *compatible*-version existing hook is
   still reused silently, as before (task 0016).
 
 **Known caveat**: `resetTracking()` drops bookkeeping for still-mounted
@@ -333,9 +331,9 @@ regardless of when it was added, and subsequent events report only what
 changes *after* that point — an already-known instance is never re-announced
 as added, and a later removal is still delivered.
 
-## Safe serializer and redaction (§7.4, §15, task 0020)
+## Safe serializer and redaction (task 0020)
 
-`ComponentRecord.attrs`/`.state` are raw, read-only references (§7.3) — never
+`ComponentRecord.attrs`/`.state` are raw, read-only references — never
 display them directly. `InspectorRuntime` exposes a lazy, privacy-aware
 preview instead:
 
@@ -359,7 +357,7 @@ Containers carry `offset`/`truncated` so a large collection pages through
 `maxEntries` at a time instead of serializing everything eagerly. Proxies need
 no special handling: every property read (not just declared getters) is
 wrapped in try/catch, so a throwing trap surfaces as an inline `error` node
-instead of propagating (§16).
+instead of propagating.
 
 `createSerializer` (`./serializer.ts`) is the underlying pure builder, usable
 standalone:
@@ -375,7 +373,7 @@ serializer.serialize(value)
 serializer.expand(root, path, { offset })
 ```
 
-Redaction (§15) matches a property key (or a `Map`'s own string key) case-
+Redaction matches a property key (or a `Map`'s own string key) case-
 insensitively against a substring pattern list — the same semantics as the requirements doc's
 unanchored `/password/i` example. `DEFAULT_REDACTION_KEYS` (password, passwd,
 secret, token, authorization, cookie, apiKey, accessToken, refreshToken) is
@@ -388,10 +386,10 @@ redaction, and `expandPreview` refuses to walk through a redacted key (no
 getter-triggered back door). A redacted key's getter is never invoked, and
 its value is never read at all.
 
-`setInspectorSerializer(def, { attrs?, state? })` (§14) runs before the safe
+`setInspectorSerializer(def, { attrs?, state? })` runs before the safe
 serializer: its return value becomes the input to `attrsPreview`/
 `statePreview` for instances of that definition. A throwing hook falls back
-to the raw value rather than breaking the preview (§16).
+to the raw value rather than breaking the preview.
 
 ## Known Phase 1/2 limitations
 
@@ -401,16 +399,16 @@ to the raw value rather than breaking the preview (§16).
 - Route-resolver tracking is runtime-only pending a transform change (see
   `kind: "route-resolver"` above).
 - `mode: "full"` additionally activates render-duration tracking and
-  slow-render warnings (§17 diagnostics, task 0029, see above) on top of
+  slow-render warnings (task 0029, see above) on top of
   everything `"components"` does. Redraw-flash visualization, per-render
   timing beyond the single most-recent value, and route inspection (the rest
-  of the remaining Phase 5 diagnostics list (see `TASKS/0026`) remain
+  of the remaining Phase 5 diagnostics list, see `TASKS/0026`) remain
   unscoped follow-ups. Safe attrs/state serialization itself (task 0020, see
   above) does not depend on `mode` — `attrsPreview`/`statePreview` work for
   any tracked instance.
 - `inspectSource` and per-node vnode ids in `getSnapshot` are placeholders for
   later phases.
-- `mode: "components"`'s §17 "<20% median redraw overhead" target is
+- `mode: "components"`'s "<20% median redraw overhead" target is
   **unconfirmed at scale**: an ad hoc spot-check (task 0017 Agent Notes)
   measured ~12% overhead on a small synthetic tree (64 components) but ~30%
   on a larger one (~4096 components) — not yet profiled to find the actual
@@ -423,9 +421,9 @@ to the raw value rather than breaking the preview (§16).
   active no-op subscriber) measured `"source"` mode's overhead *against a bare
   `m.render` with no runtime at all* going from ~113% to ~185% after this
   task — i.e. this specific micro-benchmark's absolute cost was already far
-  past §17's "<10%" framing *before* this task (a pre-existing characteristic
+  past the "<10%" framing *before* this task (a pre-existing characteristic
   of `source()`'s tagging + association-map rebuild, not introduced here) and
-  grew further because of it. The §17-literal, mode-relative comparison this
+  grew further because of it. The mode-relative comparison this
   task's acceptance criteria actually asks for (`"components"`/`"full"` vs
   `"source"`, the same methodology task 0017 used) stayed inside the 20%
   budget across repeated runs (roughly 5-19% for `"components"`, 10-13% for

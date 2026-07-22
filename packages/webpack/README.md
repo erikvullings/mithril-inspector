@@ -4,10 +4,10 @@ The webpack and Rspack integration for Mithril Inspector. A thin adapter over
 the shared transform (`@mithril-inspector/transform`)
 and runtime (`@mithril-inspector/runtime`) — same option shape and
 instrumentation behaviour as `@mithril-inspector/vite`/`rollup`/`esbuild`,
-reused via `@mithril-inspector/adapter-kit` rather than reimplemented (§12.1,
-ADR-004). One package, one plugin, works unmodified on both bundlers — verified
+reused via `@mithril-inspector/adapter-kit` rather than reimplemented
+(ADR-004). One package, one plugin, works unmodified on both bundlers — verified
 against real `webpack()` **and** `rspack()` compilations in
-`tests/integration/`, not just documented as "should work" (§25.9).
+`tests/integration/`, not just documented as "should work".
 
 ## Usage
 
@@ -43,7 +43,7 @@ used), which is exactly why the same compiled code runs on either bundler.
 
 ## What it does — and doesn't
 
-Per §12.5, this package covers:
+This package covers:
 
 - **A loader for module transformation** — auto-registered as an
   `enforce: "pre"` rule (so it always runs first, directly on the original
@@ -56,20 +56,20 @@ Per §12.5, this package covers:
   entry-file edit required; the runtime import instrumented modules use is
   wired through `resolve.alias`.
 - **Dev-server middleware for editor launching** — `compiler.options.devServer`
-  is patched to mount `createInspectorMiddleware` (0011) via
+  is patched to mount `createInspectorMiddleware` via
   `setupMiddlewares`, composing with (never replacing) whatever you already
   configured there. Works with `webpack-dev-server` and Rspack's dev server —
   both accept the same `setupMiddlewares(middlewares, ctx) => middlewares`
   shape.
 - **Watch mode / source maps** — both bundlers re-run the loader for changed
   files automatically; the shared transform's own content-hash-keyed cache
-  (§17) means a changed file simply produces a fresh cache entry.
+  means a changed file simply produces a fresh cache entry.
 
 It does **not** inject anything into an HTML page — that's `html-webpack-plugin`'s
 job, not this plugin's, and it's out of scope here the same way esbuild's
 adapter leaves it to the application/build script.
 
-## Divergences from the Vite/Rollup/esbuild adapters (§25.9)
+## Divergences from the Vite/Rollup/esbuild adapters
 
 All forced by webpack's/Rspack's own architecture, not by choice:
 
@@ -102,7 +102,7 @@ All forced by webpack's/Rspack's own architecture, not by choice:
   inactive rather than erroring, but stale-module invalidation on module
   replacement does not happen automatically here.
 
-## Dev-only guard (§2.1 analog)
+## Dev-only guard
 
 Active only when `enabled` (default: `NODE_ENV !== "production"`) **and**
 `compiler.options.mode !== "production"`, unless `includeInProduction` is set
@@ -130,7 +130,7 @@ if (process.env.NODE_ENV !== "production") {
 
 ## Options
 
-Same shape as `@mithril-inspector/vite` (§11.1) — see that package's README
+Same shape as `@mithril-inspector/vite` — see that package's README
 for the full option reference (`include`/`exclude`, `root`/`projectRoots`,
 `editor`, `pathMappings`, `mode`, `ui`, `picker`, `componentTree`, `source`,
 `mithrilImports`/`hyperscriptIdentifiers`, `debug`, `redact`).

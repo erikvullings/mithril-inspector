@@ -4,6 +4,74 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/); pre-1.0 versions may include
 breaking changes between minor releases.
 
+## 0.2.0 — Phase 4: Rollup, esbuild and webpack/Rspack adapters; diagnostics
+
+Builds on 0.1.0 with everything from REQUIREMENTS.md §21 Phase 4 (the
+remaining bundler adapters) plus the render-timing/redraw-flash slice of
+Phase 5. See each task file under `TASKS/` for full acceptance criteria and
+Agent Notes.
+
+### Added
+
+- **Rollup adapter** (§12.3, task 0023) — `@mithril-inspector/rollup`, a thin
+  adapter over the shared transform/runtime/server packages: AST
+  transformation, virtual-module resolution, watch mode and source maps,
+  dev-only by default. Extracted `@mithril-inspector/adapter-kit`
+  (bundler-neutral option resolution and virtual-module utilities) out of the
+  Vite plugin so Rollup, esbuild and webpack share it instead of duplicating
+  it.
+- **esbuild adapter** (§12.4, task 0024) — `@mithril-inspector/esbuild`,
+  built on `build.onResolve`/`build.onLoad`/`build.onEnd`. esbuild has
+  neither an HTML-injection hook nor a dev-server hook, so it ships an
+  opt-in `devServer` option that starts a small combined static-file and
+  editor-endpoint server reusing `@mithril-inspector/server`. Added
+  `apps/playground-esbuild`, demonstrating picker → open-in-editor
+  end-to-end.
+- **Webpack/Rspack adapter** (§12.5, task 0025) — one
+  `@mithril-inspector/webpack` plugin that runs unmodified on both: an
+  `enforce: "pre"` loader for transformation, `EntryPlugin`-based entry
+  injection, and `devServer.setupMiddlewares` wiring for the open-in-editor
+  endpoint. Both bundlers reject `virtual:...`-shaped specifiers before
+  `resolve.alias` runs, so this adapter writes the runtime/overlay bootstrap
+  to real files under `node_modules/.cache/mithril-inspector` instead of an
+  in-memory virtual module — verified against real `webpack()` and
+  `rspack()` builds.
+- **Render-timing tracking and slow-render warnings** (§17, task 0029) —
+  per-component last-render-duration tracking and an opt-in slow-render
+  warning, off by default.
+- **Redraw-flash visualization** (§17, task 0030) — an opt-in, rAF-throttled
+  visual flash on DOM nodes that actually changed on a redraw (not every
+  component whose `view()` ran), plus a live Settings-tab toggle
+  (`mode: "full"`-gated) that re-reads mode/enabled state on every mutation
+  batch so mode transitions and toggling take effect immediately.
+- **Attrs in the History timeline** (task 0027 follow-up) — the History tab
+  (renamed from "State History") now interleaves attrs alongside state, with
+  a Both/State/Attrs scope toggle once a component has data in both, and
+  drops whichever side is always empty instead of showing bare
+  `(value): Object` noise.
+- **Vite 8 support** — the playground and `@mithril-inspector/vite`'s peer
+  range widened to include `^8.0.0`; `mithrilInspector()` now returns
+  `PluginOption[]` instead of `Plugin[]` so consumer projects on a different
+  Vite version than this repo's devDependency don't hit `TS2769` import
+  errors.
+
+### Fixed
+
+- Normalized `sourcesContent` in source maps across all bundler adapters —
+  `magic-string` produces `(string | null)[]` but bundlers expect
+  `string[]`.
+- Redraw-flash: the `MutationObserver` install decision was frozen at mount
+  time, so a session that transitioned into `mode: "full"` later never got
+  the observer attached; toggling the Settings-tab checkbox off also didn't
+  cancel an already-in-flight flash.
+
+### Packaging
+
+- `adapter-kit`, `rollup`, `esbuild` and `webpack` join the four 0.1.0
+  packages as public packages, versioned in lockstep — all ten shipping
+  packages (`protocol`, `runtime`, `transform`, `server`, `overlay`,
+  `adapter-kit`, `vite`, `rollup`, `esbuild`, `webpack`) are `0.2.0`.
+
 ## 0.1.0 — Phase 2/3: component tracking, ancestry, safe previews, state history
 
 Builds on 0.1.0-alpha.1 with everything from REQUIREMENTS.md §21 Phases 2 and

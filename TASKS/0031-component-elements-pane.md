@@ -333,3 +333,23 @@ doesn't have to re-derive it:
   `overlay.test.ts`, both `README.md`s, `adapter-kit/*`) is cleanly this
   task's own work only. Flagged to the user; not committed pending their
   direction.
+
+- 2026-07-22 claude: **Resolved and committed, per user direction ("commit
+  everything together" plus a specific rewritten message for the unrelated
+  work).** Split into two commits rather than one, since the user's own
+  message was scoped only to the diagnostics-badge/editor-warning feature:
+  temporarily backed out this task's own hunks from the four entangled files
+  (`controller.ts`, `view.ts`, `icons.ts`, `styles.ts`) down to a verified
+  (typecheck + full `packages/overlay` suite green) "pre-existing feature
+  only" state, staged exactly those four files plus the untouched
+  `packages/server/src/handle-request.ts`/`.test.ts`, and committed as
+  `5b524c4 fix(overlay): surface editor-launch failures and add a
+  diagnostics badge` (the user's message, lightly reformatted for the
+  commit-message convention). Then restored every one of this task's own
+  hunks on top of that new baseline, re-verified (`tsc --noEmit` clean,
+  `vitest run` → 392/392 in `packages/overlay`, `pnpm -r typecheck` clean,
+  `pnpm build` + `pnpm -r test` green across all 20 workspace projects
+  including the real-Chromium `tests/browser` suite), and committed
+  everything this task actually touched as `fc27e60 feat(overlay): add
+  Elements tab for per-component DOM/vnode expansion`. Working tree clean
+  after both commits.

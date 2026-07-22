@@ -511,34 +511,36 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     }
   }
 
+  // Every "editor" diagnostic is a direct result of a user action expecting
+  // the editor to open, so it must also warn — not just record — or the
+  // action fails with no feedback at all (see `warnEditorFailure` above).
+  const recordEditorFailure = (message: string): void => {
+    diagnostics.record("editor", new Error(message))
+    warnEditorFailure(message)
+    redraw()
+  }
+
   // Editor-open primitives shared by the details actions and the Enter shortcut.
   const doOpenLocation = (location: SourceLocation): void => {
     const request = editorRequestOf(location)
     if (request === null) {
-      diagnostics.record("editor", new Error("Source location has no usable file/line"))
-      redraw()
+      recordEditorFailure("Source location has no usable file/line")
       return
     }
     void openInEditor(request)
       .then((result) => {
         if (!result.ok) {
-          const message = result.error?.message ?? "Editor launch failed"
-          diagnostics.record("editor", new Error(message))
-          warnEditorFailure(message)
-          redraw()
+          recordEditorFailure(result.error?.message ?? "Editor launch failed")
         }
       })
       .catch((error: unknown) => {
-        diagnostics.record("editor", error)
-        warnEditorFailure(error instanceof Error ? error.message : String(error))
-        redraw()
+        recordEditorFailure(error instanceof Error ? error.message : String(error))
       })
   }
   const doOpenSelected = (): void => {
     const snap = selection.snapshot()
     if (snap.source === null) {
-      diagnostics.record("editor", new Error("Selected element has no source location"))
-      redraw()
+      recordEditorFailure("Selected element has no source location")
       return
     }
     doOpenLocation(snap.source)
@@ -1130,8 +1132,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         () => {
           const location = hook?.resolveDomSource(node) ?? null
           if (location === null) {
-            diagnostics.record("editor", new Error("No source location available for this element"))
-            redraw()
+            recordEditorFailure("No source location available for this element")
             return
           }
           doOpenLocation(location)
@@ -1171,15 +1172,13 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         () => {
           const record = hook?.componentRecord(id)
           if (record === undefined) {
-            diagnostics.record("editor", new Error("Component is no longer available"))
-            redraw()
+            recordEditorFailure("Component is no longer available")
             return
           }
           const choices = computeChoices(record)
           const choice = (kind !== undefined ? choices.find((c) => c.kind === kind) : undefined) ?? choices[0]
           if (choice === undefined) {
-            diagnostics.record("editor", new Error("No source location available for this component"))
-            redraw()
+            recordEditorFailure("No source location available for this component")
             return
           }
           doOpenLocation(choice.location)

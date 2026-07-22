@@ -115,6 +115,12 @@ posture. The other two patterns `@mithril-inspector/rollup` documents
 `startInspectorServer` companion behind your own reverse proxy — work here
 too, unchanged.
 
+Pass `editor` explicitly, as above — leaving it unset falls back to
+`MITHRIL_INSPECTOR_EDITOR`/`LAUNCH_EDITOR`/`VISUAL`/`EDITOR` from the
+process's own environment before defaulting to `"code"`, and it can't be a
+terminal editor (`vi`, `vim`, `nvim`, `emacs`, `nano`) either way — see
+`@mithril-inspector/vite`'s README for why.
+
 ## Mounting the overlay
 
 Since esbuild has no HTML injection hook, pick one of two patterns:

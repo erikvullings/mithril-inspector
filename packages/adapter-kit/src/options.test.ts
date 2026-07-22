@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
   DEFAULT_REDACT_KEYS,
@@ -52,7 +52,24 @@ describe("resolveInspectorOptions", () => {
   })
 
   it("resolves editorCommand from the environment-variable fallback chain when no editor option is set (§10.3)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     expect(resolveInspectorOptions({}, { NODE_ENV: "development", EDITOR: "vim" }).editorCommand).toBe("vim")
+    warn.mockRestore()
+  })
+
+  it("warns once at resolve time when the resolved editor is terminal-only (e.g. an ambient $EDITOR)", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    resolveInspectorOptions({}, { NODE_ENV: "development", EDITOR: "vi" })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]?.[0]).toContain("vi")
+    warn.mockRestore()
+  })
+
+  it("does not warn when the resolved editor is a GUI editor", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    resolveInspectorOptions({ editor: "code" }, { NODE_ENV: "development" })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
   })
 
   it("defaults componentTree.captureAttrs/captureState to true when mode is \"full\" (§17, \"full\" itself means attrs/state)", () => {

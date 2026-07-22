@@ -4,6 +4,35 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/); pre-1.0 versions may include
 breaking changes between minor releases.
 
+## 0.3.1 — Editor-launch failures no longer fail silently
+
+### Fixed
+
+- **Every "open in editor" failure now surfaces somewhere** (§16). Several
+  overlay-side paths (no resolvable source location for the selection/hover,
+  a stale component, an unmapped DOM node) recorded an internal diagnostic
+  but never `console.warn`'d, unlike every other failure in the same flow —
+  a click that was supposed to jump to the editor could fail with zero
+  visible feedback. All of them now route through a shared
+  `recordEditorFailure` helper in `@mithril-inspector/overlay`'s controller,
+  so every failure is both recorded and warned.
+- **A terminal-only resolved editor (`vi`, `vim`, `nvim`, `emacs`, `nano`,
+  `pico`, `ed`) is now flagged instead of failing silently.** `spawnEditorProcess`
+  always launches the editor detached with `stdio: "ignore"` and no TTY — a
+  terminal editor starts and exits without ever visibly opening, while the
+  endpoint still reports success (the OS process did start). This is easy to
+  hit by accident: with no explicit `editor` option, resolution falls back to
+  `MITHRIL_INSPECTOR_EDITOR`/`LAUNCH_EDITOR`/`VISUAL`/`EDITOR` from the dev
+  server's own environment before defaulting to `"code"`, and a shell
+  profile's ambient `$EDITOR` (often `vi`) silently wins with no error at any
+  layer. `@mithril-inspector/server` exports a new `isTerminalOnlyEditor`
+  check; `@mithril-inspector/adapter-kit` now warns once at dev-server
+  startup when the resolved editor matches it, and the overlay's Settings
+  tab flags it inline next to the read-only "Opens in …" display.
+- Documented the pitfall and the terminal-editor limitation in the root
+  README and every bundler adapter's README, recommending an explicit
+  `editor` option instead of relying on the environment-variable fallback.
+
 ## 0.2.0 — Phase 4: Rollup, esbuild and webpack/Rspack adapters; diagnostics
 
 Builds on 0.1.0 with everything from REQUIREMENTS.md §21 Phase 4 (the

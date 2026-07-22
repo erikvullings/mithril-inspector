@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { resolveEditor } from "./editors.js"
+import { isTerminalOnlyEditor, resolveEditor } from "./editors.js"
 
 const LOCATION = { file: "/project/src/foo.ts", line: 17, column: 5 }
 
@@ -126,5 +126,22 @@ describe("resolveEditor", () => {
   it("ignores an empty environment variable value", () => {
     const editor = resolveEditor(undefined, { MITHRIL_INSPECTOR_EDITOR: "", EDITOR: "subl" })
     expect(editor?.command).toBe("subl")
+  })
+})
+
+describe("isTerminalOnlyEditor", () => {
+  it.each(["vi", "vim", "nvim", "emacs", "nano", "pico", "ed"])("flags %s as terminal-only", (command) => {
+    expect(isTerminalOnlyEditor(command)).toBe(true)
+  })
+
+  it("matches by basename, ignoring a path and Windows extension", () => {
+    expect(isTerminalOnlyEditor("/usr/bin/vi")).toBe(true)
+    expect(isTerminalOnlyEditor("C:\\tools\\vim.exe")).toBe(true)
+  })
+
+  it("does not flag GUI editors", () => {
+    for (const command of ["code", "cursor", "windsurf", "webstorm", "idea", "subl", "mvim"]) {
+      expect(isTerminalOnlyEditor(command)).toBe(false)
+    }
   })
 })

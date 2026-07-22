@@ -31,6 +31,15 @@ export default defineConfig({
 })
 ```
 
+Set `editor` explicitly, as above — with it unset, the resolved command falls
+back to `MITHRIL_INSPECTOR_EDITOR`/`LAUNCH_EDITOR`/`VISUAL`/`EDITOR` from the
+shell that started your dev server before defaulting to `"code"`, and a
+project-wide `$EDITOR` (e.g. `vi`, set by many shell profiles) is easy to
+inherit without noticing. It also can't be a terminal editor (`vi`, `vim`,
+`nvim`, `emacs`, `nano`) — the editor launches detached with no terminal
+attached, so one would start and exit without ever visibly opening. The
+overlay's Settings tab shows the actual resolved command and flags this case.
+
 Run `pnpm dev`, open the app, hover the unobtrusive "M" toggle at the bottom
 of the page and click its target/crosshair icon to start picking (or open the
 docked panel first via the "M" itself), then hover an element to see its

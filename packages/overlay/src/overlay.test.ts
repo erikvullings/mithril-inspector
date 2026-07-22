@@ -249,6 +249,24 @@ describe("mountInspectorOverlay — panel (§8.3)", () => {
     // rows elsewhere in Settings are interactive, and this section has none of its own.
     expect(editorInfo?.querySelector("input, select, button")).toBeNull()
   })
+
+  it("flags a terminal-only resolved editor inline, since it can never visibly open (§16)", () => {
+    handle = mountInspectorOverlay({ editorCommand: "vim" }, { hook: fakeHook() })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("settings")
+    render()
+    const warning = handle!.shadowRoot.querySelector(".mi-editor-warning")
+    expect(warning?.textContent).toContain("vim")
+    expect(warning?.textContent).toContain("real terminal")
+  })
+
+  it("does not show the terminal-editor warning for a GUI editor", () => {
+    handle = mountInspectorOverlay({ editorCommand: "code" }, { hook: fakeHook() })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("settings")
+    render()
+    expect(handle!.shadowRoot.querySelector(".mi-editor-warning")).toBeNull()
+  })
 })
 
 describe("mountInspectorOverlay — picker wiring (§8.4–8.7)", () => {

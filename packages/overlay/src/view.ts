@@ -11,6 +11,7 @@ import type {
   OverlayTab,
   OverlayViewState,
 } from "./controller.js"
+import { isTerminalOnlyEditor } from "./editor.js"
 import { formatElementLabel, formatInlineText, formatInlineTextList, type ElementsPaneNode } from "./elements.js"
 import {
   alignContainerEntries,
@@ -1028,22 +1029,39 @@ function elementTagNameToggleRow(controller: OverlayController, state: OverlayVi
  * command), so this only surfaces the currently resolved editor plus the
  * config/env-var knobs to change it — no control to flip here.
  */
-function editorInfoView(controller: OverlayController): Vnode {
-  return m("p.mi-editor-info.mi-muted", [
-    "Opens in ",
-    m("code.mi-mono", controller.options.editorCommand),
-    ". Change it with the ",
-    m("code.mi-mono", "editor"),
-    " plugin option, or the ",
-    m("code.mi-mono", "MITHRIL_INSPECTOR_EDITOR"),
-    ", ",
-    m("code.mi-mono", "LAUNCH_EDITOR"),
-    ", ",
-    m("code.mi-mono", "VISUAL"),
-    " or ",
-    m("code.mi-mono", "EDITOR"),
-    " environment variable (checked in that order).",
-  ])
+function editorInfoView(controller: OverlayController): Vnode[] {
+  const command = controller.options.editorCommand
+  return [
+    m("p.mi-editor-info.mi-muted", [
+      "Opens in ",
+      m("code.mi-mono", command),
+      ". Change it with the ",
+      m("code.mi-mono", "editor"),
+      " plugin option, or the ",
+      m("code.mi-mono", "MITHRIL_INSPECTOR_EDITOR"),
+      ", ",
+      m("code.mi-mono", "LAUNCH_EDITOR"),
+      ", ",
+      m("code.mi-mono", "VISUAL"),
+      " or ",
+      m("code.mi-mono", "EDITOR"),
+      " environment variable (checked in that order).",
+    ]),
+    ...(isTerminalOnlyEditor(command)
+      ? [
+          m("p.mi-editor-warning.mi-muted", [
+            "⚠ ",
+            m("code.mi-mono", command),
+            " only runs inside a real terminal. It's launched detached with no terminal attached, so it will" +
+              " start and exit without ever visibly opening. Set the ",
+            m("code.mi-mono", "editor"),
+            " plugin option to a GUI editor instead (e.g. ",
+            m("code.mi-mono", "code"),
+            ").",
+          ]),
+        ]
+      : []),
+  ]
 }
 
 const THEME_OPTIONS: readonly OverlayTheme[] = ["system", "light", "dark"]

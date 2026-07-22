@@ -72,6 +72,16 @@ shown read-only in the overlay's Settings tab, alongside the same override
 instructions — the browser never chooses what the open-in-editor endpoint
 launches, so there is no control to change it there.
 
+Set `editor` explicitly rather than relying on that fallback chain: an
+ambient `$EDITOR`/`$VISUAL` in the shell that started your dev server (many
+shell profiles export `EDITOR=vi` or similar) silently wins over the `"code"`
+default, with no error — the endpoint still reports success, since the
+process did start. A terminal editor (`vi`, `vim`, `nvim`, `emacs`, `nano`)
+can never work here regardless of how it's selected: `spawnEditorProcess`
+always launches detached with no terminal attached, so it starts and exits
+without ever visibly opening. The Settings tab flags this inline when the
+resolved command is one of these.
+
 ## Virtual modules
 
 Two virtual modules are served with `\0`-prefixed resolved ids:

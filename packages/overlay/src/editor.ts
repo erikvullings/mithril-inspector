@@ -9,6 +9,23 @@ import type { EditorRequest } from "@mithril-inspector/protocol"
  */
 export const OPEN_IN_EDITOR_PATH = "/__mithril-inspector/open-in-editor"
 
+/**
+ * Editors that only run inside a real terminal — duplicated from
+ * `@mithril-inspector/server`'s `editors.ts` (kept in sync manually; see the
+ * module comment above for why the browser overlay doesn't import the
+ * Node-side package directly). The server always launches the editor
+ * detached with no TTY attached, so a terminal editor starts and exits
+ * without ever visibly opening — the Settings tab flags this inline rather
+ * than leaving it to fail silently (§16).
+ */
+const TERMINAL_ONLY_EDITORS = new Set(["vi", "vim", "nvim", "emacs", "nano", "pico", "ed"])
+
+/** Whether `command` resolves to a known terminal-only editor; see {@link TERMINAL_ONLY_EDITORS}. */
+export function isTerminalOnlyEditor(command: string): boolean {
+  const base = command.split(/[\\/]/).pop() ?? command
+  return TERMINAL_ONLY_EDITORS.has(base.replace(/\.(exe|cmd|bat)$/i, ""))
+}
+
 export interface EditorOpenResult {
   ok: boolean
   error?: { code: string; message: string }

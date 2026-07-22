@@ -101,6 +101,12 @@ package does not start one for you. Pick one of these three patterns:
    `browser-sync`, `http-server` + a small proxy middleware, etc. — support
    this in a few lines).
 
+Pass `editor` explicitly, as in the examples above — leaving it unset falls
+back to `MITHRIL_INSPECTOR_EDITOR`/`LAUNCH_EDITOR`/`VISUAL`/`EDITOR` from the
+process's own environment before defaulting to `"code"`, and it can't be a
+terminal editor (`vi`, `vim`, `nvim`, `emacs`, `nano`) either way — see
+`@mithril-inspector/vite`'s README for why.
+
 ## Mounting the overlay
 
 Because there's no HTML injection hook, importing the overlay is the

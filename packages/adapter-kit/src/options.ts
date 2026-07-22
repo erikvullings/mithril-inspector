@@ -1,6 +1,6 @@
 import type { InspectorMode, RedactionConfig } from "@mithril-inspector/runtime"
 import type { OverlayOptionsInput, OverlayTheme } from "@mithril-inspector/overlay"
-import { resolveEditor } from "@mithril-inspector/server"
+import { isTerminalOnlyEditor, resolveEditor } from "@mithril-inspector/server"
 import type { EditorOption, InspectorServerOptions, PathMapping } from "@mithril-inspector/server"
 import type { FilterPattern, TransformOptions } from "@mithril-inspector/transform"
 
@@ -172,6 +172,24 @@ export interface RuntimeBootstrapConfig {
 }
 
 /**
+ * Warn once at dev-server startup when the resolved editor can never actually
+ * open (§10.2, §16) — whether the user explicitly configured a terminal
+ * editor or it came from an ambient `$EDITOR`/`$VISUAL` they didn't realize
+ * would be picked up. Printed here (config-resolution time, once per boot)
+ * rather than per-request: the failure is deterministic for a given
+ * environment, so warning on every click would just repeat the same line.
+ */
+function warnIfTerminalOnlyEditor(command: string): void {
+  if (!isTerminalOnlyEditor(command)) return
+  console.warn(
+    `[mithril-inspector] The resolved editor ("${command}") is a terminal editor. The open-in-editor ` +
+      "endpoint launches it detached with no terminal attached, so it will start and exit without " +
+      'visibly opening anything. Set the "editor" plugin option to a GUI editor instead (e.g. "code", ' +
+      '"cursor", "windsurf", "webstorm", "idea", "subl").',
+  )
+}
+
+/**
  * Resolve the public options into the fully-defaulted internal shape. `env`
  * (default `process.env`) supplies `NODE_ENV` for the dev-only default (§2.1);
  * it is injectable so the resolution is deterministic in tests.
@@ -188,6 +206,8 @@ export function resolveInspectorOptions(
   const source = options.source ?? {}
   const redact = options.redact ?? {}
   const mode = options.mode ?? "full"
+  const editorCommand = resolveEditor(options.editor, env).command
+  warnIfTerminalOnlyEditor(editorCommand)
 
   return {
     enabled: options.enabled ?? env.NODE_ENV !== "production",
@@ -200,7 +220,7 @@ export function resolveInspectorOptions(
     pathMappings: options.pathMappings ?? [],
     mode,
     debug: options.debug ?? false,
-    editorCommand: resolveEditor(options.editor, env).command,
+    editorCommand,
     ui: {
       enabled: ui.enabled ?? true,
       defaultOpen: ui.defaultOpen ?? false,

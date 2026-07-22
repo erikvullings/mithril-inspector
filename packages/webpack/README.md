@@ -136,3 +136,9 @@ Same shape as `@mithril-inspector/vite` — see that package's README
 for the full option reference (`include`/`exclude`, `root`/`projectRoots`,
 `editor`, `pathMappings`, `mode`, `ui`, `picker`, `componentTree`, `source`,
 `mithrilImports`/`hyperscriptIdentifiers`, `debug`, `redact`).
+
+Pass `editor` explicitly, as in the examples above — leaving it unset falls
+back to `MITHRIL_INSPECTOR_EDITOR`/`LAUNCH_EDITOR`/`VISUAL`/`EDITOR` from the
+process's own environment before defaulting to `"code"`, and it can't be a
+terminal editor (`vi`, `vim`, `nvim`, `emacs`, `nano`) either way — see
+`@mithril-inspector/vite`'s README for why.

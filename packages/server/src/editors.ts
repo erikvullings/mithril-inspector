@@ -69,6 +69,22 @@ function commandBasename(command: string): string {
   return base.replace(/\.(exe|cmd|bat)$/i, "")
 }
 
+/**
+ * Editors that only run inside a real terminal (§10.2, §16). `spawnEditorProcess`
+ * always launches with `stdio: "ignore"` and no attached TTY, which a terminal
+ * editor needs to draw or accept input at all — it starts, does nothing a user
+ * can see, and exits, while the launch still reports success (the OS process
+ * did start). True regardless of whether the command came from an explicit
+ * `editor` option or an ambient `$EDITOR`/`$VISUAL` — flagged either way so it
+ * doesn't fail silently.
+ */
+const TERMINAL_ONLY_EDITORS = new Set(["vi", "vim", "nvim", "emacs", "nano", "pico", "ed"])
+
+/** Whether `command` resolves to a known terminal-only editor (§10.2, §16) — see {@link TERMINAL_ONLY_EDITORS}. */
+export function isTerminalOnlyEditor(command: string): boolean {
+  return TERMINAL_ONLY_EDITORS.has(commandBasename(command))
+}
+
 function resolveCommandString(command: string): ResolvedEditor {
   const alias = commandBasename(command)
   return { command, args: isEditorAlias(alias) ? ALIAS_ARGS[alias] : fileOnlyArgs }

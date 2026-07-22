@@ -9,7 +9,7 @@ export type { InspectorErrorCode, InspectorRequest, InspectorResponse, Inspector
 
 export { createInspectorMiddleware } from "./middleware.js"
 
-export { resolveEditor } from "./editors.js"
+export { isTerminalOnlyEditor, resolveEditor } from "./editors.js"
 export type { CustomEditorOption, EditorAlias, EditorLocation, EditorOption, ResolvedEditor } from "./editors.js"
 
 export { applyPathMappings } from "./path-mappings.js"

@@ -754,8 +754,33 @@ tr.mi-history-compare-changed td.mi-history-compare-key::before { background: va
 /* Nesting reads as indentation via plain nested <ul>s (view.ts's elementsPaneNodeRow) rather than a flattened aria-level list — no search/collapse/keyboard nav here, just a read-only mirror of what got rendered. */
 .mi-elements-tree { list-style: none; margin: 0; padding-left: 14px; }
 .mi-elements-tree-root { padding-left: 0; }
-.mi-elements-row { display: inline-block; }
-.mi-elements-text { display: inline-block; }
+/* Vertical breathing room per row (mirrors .mi-tree-row's own padding) — without it, consecutive rows sit flush against each other. */
+.mi-elements-tree > li { padding: 3px 0; }
+/*
+ * Both the row label and the inline-text span are plain inline, not
+ * inline-block: an inline-block box establishes its own line-box context,
+ * which collapses away leading/trailing whitespace inside the box the same
+ * way a line-start would -- silently eating the leading space view.ts puts
+ * before an element's inline text (rendered right after the row label on
+ * the same line), even though that space is genuinely present in the DOM
+ * text content. A <button>'s own default is inline-block, so this also
+ * un-does that default for the two clickable rows below.
+ */
+.mi-elements-row, .mi-elements-text { display: inline; }
+/* Shared button-reset for the two clickable rows (task 0031: click a row to jump to its source) — an underline only appears on hover/focus, rather than a permanent accent color, so a clickable row still reads as plain hyperscript text at rest. */
+.mi-elements-clickable {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+.mi-elements-clickable:hover, .mi-elements-clickable:focus-visible { text-decoration-color: var(--mi-accent); }
 
 /* --- Scrollbars (task 0028): theme-matched thin scrollbars instead of the default browser chrome, which looks out of place against the dark theme --- */
 .mi-tree-pane, .mi-detail-pane, .mi-history, .mi-elements, .mi-settings, .mi-history-list {

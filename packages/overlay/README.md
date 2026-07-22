@@ -188,9 +188,19 @@ runtime stripped). `deps` lets you inject a `hook`, `document` and
   component's own rendered range (found via `domRange.first`, without
   descending into it) shows as a clickable name instead of its DOM, so nested
   components stay one click away in the Components tree rather than being
-  shown twice. The walk is capped on both total node count and nesting depth,
-  degrading to a truncation notice rather than rendering an unbounded subtree.
-  Tag-name visibility (`div.scroll` vs. the tag-omitted `.scroll`, matching
+  shown twice. Every element row (and a standalone text row) is itself
+  clickable, jumping straight to that exact node's nearest source — the same
+  `resolveDomSource` lookup the picker uses — without going through the
+  shared selection. An element's own direct text children render inline on its own
+  row (e.g. `h2 Attrs demo`) rather than as separate nested rows, since an
+  element typically either has more markup underneath it or some text
+  content, rarely needing its own line for each — plain content renders
+  trimmed and unquoted, while pure whitespace (a deliberate separator between
+  two inline elements, otherwise invisible) renders quoted (`" "`) so its
+  presence is still obvious. The walk is capped on both total node count and
+  nesting depth, degrading to a truncation notice rather than rendering an
+  unbounded subtree. Tag-name visibility (`div.scroll` vs. the tag-omitted
+  `.scroll`, matching
   mithril's own selector shorthand) is a Settings-tab toggle
   (`elementsPane.showTagName`, on by default) — a pure display preference with
   no `mode`/capture gating, unlike attrs/state or redraw-flash.

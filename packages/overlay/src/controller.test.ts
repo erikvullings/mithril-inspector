@@ -1270,7 +1270,9 @@ describe("Elements pane (task 0031, §9.1 optional 'owned vnode/element tree' ex
           tag: "div",
           id: "app",
           classes: [],
-          children: [{ kind: "element", tag: "span", id: null, classes: [], children: [{ kind: "text", text: "hi" }] }],
+          inlineText: [],
+          domNode: root,
+          children: [{ kind: "element", tag: "span", id: null, classes: [], inlineText: ["hi"], domNode: span, children: [] }],
         },
       ],
       truncated: false,
@@ -1307,6 +1309,32 @@ describe("Elements pane (task 0031, §9.1 optional 'owned vnode/element tree' ex
     const root = elementsPane.nodes[0]
     if (root === undefined || root.kind !== "element") throw new Error("expected an element node")
     expect(root.children).toEqual([{ kind: "component", componentId: "c:2", displayName: "Row" }])
+  })
+
+  it("openDomNodeSource resolves the node's nearest source and opens it directly, without touching the shared selection", () => {
+    const el = document.createElement("h2")
+    document.body.appendChild(el)
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const hook = fakeHook({ resolveDomSource: (node) => (node === el ? elementSource : null) })
+    const { controller } = setup({ hook, openInEditor })
+
+    controller.openDomNodeSource(el)
+    expect(openInEditor).toHaveBeenCalledWith({
+      file: elementSource.relativeFile,
+      line: elementSource.line,
+      column: elementSource.column,
+    })
+    expect(controller.getState().selection.node).toBeNull()
+  })
+
+  it("openDomNodeSource records a diagnostic and does not open the editor when the node has no resolvable source", () => {
+    const el = document.createElement("h2")
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const { controller } = setup({ hook: fakeHook({ resolveDomSource: () => null }), openInEditor })
+
+    controller.openDomNodeSource(el)
+    expect(openInEditor).not.toHaveBeenCalled()
+    expect(controller.getState().diagnostics.length).toBeGreaterThan(0)
   })
 
   it("showElementTagName defaults from options.elementsPane.showTagName", () => {

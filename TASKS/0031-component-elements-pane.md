@@ -353,3 +353,99 @@ doesn't have to re-derive it:
   everything this task actually touched as `fc27e60 feat(overlay): add
   Elements tab for per-component DOM/vnode expansion`. Working tree clean
   after both commits.
+
+- 2026-07-22 claude: **Follow-up refinement, same task, two user-requested
+  changes to the Elements tab's row rendering.**
+
+  1. **Inline text.** An element's own direct text children now render
+     inline on the element's own row (e.g. `h2 Attrs demo`) instead of as
+     separate nested rows — since an element typically either has more
+     markup underneath it or some text content, rarely both needing their
+     own line. `ElementsPaneNode`'s "element" variant gained `inlineText:
+     readonly string[]` (its direct text children, in order); `children` now
+     holds only element/component children. `elements.ts`'s
+     `partitionTextChildren` does the split once, right where an element
+     node is constructed from its already-walked children. New
+     `formatInlineText`/`formatInlineTextList`: ordinary text renders trimmed
+     and unquoted; pure whitespace (a deliberate separator between two
+     inline elements — previously *dropped entirely* by the walk, per user
+     request now kept) renders quoted via `JSON.stringify` (e.g. `" "`, or
+     `"\t"`/`"\n"` for a tab/newline separator) so it isn't silently
+     invisible. Two real CSS bugs found and fixed only by actually rendering
+     this in a browser (`browser-tools` skill against
+     `apps/playground-vite`, not just unit tests) rather than just trusting
+     the DOM-structure assertions:
+     - Zero vertical padding on `.mi-elements-tree > li` made every row sit
+       flush against the next (fixed: `padding: 3px 0`, mirroring
+       `.mi-tree-row`'s own padding).
+     - `.mi-elements-row`/`.mi-elements-text`'s `display: inline-block`
+       silently collapsed the leading space `view.ts` puts before an
+       element's inline text, since an inline-block box establishes its own
+       line-box context and trims leading/trailing whitespace inside itself
+       the same way a real line-start would — even though the space was
+       genuinely present in the DOM text content (confirmed via
+       `element.textContent` before finding the CSS cause). Fixed: both
+       changed to plain `display: inline`.
+  2. **Click to jump to source.** Every element row (and a standalone
+     top-level text row — only reachable when a fragment-root component's
+     own range includes a bare text node as one of its top-level siblings)
+     is now a `<button>` that resolves and opens its own nearest source via
+     a new `OverlayController.openDomNodeSource(node: Node)`, reusing the
+     same `hook.resolveDomSource` the picker's hover/click already uses —
+     deliberately *not* routed through the shared selection (§9.3's
+     selection sync), since this is a direct "open" action like the
+     toolbar's own "Open in editor" icon, not a "select this". The inline
+     text appended after an element's own tag label stays a plain,
+     non-interactive `<span>` — it never retained a DOM node reference
+     (folded into `inlineText` as plain strings), and the adjacent tag label
+     is already one click away. Shared `.mi-elements-clickable` CSS
+     (button-reset, underline-on-hover/focus only — no permanent accent
+     color, so a row still reads as plain hyperscript text at rest).
+
+  **Verified** (re-run standalone):
+  - `packages/overlay/src/elements.test.ts`: 26 tests (was 17 at the parent
+    task's own commit) — `vitest run src/elements.test.ts` → 26 passed.
+    Covers: `formatInlineText`/`formatInlineTextList` (quoting rule,
+    JSON.stringify escaping), the text/element split (including a
+    `<label>"Name:"<input></label>`-shaped fixture — text and an element
+    child coexisting on the same node), whitespace-only text kept (not
+    dropped) and truncated the same as meaningful text, and a dedicated
+    `domNode` identity test for both an element row and a standalone text
+    row.
+  - `packages/overlay/src/controller.test.ts`: 116 tests (was 114) —
+    `vitest run src/controller.test.ts` → 116 passed. Adds
+    `openDomNodeSource`'s happy path (opens via the resolved location,
+    doesn't touch `selection.node`) and its no-source-resolved diagnostic
+    path.
+  - `packages/overlay/src/overlay.test.ts`: 66 tests (was 65) — `vitest run
+    src/overlay.test.ts` → 66 passed. Adds a real-DOM click test
+    (`vi.spyOn(controller, "openDomNodeSource")`) proving the rendered
+    button reaches the controller with the exact clicked DOM node —
+    `openInEditor`'s own network effect isn't injectable through
+    `mountInspectorOverlay` (only `createOverlayController`'s own deps
+    expose that), so that part stays covered at the controller-test.ts
+    level per this file's own established pattern.
+  - Full `packages/overlay` package: `vitest run` → 404 passed, 19 files.
+    `tsc -p tsconfig.json --noEmit` clean.
+  - `tests/browser/src/elements-pane.test.ts`: 6 tests (was 3) — `vitest run
+    src/elements-pane.test.ts` → 6 passed, real Chromium. New: clicking
+    `div.user-list-scene`'s row (`UserList`'s own root) launches the stub
+    editor with the exact file/line/column (`harness/source-line.ts`'s
+    `positionOf`, the same assertion style `editor-endpoint.test.ts` already
+    uses for the toolbar's own "Open in editor"), and a structural check
+    that `UserCard`'s inline-appended text renders as a plain `SPAN`, never
+    a `BUTTON`, alongside its clickable `BUTTON` tag label.
+  - Whole workspace after `pnpm build`: `pnpm -r typecheck` (20 projects)
+    and `pnpm -r test` (every package, including `tests/browser`'s real
+    suite: 13 files, 36 tests) both green, no regressions.
+  - Visually verified live in a real browser (`apps/playground-vite`,
+    `browser-tools` skill, not just automated tests) before and after each
+    CSS fix — screenshots confirmed both the row-padding and the
+    inline-text-spacing bugs, and confirmed both fixes.
+
+  **Known limitation, honestly scoped**: only an element row and a
+  standalone top-level text row carry a `domNode` reference; text folded
+  into an element's own `inlineText` does not (by design — see point 2
+  above), so it has no click-to-source affordance of its own. This wasn't
+  asked for and would need retaining a node reference per inline-text
+  segment, a larger change than what was requested.

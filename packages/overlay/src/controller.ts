@@ -315,6 +315,8 @@ export interface OverlayController {
 
   openSelectedInEditor(): void
   openLocationInEditor(location: SourceLocation): void
+  /** Resolve a raw DOM node's nearest source location and open it directly (task 0031, the Elements tab's own "click a row to jump to its source") — the same `resolveDomSource` lookup the picker uses, without going through the shared selection. */
+  openDomNodeSource(node: Node): void
   clearSelection(): void
   promoteStaleSelection(): void
 
@@ -1120,6 +1122,22 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
 
     openLocationInEditor(location) {
       doOpenLocation(location)
+    },
+
+    openDomNodeSource(node) {
+      diagnostics.guard(
+        "editor",
+        () => {
+          const location = hook?.resolveDomSource(node) ?? null
+          if (location === null) {
+            diagnostics.record("editor", new Error("No source location available for this element"))
+            redraw()
+            return
+          }
+          doOpenLocation(location)
+        },
+        undefined,
+      )
     },
 
     clearSelection() {

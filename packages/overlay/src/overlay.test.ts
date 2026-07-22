@@ -1145,6 +1145,28 @@ describe("mountInspectorOverlay — Elements tab (task 0031, §9.1 optional 'own
     expect(handle!.shadowRoot.querySelector(".mi-elements-row")?.textContent).toBe("div#app.scroll")
   })
 
+  it("clicking an element row calls openDomNodeSource with that exact DOM node (task 0031's own 'click to jump to source')", () => {
+    const root = document.createElement("div")
+    root.id = "app"
+    document.body.appendChild(root)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: root, last: root } })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app]), componentRecord: () => app })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("elements")
+    render()
+
+    // openInEditor's own network effect isn't injectable through
+    // mountInspectorOverlay (only createOverlayController's own deps expose
+    // that, already covered at the controller-test.ts level) — this checks
+    // the DOM click actually reaches the controller with the right node,
+    // which is what this level can uniquely verify.
+    const openDomNodeSource = vi.spyOn(handle!.controller, "openDomNodeSource")
+    ;(handle!.shadowRoot.querySelector(".mi-elements-row") as HTMLButtonElement).click()
+    expect(openDomNodeSource).toHaveBeenCalledWith(root)
+  })
+
   it("omits the tag name once the Settings-tab toggle is turned off, live, without remounting", () => {
     const root = document.createElement("div")
     root.className = "scroll"

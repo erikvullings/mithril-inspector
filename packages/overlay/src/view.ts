@@ -11,7 +11,7 @@ import type {
   OverlayTab,
   OverlayViewState,
 } from "./controller.js"
-import { formatElementLabel, type ElementsPaneNode } from "./elements.js"
+import { formatElementLabel, formatInlineText, formatInlineTextList, type ElementsPaneNode } from "./elements.js"
 import {
   alignContainerEntries,
   containerEntries,
@@ -1385,11 +1385,29 @@ function historyView(controller: OverlayController, state: OverlayViewState): Vn
  * `.mi-elements-tree`'s own CSS padding) rather than a flattened
  * `aria-level` list like `treeRow`'s — there's no search/collapse/keyboard
  * nav here, just a read-only mirror of what got rendered, so the simpler
- * recursive structure is all this needs.
+ * recursive structure is all this needs. An element's own direct text
+ * children render inline on its own row (`node.inlineText`, formatted by
+ * `formatInlineTextList`) rather than as separate nested rows — an element
+ * typically either has more markup underneath or some text content, rarely
+ * both needing their own line — so a leaf like `h2` containing just
+ * "Attrs demo" collapses to one row with no nested list at all. An element's
+ * own tag label (and a standalone top-level text row) is itself a button
+ * that jumps straight to that node's nearest source
+ * (`controller.openDomNodeSource`) — the inline text appended after a tag
+ * label stays plain, non-interactive text, since only the element/text row
+ * that owns a real DOM node reference has anywhere to jump to.
  */
 function elementsPaneNodeRow(controller: OverlayController, state: OverlayViewState, node: ElementsPaneNode, key: number): Vnode {
   if (node.kind === "text") {
-    return m("li", { key: `t:${key}` }, m("span.mi-elements-text.mi-mono.mi-muted", `"${node.text}"`))
+    return m(
+      "li",
+      { key: `t:${key}` },
+      m(
+        "button.mi-elements-text.mi-elements-clickable.mi-mono.mi-muted",
+        { type: "button", title: "Open in editor", onclick: () => controller.openDomNodeSource(node.domNode) },
+        formatInlineText(node.text),
+      ),
+    )
   }
   if (node.kind === "component") {
     return m(
@@ -1402,8 +1420,14 @@ function elementsPaneNodeRow(controller: OverlayController, state: OverlayViewSt
       ),
     )
   }
+  const inlineText = formatInlineTextList(node.inlineText)
   return m("li", { key: `e:${key}` }, [
-    m("span.mi-elements-row.mi-mono", formatElementLabel(node.tag, node.id, node.classes, state.showElementTagName)),
+    m(
+      "button.mi-elements-row.mi-elements-clickable.mi-mono",
+      { type: "button", title: "Open in editor", onclick: () => controller.openDomNodeSource(node.domNode) },
+      formatElementLabel(node.tag, node.id, node.classes, state.showElementTagName),
+    ),
+    inlineText !== null ? m("span.mi-elements-text.mi-mono.mi-muted", ` ${inlineText}`) : null,
     node.children.length > 0
       ? m(
           "ul.mi-elements-tree",

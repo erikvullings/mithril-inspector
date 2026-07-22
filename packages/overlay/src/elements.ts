@@ -52,9 +52,28 @@ export type ElementsPaneNode =
       readonly tag: string
       readonly id: string | null
       readonly classes: readonly string[]
+      /**
+       * This element's own direct text children, in document order — rendered
+       * inline on the element's own row (`formatInlineText`) rather than as
+       * separate nested rows, since an element typically either has more
+       * markup underneath it or some text content, rarely needing its own
+       * line for each. Element/component children (in `children` below) are
+       * unaffected and still render nested underneath, in their original
+       * relative order among themselves — only the interleaving between text
+       * and non-text siblings is lost, a deliberate compact-view tradeoff.
+       */
+      readonly inlineText: readonly string[]
       readonly children: readonly ElementsPaneNode[]
+      /**
+       * The actual DOM element this row represents — lets the view resolve
+       * and jump to its nearest source location on click (via the runtime
+       * hook's `resolveDomSource`, the same lookup the picker uses) without
+       * this module needing to depend on the hook itself.
+       */
+      readonly domNode: Element
     }
-  | { readonly kind: "text"; readonly text: string }
+  /** A standalone text node — only reached at the top level of a walk (see `partitionTextChildren`); a text child *of* an element is folded into that element's own `inlineText` instead and loses its node reference, since only the element's own row is clickable there. */
+  | { readonly kind: "text"; readonly text: string; readonly domNode: Node }
   /** A direct child component's own rendered range, rendered as a link rather than descended into (see {@link ChildBoundary}). */
   | { readonly kind: "component"; readonly componentId: ComponentId; readonly displayName: string }
 
@@ -83,14 +102,31 @@ interface Budget {
   remaining: number
 }
 
+/** Splits a level's already-walked nodes into an owning element's `inlineText` (its direct text children, in order) and `children` (everything else, in order) — see {@link ElementsPaneNode}'s `inlineText` doc comment. */
+function partitionTextChildren(nodes: readonly ElementsPaneNode[]): {
+  readonly inlineText: string[]
+  readonly children: ElementsPaneNode[]
+} {
+  const inlineText: string[] = []
+  const children: ElementsPaneNode[] = []
+  for (const node of nodes) {
+    if (node.kind === "text") inlineText.push(node.text)
+    else children.push(node)
+  }
+  return { inlineText, children }
+}
+
 /**
  * Walk one level of siblings (top-level `nodesOfDomRange` result, or an
  * element's own `childNodes`), threading a single shared `budget` through
  * every recursive call so the `maxNodes` cap applies to the tree as a whole,
- * not per-level. Comment nodes (and anything else that isn't an element or a
- * non-blank text node) are silently skipped — neither counted against the
- * budget nor rendered — since they carry nothing meaningful for "what did
- * this component render."
+ * not per-level. Comment nodes (and any other node kind) are silently
+ * skipped — neither counted against the budget nor rendered — since they
+ * carry nothing meaningful for "what did this component render." A genuinely
+ * empty text node (`textContent === ""`) is skipped the same way; a
+ * whitespace-only one is kept (unlike an earlier version of this walk) since
+ * it can be a deliberate separator between two elements — {@link
+ * formatInlineText} is what makes it visible at all once rendered.
  */
 function walkSiblings(
   nodes: readonly Node[],
@@ -136,17 +172,18 @@ function walkSiblings(
       const classes = Array.from(element.classList)
       if (depth >= limits.maxDepth) {
         truncated = true
-        out.push({ kind: "element", tag, id, classes, children: [] })
+        out.push({ kind: "element", tag, id, classes, inlineText: [], children: [], domNode: element })
       } else {
         const childResult = walkSiblings(Array.from(element.childNodes), boundaries, depth + 1, budget, limits)
-        out.push({ kind: "element", tag, id, classes, children: childResult.nodes })
+        const { inlineText, children } = partitionTextChildren(childResult.nodes)
+        out.push({ kind: "element", tag, id, classes, inlineText, children, domNode: element })
         if (childResult.truncated) truncated = true
       }
     } else if (node.nodeType === 3) {
-      const text = (node.textContent ?? "").trim()
+      const text = node.textContent ?? ""
       if (text.length > 0) {
         budget.remaining -= 1
-        out.push({ kind: "text", text: truncateText(text) })
+        out.push({ kind: "text", text: truncateText(text), domNode: node })
       }
     }
     // Anything else (comment, etc.) is skipped without consuming budget.
@@ -188,4 +225,23 @@ export function formatElementLabel(tag: string, id: string | null, classes: read
   const classSuffix = classes.map((c) => `.${c}`).join("")
   const label = `${showTagName ? tag : ""}${idSuffix}${classSuffix}`
   return label.length > 0 ? label : tag
+}
+
+/**
+ * Formats one text child for display: trimmed and unquoted for ordinary
+ * content, so it reads as plain text next to the element's own hyperscript
+ * label rather than a quoted string literal — except when the text is pure
+ * whitespace (e.g. a lone space deliberately separating two inline
+ * elements), which would otherwise render as nothing at all. That case is
+ * quoted (`JSON.stringify`, so a tab/newline separator escapes to a visible
+ * `"\t"`/`"\n"` instead of collapsing into invisible whitespace) to make its
+ * presence obvious.
+ */
+export function formatInlineText(text: string): string {
+  return text.trim().length === 0 ? JSON.stringify(text) : text.trim()
+}
+
+/** Joins an element's `inlineText` children into one display string, or `null` when it has none. */
+export function formatInlineTextList(segments: readonly string[]): string | null {
+  return segments.length === 0 ? null : segments.map(formatInlineText).join(" ")
 }

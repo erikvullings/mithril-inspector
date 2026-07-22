@@ -5,6 +5,8 @@ import {
   buildChildBoundaries,
   buildElementsTree,
   formatElementLabel,
+  formatInlineText,
+  formatInlineTextList,
   type ChildBoundary,
   type ChildRecordLike,
   type ElementsPaneNode,
@@ -14,6 +16,27 @@ import {
 function elementChildren(node: ElementsPaneNode | undefined): readonly ElementsPaneNode[] {
   if (node === undefined || node.kind !== "element") throw new Error(`expected an element node, got ${JSON.stringify(node)}`)
   return node.children
+}
+
+/**
+ * Drops `domNode` (the live DOM reference each element/text row now carries
+ * for "jump to source") before a `toEqual` shape comparison — the tests below
+ * that aren't specifically about `domNode` care about tag/id/classes/
+ * inlineText/children, not which exact node instance is attached; dedicated
+ * tests further down assert `domNode` identity directly instead.
+ */
+function stripDomNodes(nodes: readonly ElementsPaneNode[]): unknown[] {
+  return nodes.map((node) => {
+    if (node.kind === "element") {
+      const { domNode: _domNode, children, ...rest } = node
+      return { ...rest, children: stripDomNodes(children) }
+    }
+    if (node.kind === "text") {
+      const { domNode: _domNode, ...rest } = node
+      return rest
+    }
+    return node
+  })
 }
 
 describe("formatElementLabel (task 0031, §9.1 hyperscript shorthand)", () => {
@@ -35,6 +58,36 @@ describe("formatElementLabel (task 0031, §9.1 hyperscript shorthand)", () => {
 
   it("omits an empty-string id the same as a null id", () => {
     expect(formatElementLabel("div", "", ["scroll"], true)).toBe("div.scroll")
+  })
+})
+
+describe("formatInlineText (task 0031: inline text children on the owning element's own row)", () => {
+  it("trims and never quotes ordinary content", () => {
+    expect(formatInlineText("Attrs demo")).toBe("Attrs demo")
+    expect(formatInlineText("  padded  ")).toBe("padded")
+  })
+
+  it("quotes pure whitespace so a deliberate separator isn't otherwise invisible", () => {
+    expect(formatInlineText(" ")).toBe('" "')
+  })
+
+  it("escapes a whitespace-only tab/newline via JSON.stringify rather than showing raw, invisible whitespace", () => {
+    expect(formatInlineText("\t")).toBe('"\\t"')
+    expect(formatInlineText("\n")).toBe('"\\n"')
+  })
+})
+
+describe("formatInlineTextList (task 0031)", () => {
+  it("returns null for no segments", () => {
+    expect(formatInlineTextList([])).toBeNull()
+  })
+
+  it("formats a single segment the same as formatInlineText", () => {
+    expect(formatInlineTextList(["Name:"])).toBe("Name:")
+  })
+
+  it("joins multiple segments with a single space, formatting each independently", () => {
+    expect(formatInlineTextList(["Click", " ", "me"])).toBe('Click " " me')
   })
 })
 
@@ -61,34 +114,83 @@ describe("buildChildBoundaries (task 0031)", () => {
 })
 
 describe("buildElementsTree (task 0031, §9.1 optional 'owned vnode/element tree' expansion)", () => {
-  it("renders a simple element/text/element structure", () => {
+  it("renders a leaf element's own text inline (inlineText), not as a separate nested child", () => {
     const root = document.createElement("div")
     root.id = "app"
     root.className = "scroll"
-    const span = document.createElement("span")
-    span.appendChild(document.createTextNode("hello"))
-    root.appendChild(span)
+    const h2 = document.createElement("h2")
+    h2.appendChild(document.createTextNode("Attrs demo"))
+    root.appendChild(h2)
 
     const result = buildElementsTree({ first: root, last: root }, new Map())
     expect(result.truncated).toBe(false)
-    expect(result.nodes).toEqual([
+    expect(stripDomNodes(result.nodes)).toEqual([
       {
         kind: "element",
         tag: "div",
         id: "app",
         classes: ["scroll"],
-        children: [{ kind: "element", tag: "span", id: null, classes: [], children: [{ kind: "text", text: "hello" }] }],
+        inlineText: [],
+        children: [{ kind: "element", tag: "h2", id: null, classes: [], inlineText: ["Attrs demo"], children: [] }],
       },
     ])
   })
 
-  it("omits whitespace-only text nodes but keeps meaningful ones, truncating long text", () => {
+  it("attaches the actual DOM element/text-node reference for click-to-source, on both an element row and a standalone top-level text row", () => {
+    const el = document.createElement("span")
+    const elResult = buildElementsTree({ first: el, last: el }, new Map())
+    const [elNode] = elResult.nodes
+    if (elNode === undefined || elNode.kind !== "element") throw new Error("expected an element node")
+    expect(elNode.domNode).toBe(el)
+
+    const textNode = document.createTextNode("standalone")
+    document.createElement("div").appendChild(textNode) // give it a parent, as a real range's node would have
+    const textResult = buildElementsTree({ first: textNode, last: textNode }, new Map())
+    const [standaloneText] = textResult.nodes
+    if (standaloneText === undefined || standaloneText.kind !== "text") throw new Error("expected a text node")
+    expect(standaloneText.domNode).toBe(textNode)
+  })
+
+  it("keeps a text child alongside an element child on the same node — inlineText and children coexist", () => {
+    // Mirrors a real <label>"Name:"<input></label>: the text renders inline
+    // on the label's own row, the input still nests underneath it.
+    const label = document.createElement("label")
+    label.appendChild(document.createTextNode("Name:"))
+    const input = document.createElement("input")
+    input.id = "name-input"
+    label.appendChild(input)
+
+    const result = buildElementsTree({ first: label, last: label }, new Map())
+    expect(stripDomNodes(result.nodes)).toEqual([
+      {
+        kind: "element",
+        tag: "label",
+        id: null,
+        classes: [],
+        inlineText: ["Name:"],
+        children: [{ kind: "element", tag: "input", id: "name-input", classes: [], inlineText: [], children: [] }],
+      },
+    ])
+  })
+
+  it("keeps a whitespace-only text child (a deliberate separator) rather than dropping it, truncates long meaningful text", () => {
     const root = document.createElement("div")
     root.appendChild(document.createTextNode("   \n  "))
     root.appendChild(document.createTextNode("x".repeat(60)))
     const result = buildElementsTree({ first: root, last: root }, new Map())
+    const [node] = result.nodes
+    if (node === undefined || node.kind !== "element") throw new Error("expected an element node")
+    expect(node.children).toEqual([])
+    expect(node.inlineText).toEqual(["   \n  ", `${"x".repeat(40)}…`])
+  })
+
+  it("skips a genuinely empty text node (no content at all, not even whitespace)", () => {
+    const root = document.createElement("div")
+    root.appendChild(document.createTextNode(""))
+    root.appendChild(document.createElement("span"))
+    const result = buildElementsTree({ first: root, last: root }, new Map())
     const children = elementChildren(result.nodes[0])
-    expect(children).toEqual([{ kind: "text", text: `${"x".repeat(40)}…` }])
+    expect(stripDomNodes(children)).toEqual([{ kind: "element", tag: "span", id: null, classes: [], inlineText: [], children: [] }])
   })
 
   it("skips comment nodes entirely", () => {
@@ -97,7 +199,7 @@ describe("buildElementsTree (task 0031, §9.1 optional 'owned vnode/element tree
     root.appendChild(document.createElement("span"))
     const result = buildElementsTree({ first: root, last: root }, new Map())
     const children = elementChildren(result.nodes[0])
-    expect(children).toEqual([{ kind: "element", tag: "span", id: null, classes: [], children: [] }])
+    expect(stripDomNodes(children)).toEqual([{ kind: "element", tag: "span", id: null, classes: [], inlineText: [], children: [] }])
   })
 
   it("walks multiple top-level sibling nodes spanned by a fragment-root component's own range", () => {
@@ -107,9 +209,9 @@ describe("buildElementsTree (task 0031, §9.1 optional 'owned vnode/element tree
     parent.appendChild(a)
     parent.appendChild(b)
     const result = buildElementsTree({ first: a, last: b }, new Map())
-    expect(result.nodes).toEqual([
-      { kind: "element", tag: "span", id: null, classes: [], children: [] },
-      { kind: "element", tag: "span", id: null, classes: [], children: [] },
+    expect(stripDomNodes(result.nodes)).toEqual([
+      { kind: "element", tag: "span", id: null, classes: [], inlineText: [], children: [] },
+      { kind: "element", tag: "span", id: null, classes: [], inlineText: [], children: [] },
     ])
   })
 
@@ -145,10 +247,10 @@ describe("buildElementsTree (task 0031, §9.1 optional 'owned vnode/element tree
     ])
     const result = buildElementsTree({ first: parent, last: parent }, boundaries)
     const children = elementChildren(result.nodes[0])
-    expect(children).toEqual([
-      { kind: "element", tag: "p", id: null, classes: [], children: [] },
+    expect(stripDomNodes(children)).toEqual([
+      { kind: "element", tag: "p", id: null, classes: [], inlineText: [], children: [] },
       { kind: "component", componentId: "c:9", displayName: "ChildA" },
-      { kind: "element", tag: "p", id: null, classes: [], children: [{ kind: "text", text: "after" }] },
+      { kind: "element", tag: "p", id: null, classes: [], inlineText: ["after"], children: [] },
     ])
   })
 
@@ -168,9 +270,9 @@ describe("buildElementsTree (task 0031, §9.1 optional 'owned vnode/element tree
     ])
     const result = buildElementsTree({ first: parent, last: parent }, boundaries)
     const children = elementChildren(result.nodes[0])
-    expect(children).toEqual([
+    expect(stripDomNodes(children)).toEqual([
       { kind: "component", componentId: "c:a", displayName: "RowA" },
-      { kind: "element", tag: "hr", id: null, classes: [], children: [] },
+      { kind: "element", tag: "hr", id: null, classes: [], inlineText: [], children: [] },
       { kind: "component", componentId: "c:b", displayName: "RowB" },
     ])
   })
@@ -191,7 +293,9 @@ describe("buildElementsTree (task 0031, §9.1 optional 'owned vnode/element tree
     const result = buildElementsTree({ first: root, last: root }, new Map(), { maxNodes: 500, maxDepth: 1 })
     expect(result.truncated).toBe(true)
     // depth 0 is the root itself; its child (depth 1) hits the cap and is rendered leaf-only.
-    expect(elementChildren(result.nodes[0])).toEqual([{ kind: "element", tag: "span", id: null, classes: [], children: [] }])
+    expect(stripDomNodes(elementChildren(result.nodes[0]))).toEqual([
+      { kind: "element", tag: "span", id: null, classes: [], inlineText: [], children: [] },
+    ])
   })
 
   it("returns no nodes when the range's first node is null", () => {

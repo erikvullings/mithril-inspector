@@ -215,8 +215,8 @@ export function overlayCss(): string {
   border: 0;
   background: transparent;
   color: var(--mi-muted);
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   display: inline-flex;
   align-items: center;
@@ -225,6 +225,22 @@ export function overlayCss(): string {
 }
 .mi-sidebar-btn:hover { background: var(--mi-surface); color: var(--mi-fg); }
 .mi-sidebar-btn[aria-pressed="true"] { background: var(--mi-highlight-fill); color: var(--mi-accent); }
+/* Unread-diagnostics count (§16) — pinned to the Settings button's corner, clear of the enlarged icon it overlaps. */
+.mi-sidebar-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--mi-danger);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
 /*
  * Themed hover tooltip (task 0028, generalized beyond the sidebar): faster
  * and theme-matched, unlike the native "title" popup it supplements (kept

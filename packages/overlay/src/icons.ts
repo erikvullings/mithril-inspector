@@ -46,15 +46,18 @@ export function iconTarget(): Vnode {
 }
 
 /** Settings sidebar entry — an equalizer/sliders glyph. */
-export function iconSettings(): Vnode {
-  return icon([
-    m("line", { x1: 4, y1: 6, x2: 20, y2: 6 }),
-    m("circle", { cx: 9, cy: 6, r: 2 }),
-    m("line", { x1: 4, y1: 12, x2: 20, y2: 12 }),
-    m("circle", { cx: 16, cy: 12, r: 2 }),
-    m("line", { x1: 4, y1: 18, x2: 20, y2: 18 }),
-    m("circle", { cx: 8, cy: 18, r: 2 }),
-  ])
+export function iconSettings(options?: IconOptions): Vnode {
+  return icon(
+    [
+      m("line", { x1: 4, y1: 6, x2: 20, y2: 6 }),
+      m("circle", { cx: 9, cy: 6, r: 2 }),
+      m("line", { x1: 4, y1: 12, x2: 20, y2: 12 }),
+      m("circle", { cx: 16, cy: 12, r: 2 }),
+      m("line", { x1: 4, y1: 18, x2: 20, y2: 18 }),
+      m("circle", { cx: 8, cy: 18, r: 2 }),
+    ],
+    options,
+  )
 }
 
 /** "Open in editor" — a `</>` code glyph. */
@@ -125,17 +128,20 @@ export function iconClose(): Vnode {
 }
 
 /** The "Components" sidebar entry — a small branching-tree glyph. */
-export function iconComponents(): Vnode {
-  return icon([
-    m("circle", { cx: 6, cy: 6, r: 2 }),
-    m("circle", { cx: 6, cy: 18, r: 2 }),
-    m("circle", { cx: 18, cy: 12, r: 2 }),
-    m("path", { d: "M6 8V16" }),
-    m("path", { d: "M6 12H12V9" }),
-  ])
+export function iconComponents(options?: IconOptions): Vnode {
+  return icon(
+    [
+      m("circle", { cx: 6, cy: 6, r: 2 }),
+      m("circle", { cx: 6, cy: 18, r: 2 }),
+      m("circle", { cx: 18, cy: 12, r: 2 }),
+      m("path", { d: "M6 8V16" }),
+      m("path", { d: "M6 12H12V9" }),
+    ],
+    options,
+  )
 }
 
 /** The "History" sidebar entry (task 0027, renamed from "State History" once it also covers attrs — task 0027 follow-up) — a clock face, distinct from Settings' equalizer glyph. */
-export function iconHistory(): Vnode {
-  return icon([m("circle", { cx: 12, cy: 12, r: 9 }), m("polyline", { points: "12,7 12,12 16,14" })])
+export function iconHistory(options?: IconOptions): Vnode {
+  return icon([m("circle", { cx: 12, cy: 12, r: 9 }), m("polyline", { points: "12,7 12,12 16,14" })], options)
 }

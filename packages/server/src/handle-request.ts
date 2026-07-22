@@ -98,6 +98,13 @@ export async function handleInspectorRequest(
     )
   } catch (error) {
     const message = error instanceof Error ? error.message : "The editor process could not be started."
+    // Always logged (not gated behind a debug flag): a silently failed editor
+    // launch leaves the user clicking "open in editor" with no feedback at all.
+    console.warn(
+      `[mithril-inspector] Could not launch editor "${editor.command}": ${message} ` +
+        `Set the "editor" plugin option, or the MITHRIL_INSPECTOR_EDITOR/LAUNCH_EDITOR/VISUAL/EDITOR ` +
+        "environment variable, to a command available on your PATH.",
+    )
     return buildErrorResponse("EDITOR_LAUNCH_FAILED", message)
   }
 

@@ -1370,7 +1370,17 @@ function historyView(controller: OverlayController, state: OverlayViewState): Vn
  * than depending on the OS's own native-tooltip delay and (unthemed)
  * styling.
  */
-function sidebarButton(icon: Vnode, options: { readonly label: string; readonly active?: boolean; readonly onclick: () => void }): Vnode {
+/**
+ * `badge`, when > 0, overlays a small unread-count pill on the button's
+ * corner (currently only the Settings entry, for diagnostics — §16). Capped
+ * display at "9+" so a rare flood of errors can't stretch the pill past the
+ * narrow sidebar's width.
+ */
+function sidebarButton(
+  icon: Vnode,
+  options: { readonly label: string; readonly active?: boolean; readonly badge?: number; readonly onclick: () => void },
+): Vnode {
+  const badge = options.badge ?? 0
   return m(
     "button.mi-sidebar-btn",
     {
@@ -1381,12 +1391,17 @@ function sidebarButton(icon: Vnode, options: { readonly label: string; readonly 
       "data-tooltip": options.label,
       onclick: options.onclick,
     },
-    icon,
+    [icon, badge > 0 ? m("span.mi-sidebar-badge", badge > 9 ? "9+" : String(badge)) : null],
   )
 }
 
 /** The left icon strip (§8.3): the "M" mark collapses back to the toggle (mirroring the Vue-DevTools "click the logo to close" convention), then one entry per section. */
-function sidebar(controller: OverlayController, tab: OverlayTab, setTab: (tab: OverlayTab) => void): Vnode {
+function sidebar(
+  controller: OverlayController,
+  tab: OverlayTab,
+  diagnosticsUnreadCount: number,
+  setTab: (tab: OverlayTab) => void,
+): Vnode {
   return m("nav.mi-sidebar", { "aria-label": "Mithril Inspector sections" }, [
     m(
       "button.mi-sidebar-logo",
@@ -1399,10 +1414,15 @@ function sidebar(controller: OverlayController, tab: OverlayTab, setTab: (tab: O
       },
       "M",
     ),
-    sidebarButton(iconComponents(), { label: "Components", active: tab === "components", onclick: () => setTab("components") }),
-    sidebarButton(iconHistory(), { label: "History", active: tab === "history", onclick: () => setTab("history") }),
+    sidebarButton(iconComponents({ size: 20 }), { label: "Components", active: tab === "components", onclick: () => setTab("components") }),
+    sidebarButton(iconHistory({ size: 20 }), { label: "History", active: tab === "history", onclick: () => setTab("history") }),
     m("div.mi-sidebar-spacer"),
-    sidebarButton(iconSettings(), { label: "Settings", active: tab === "settings", onclick: () => setTab("settings") }),
+    sidebarButton(iconSettings({ size: 20 }), {
+      label: "Settings",
+      active: tab === "settings",
+      badge: diagnosticsUnreadCount,
+      onclick: () => setTab("settings"),
+    }),
   ])
 }
 
@@ -1417,7 +1437,7 @@ function dockedPanel(controller: OverlayController, state: OverlayViewState): Vn
   return m(
     "section.mi-dock",
     { role: "dialog", "aria-label": "Mithril Inspector" },
-    [sidebar(controller, state.activeTab, (tab) => controller.setActiveTab(tab)), body],
+    [sidebar(controller, state.activeTab, state.diagnosticsUnreadCount, (tab) => controller.setActiveTab(tab)), body],
   )
 }
 

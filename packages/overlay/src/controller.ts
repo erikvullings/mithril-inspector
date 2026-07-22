@@ -204,6 +204,8 @@ export interface OverlayViewState {
   /** Components whose own DOM actually mutated on a recent redraw, still within their brief fade window (task 0030). */
   readonly flashes: readonly FlashEntry[]
   readonly diagnostics: readonly Diagnostic[]
+  /** Diagnostics recorded since the Settings tab (where they're listed) was last open — drives the sidebar badge (§16). Always 0 while that tab is active. */
+  readonly diagnosticsUnreadCount: number
   /** The Components tab's tree/attrs/state state (task 0022). */
   readonly componentTree: ComponentTreeViewState
   /** The State History tab's state (task 0027). */
@@ -476,6 +478,17 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     else if (!isPicking(next)) clearBannerTimer()
   })
 
+  // A failed editor launch is always logged to the console — unlike other
+  // diagnostics (gated behind `debug`, see diagnostics.ts) this is the direct
+  // result of a user action (click / Enter) that otherwise fails silently.
+  const warnEditorFailure = (message: string): void => {
+    try {
+      console.warn(`[mithril-inspector] Could not open editor: ${message}`)
+    } catch {
+      /* ignore: must never break the host page */
+    }
+  }
+
   // Editor-open primitives shared by the details actions and the Enter shortcut.
   const doOpenLocation = (location: SourceLocation): void => {
     const request = editorRequestOf(location)
@@ -487,12 +500,15 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
     void openInEditor(request)
       .then((result) => {
         if (!result.ok) {
-          diagnostics.record("editor", new Error(result.error?.message ?? "Editor launch failed"))
+          const message = result.error?.message ?? "Editor launch failed"
+          diagnostics.record("editor", new Error(message))
+          warnEditorFailure(message)
           redraw()
         }
       })
       .catch((error: unknown) => {
         diagnostics.record("editor", error)
+        warnEditorFailure(error instanceof Error ? error.message : String(error))
         redraw()
       })
   }
@@ -523,6 +539,20 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   const persisted = loadOverlayState(storage)
   let collapsed = persisted.collapsed ?? !options.defaultOpen
   let activeTab: OverlayTab = persisted.activeTab ?? "components"
+  // How many diagnostics existed the last time the Settings tab was open (§16
+  // sidebar badge) — never persisted, since a fresh reload has nothing to
+  // catch up on. `diagnosticsUnread` below self-corrects to 0, and advances
+  // this past every current entry, whenever `activeTab` is already
+  // "settings" at `getState()` time, so entries recorded while that tab sits
+  // open are never counted as unread either.
+  let diagnosticsSeenCount = 0
+  const diagnosticsUnread = (): number => {
+    if (activeTab === "settings") {
+      diagnosticsSeenCount = diagnostics.count()
+      return 0
+    }
+    return Math.max(0, diagnostics.count() - diagnosticsSeenCount)
+  }
   let showBanner = persisted.showPickingBanner ?? options.picker.showBanner
   let redrawFlashEnabled = persisted.redrawFlashEnabled ?? options.redrawFlash.enabled
   const isRedrawFlashActive = (): boolean =>
@@ -805,6 +835,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         frozenRects,
         flashes: Array.from(flashesById, ([componentId, { rects, seq }]) => ({ componentId, seq, rects })),
         diagnostics: diagnostics.list(),
+        diagnosticsUnreadCount: diagnosticsUnread(),
         componentTree,
         history,
         pickerShortcuts: shortcutSettings,

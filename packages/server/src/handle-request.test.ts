@@ -166,14 +166,20 @@ describe("handleInspectorRequest", () => {
     expect(launch).toHaveBeenCalledWith("code", expect.anything())
   })
 
-  it("reports EDITOR_LAUNCH_FAILED when the launcher rejects", async () => {
+  it("reports EDITOR_LAUNCH_FAILED and warns to the console when the launcher rejects", async () => {
     const launch = vi.fn().mockRejectedValue(Object.assign(new Error("spawn ENOENT"), { code: "ENOENT" }))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
     const response = await handleInspectorRequest(
       jsonRequest({ file: "src/foo.ts", line: 1, column: 1 }),
       baseOptions({ launchEditorProcess: launch }),
     )
     expect(response.status).toBe(500)
     expect(errorCodeOf(response.body)).toBe("EDITOR_LAUNCH_FAILED")
+    expect(warn).toHaveBeenCalledTimes(1)
+    const message = String(warn.mock.calls[0]?.[0])
+    expect(message).toContain("code")
+    expect(message).toContain("spawn ENOENT")
+    warn.mockRestore()
   })
 
   it("applies path mappings to the launched path after validation, before invoking the editor", async () => {

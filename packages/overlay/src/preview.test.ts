@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   compactContainerPreview,
-  fitsExpandedInline,
+  containerNeedsToggle,
   formatIndexLabel,
   isExpandable,
   isNullOrUndefinedNode,
@@ -119,11 +119,11 @@ describe("compactContainerPreview (devtools-style one-line preview)", () => {
     expect(compactContainerPreview(node)).toBe('User { name: "Ada" }')
   })
 
-  it("renders empty containers without a dangling space", () => {
+  it("renders empty containers without a dangling space, and without a redundant count prefix (nothing hidden to expand)", () => {
     const object: ContainerNode = { kind: "object", className: "Object", size: 0, entries: [], offset: 0, truncated: false, path: [] }
     const array: ContainerNode = { kind: "array", length: 0, items: [], offset: 0, truncated: false, path: [] }
     expect(compactContainerPreview(object)).toBe("{}")
-    expect(compactContainerPreview(array)).toBe("Array(0) []")
+    expect(compactContainerPreview(array)).toBe("[]")
   })
 
   it("inlines array items positionally, one level deep only, prefixed with an Array(N) count", () => {
@@ -165,7 +165,7 @@ describe("compactContainerPreview (devtools-style one-line preview)", () => {
     expect(compactContainerPreview(node)).toBe("Array(100) [ 0, … ]")
   })
 
-  it("formats map and set entries", () => {
+  it("formats map and set entries, omitting the count prefix when every entry is already shown", () => {
     const map: ContainerNode = {
       kind: "map",
       size: 1,
@@ -185,13 +185,28 @@ describe("compactContainerPreview (devtools-style one-line preview)", () => {
       truncated: false,
       path: [],
     }
-    expect(compactContainerPreview(map)).toBe('Map(1) { "a" => 1 }')
-    expect(compactContainerPreview(set)).toBe("Set(2) { 1, 2 }")
+    expect(compactContainerPreview(map)).toBe('{ "a" => 1 }')
+    expect(compactContainerPreview(set)).toBe("{ 1, 2 }")
+  })
+
+  it("keeps the count prefix once entries are elided past the cap", () => {
+    const map: ContainerNode = {
+      kind: "map",
+      size: 6,
+      entries: Array.from({ length: 6 }, (_, i) => ({
+        key: { kind: "primitive" as const, type: "string" as const, value: `k${i}` },
+        value: { kind: "primitive" as const, type: "number" as const, value: i },
+      })),
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(compactContainerPreview(map)).toBe('Map(6) { "k0" => 0, "k1" => 1, "k2" => 2, "k3" => 3, "k4" => 4, … }')
   })
 })
 
-describe("fitsExpandedInline (auto-expand-without-toggle, no-space-cost follow-up)", () => {
-  it("is true for a plain object with only primitive-leaf fields", () => {
+describe("containerNeedsToggle (only show +/- when expanding reveals something new)", () => {
+  it("is false for a plain object with only primitive-leaf fields — nothing more to reveal", () => {
     const node: ContainerNode = {
       kind: "object",
       className: "Object",
@@ -205,22 +220,30 @@ describe("fitsExpandedInline (auto-expand-without-toggle, no-space-cost follow-u
       truncated: false,
       path: [],
     }
-    expect(fitsExpandedInline(node)).toBe(true)
+    expect(containerNeedsToggle(node)).toBe(false)
   })
 
-  it("is false for a non-object container (array/map/set), whose compact form omits index/key labels", () => {
+  it("is false for a fully-shown array of primitives, e.g. a single-item array (grammarSlugs: [ \"personal-pronouns\" ])", () => {
     const array: ContainerNode = {
       kind: "array",
       length: 1,
-      items: [{ kind: "primitive", type: "number", value: 1 }],
+      items: [{ kind: "primitive", type: "string", value: "personal-pronouns" }],
       offset: 0,
       truncated: false,
       path: [],
     }
-    expect(fitsExpandedInline(array)).toBe(false)
+    expect(containerNeedsToggle(array)).toBe(false)
   })
 
-  it("is false for a truncated object, a class instance, or one with a nested/expandable field", () => {
+  it("is true once a container's entries are elided past the cap, or it's server-truncated", () => {
+    const capped: ContainerNode = {
+      kind: "array",
+      length: 7,
+      items: Array.from({ length: 7 }, (_, i) => ({ kind: "primitive" as const, type: "number" as const, value: i })),
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
     const truncated: ContainerNode = {
       kind: "object",
       className: "Object",
@@ -230,15 +253,11 @@ describe("fitsExpandedInline (auto-expand-without-toggle, no-space-cost follow-u
       truncated: true,
       path: [],
     }
-    const classInstance: ContainerNode = {
-      kind: "object",
-      className: "User",
-      size: 1,
-      entries: [{ key: "name", node: { kind: "primitive", type: "string", value: "Ada" } }],
-      offset: 0,
-      truncated: false,
-      path: [],
-    }
+    expect(containerNeedsToggle(capped)).toBe(true)
+    expect(containerNeedsToggle(truncated)).toBe(true)
+  })
+
+  it("is true whenever any entry is itself a container or a getter/max-depth stub, even under the cap", () => {
     const nested: ContainerNode = {
       kind: "object",
       className: "Object",
@@ -259,10 +278,30 @@ describe("fitsExpandedInline (auto-expand-without-toggle, no-space-cost follow-u
       truncated: false,
       path: [],
     }
-    expect(fitsExpandedInline(truncated)).toBe(false)
-    expect(fitsExpandedInline(classInstance)).toBe(false)
-    expect(fitsExpandedInline(nested)).toBe(false)
-    expect(fitsExpandedInline(getter)).toBe(false)
+    const arrayOfObjects: ContainerNode = {
+      kind: "array",
+      length: 1,
+      items: [{ kind: "object", className: "Task", size: 1, entries: [], offset: 0, truncated: false, path: [] }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(containerNeedsToggle(nested)).toBe(true)
+    expect(containerNeedsToggle(getter)).toBe(true)
+    expect(containerNeedsToggle(arrayOfObjects)).toBe(true)
+  })
+
+  it("is unaffected by a class instance's name alone — className doesn't gate the toggle", () => {
+    const classInstance: ContainerNode = {
+      kind: "object",
+      className: "User",
+      size: 1,
+      entries: [{ key: "name", node: { kind: "primitive", type: "string", value: "Ada" } }],
+      offset: 0,
+      truncated: false,
+      path: [],
+    }
+    expect(containerNeedsToggle(classInstance)).toBe(false)
   })
 })
 

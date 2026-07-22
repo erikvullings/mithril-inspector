@@ -12,7 +12,12 @@ import type {
   SourceLocation,
 } from "@mithril-inspector/protocol"
 
-/** §15 default redaction key patterns, matched case-insensitively as a substring of the property key. */
+/**
+ * §15 default redaction key patterns, matched case-insensitively as whole
+ * word(s) of the property key (see {@link shouldRedactKey}) — not a raw
+ * substring, so e.g. `"token"` catches `authToken`/`api_token` but not the
+ * unrelated `tokens`/`tokenizer`.
+ */
 export const DEFAULT_REDACTION_KEYS: readonly string[] = [
   "password",
   "passwd",
@@ -26,6 +31,37 @@ export const DEFAULT_REDACTION_KEYS: readonly string[] = [
 ]
 
 const DEFAULT_REPLACEMENT = "[redacted]"
+
+/** Splits a property key into lowercase words on camelCase/snake_case/kebab-case boundaries, e.g. `"apiKey"`/`"api_key"` -> `["api", "key"]`. */
+function splitKeyWords(key: string): string[] {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .toLowerCase()
+    .split(" ")
+    .filter((word) => word.length > 0)
+}
+
+/** Whether `needle`'s words occur as a contiguous run within `haystack`'s words, e.g. `["access", "token"]` within `["my", "access", "token", "value"]`. */
+function containsWordSequence(haystack: readonly string[], needle: readonly string[]): boolean {
+  if (needle.length === 0) return false
+  for (let start = 0; start <= haystack.length - needle.length; start++) {
+    if (needle.every((word, i) => haystack[start + i] === word)) return true
+  }
+  return false
+}
+
+/**
+ * Whether `key` matches one of `patterns` as whole word(s), not a raw
+ * substring (§15 fix): `"token"` matches `authToken`/`api_token`/`TOKEN` but
+ * not `tokens`/`tokenizer`, since those don't contain the word "token" on
+ * its own. A multi-word pattern like `"apiKey"` must appear as an adjacent
+ * word pair, in order.
+ */
+function shouldRedactKey(key: string, patterns: readonly string[]): boolean {
+  const keyWords = splitKeyWords(key)
+  return patterns.some((pattern) => containsWordSequence(keyWords, splitKeyWords(pattern)))
+}
 
 /**
  * §7.4 lazy-inspection default limits, overridable per `createSerializer` call.
@@ -136,9 +172,8 @@ export function createSerializer(options: SerializerOptions = {}): Serializer {
 
   const shouldRedact = (key: string): boolean => {
     if (!isRedactionEnabled()) return false
-    const lower = key.toLowerCase()
-    if (redactionKeys.some((pattern) => lower.includes(pattern.toLowerCase()))) return true
-    return additionalRedactKeys().some((pattern) => lower.includes(pattern.toLowerCase()))
+    if (shouldRedactKey(key, redactionKeys)) return true
+    return shouldRedactKey(key, additionalRedactKeys())
   }
 
   interface Page<T> {

@@ -422,6 +422,24 @@ describe("createSerializer (§7.4 safe serialization)", () => {
       ])
     })
 
+    it("matches patterns as whole words, not a raw substring", () => {
+      const serializer = createSerializer()
+      const node = serializer.serialize({
+        tokens: ["a", "b"],
+        tokenizer: "whitespace",
+        authToken: "abc123",
+        api_token: "def456",
+        TOKEN: "ghi789",
+      }) as PreviewObjectNode
+      expect(node.entries).toEqual([
+        { key: "tokens", node: { kind: "array", length: 2, items: expect.any(Array), offset: 0, truncated: false, path: [{ kind: "prop", key: "tokens" }] } },
+        { key: "tokenizer", node: { kind: "primitive", type: "string", value: "whitespace" } },
+        { key: "authToken", node: { kind: "redacted", replacement: "[redacted]" } },
+        { key: "api_token", node: { kind: "redacted", replacement: "[redacted]" } },
+        { key: "TOKEN", node: { kind: "redacted", replacement: "[redacted]" } },
+      ])
+    })
+
     it("never evaluates a getter for a redacted key", () => {
       let invoked = false
       const serializer = createSerializer()

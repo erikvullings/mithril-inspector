@@ -38,7 +38,7 @@ import type { MappingInfo, MappingPrecision } from "./mapping.js"
 import type { OverlayTheme } from "./options.js"
 import {
   compactContainerPreview,
-  fitsExpandedInline,
+  containerNeedsToggle,
   formatIndexLabel,
   isContainerNode,
   isNullOrUndefinedNode,
@@ -609,30 +609,21 @@ interface PreviewContext {
 
 /**
  * Renders one entry's label + value for an object/map/array/set/typed-array
- * container. The root section (§8.3's Attrs/State) renders each as its own
- * full-width `<li>` row, matching the panel's existing top-level field list.
- * A nested (non-root) container instead renders each as an inline
- * `span.mi-preview-entry` (comma-separated via CSS, styles.ts) so the whole
- * expanded entry — its "key:"/index label, toggle, and fields — reads as one
- * flowing, wrapping line, the same as the collapsed compact preview it
- * replaces, rather than a rigid one-field-per-row list — *except* an
- * array/map/set/typed-array item that is itself a container: that item's own
- * fields can span the full width once expanded, so it gets `.mi-preview-row`
- * added (still a `.mi-preview-entry` for the comma separator, but
- * `flex-basis: 100%` in styles.ts forces it onto its own indented line
- * instead of wrapping mid-row like a same-length primitive would).
+ * container as its own full-width `<li>` row — used for the root Attrs/State
+ * field list and, identically, for any nested container's expanded row list,
+ * so a key/value pair always sits on its own line indented under its parent
+ * (`previewNodeView`'s `.mi-preview-row` wrapper below supplies the indent
+ * for a nested level).
  */
-function previewEntries(ctx: PreviewContext, node: PreviewNode, flow: boolean): Children {
-  const tag = flow ? "span.mi-preview-entry" : "li"
-  const entryTag = (child: PreviewNode): string => (flow && isContainerNode(child) ? "div.mi-preview-entry.mi-preview-row" : tag)
+function previewEntries(ctx: PreviewContext, node: PreviewNode): Children {
   switch (node.kind) {
     case "object":
       return node.entries.map((entry) =>
-        m(tag, { key: entry.key }, [m("span.mi-preview-key", `${entry.key}: `), previewNodeView(ctx, entry.node)]),
+        m("li", { key: entry.key }, [m("span.mi-preview-key", `${entry.key}: `), previewNodeView(ctx, entry.node)]),
       )
     case "map":
       return node.entries.map((entry, i) =>
-        m(entryTag(entry.value), { key: node.offset + i }, [
+        m("li", { key: node.offset + i }, [
           previewNodeView(ctx, entry.key),
           m("span.mi-preview-key", " => "),
           previewNodeView(ctx, entry.value),
@@ -642,14 +633,14 @@ function previewEntries(ctx: PreviewContext, node: PreviewNode, flow: boolean): 
     case "typed-array": {
       const total = totalCountOf(node)
       return node.items.map((item, i) =>
-        m(entryTag(item), { key: node.offset + i }, [
+        m("li", { key: node.offset + i }, [
           m("span.mi-preview-key", `${formatIndexLabel(node.offset + i, total)}: `),
           previewNodeView(ctx, item),
         ]),
       )
     }
     case "set":
-      return node.items.map((item, i) => m(entryTag(item), { key: node.offset + i }, previewNodeView(ctx, item)))
+      return node.items.map((item, i) => m("li", { key: node.offset + i }, previewNodeView(ctx, item)))
     default:
       return null
   }
@@ -671,6 +662,18 @@ function showMoreButton(ctx: PreviewContext, node: ContainerNode, effective: Con
 }
 
 /**
+ * A "+"/"−" square icon button (styles.ts's `.mi-preview-toggle`) — the one
+ * expand affordance used throughout the preview tree, whether it toggles a
+ * container's local collapsed/expanded UI state or triggers a fetch-driven
+ * getter evaluation/pagination round-trip. `label` doubles as the tooltip
+ * and `aria-label`, so a getter's "Evaluate" vs. a stub's "Expand" is still
+ * distinguishable to assistive tech even though both render the same glyph.
+ */
+function toggleGlyphButton(glyph: "+" | "−", label: string, onclick: () => void): Vnode {
+  return m("button.mi-preview-toggle", { type: "button", title: label, "aria-label": label, onclick }, glyph)
+}
+
+/**
  * A nested (non-root) container's default, collapsed state (§7.4): a flat
  * "+" toggle plus a one-line devtools-style preview of its already-loaded
  * shallow contents (e.g. `{ id: 1, label: "Write the changelog", done: false
@@ -678,22 +681,18 @@ function showMoreButton(ctx: PreviewContext, node: ContainerNode, effective: Con
  * the contents are visible without expanding at all. Expanding is then a
  * pure local UI toggle (`togglePreviewExpanded`), independent of the
  * fetch-driven `attrsOverrides`/`stateOverrides` round-trip used only for
- * data past `maxDepth`/`maxEntries`.
+ * data past `maxDepth`/`maxEntries`. Returned as two sibling `Children`
+ * (not one wrapping element) so both land directly in the entry's own
+ * `<li>` flex row: the button stays glued right after "key: " while the
+ * summary span (styles.ts's `.mi-preview-inline`, `flex: 1 1 0%`) truncates
+ * its own text with an ellipsis to fit what's left of the current line,
+ * instead of the whole button+text pair wrapping down together.
  */
-function collapsedContainerPreview(ctx: PreviewContext, node: ContainerNode, effective: ContainerNode): Vnode {
-  return m("span.mi-preview-collapsed", [
-    m(
-      "button.mi-preview-toggle",
-      {
-        type: "button",
-        title: "Expand",
-        "aria-label": "Expand",
-        onclick: () => ctx.controller.togglePreviewExpanded(ctx.target, node.path),
-      },
-      "+",
-    ),
+function collapsedContainerPreview(ctx: PreviewContext, node: ContainerNode, effective: ContainerNode): Children {
+  return [
+    toggleGlyphButton("+", "Expand", () => ctx.controller.togglePreviewExpanded(ctx.target, node.path)),
     m("span.mi-preview-inline", compactContainerPreview(effective)),
-  ])
+  ]
 }
 
 /**
@@ -704,67 +703,55 @@ function collapsedContainerPreview(ctx: PreviewContext, node: ContainerNode, eff
  * `<ul>`'s own block layout pushing it down.
  */
 function collapseToggleButton(ctx: PreviewContext, node: ContainerNode): Vnode {
-  return m(
-    "button.mi-preview-toggle",
-    {
-      type: "button",
-      title: "Collapse",
-      "aria-label": "Collapse",
-      onclick: () => ctx.controller.togglePreviewExpanded(ctx.target, node.path),
-    },
-    "−",
-  )
+  return toggleGlyphButton("−", "Collapse", () => ctx.controller.togglePreviewExpanded(ctx.target, node.path))
 }
 
 /**
  * Recursively renders one preview node (§7.4), fetching getter/max-depth/pagination
  * expansions on demand. The root container (§8.3's Attrs/State section) always
  * shows its rows directly, with no type-label line and no collapse toggle — see
- * `previewSection`. Any other, nested container defaults to the collapsed
- * one-line preview above and only shows its expanded row list (again with no
- * redundant "Object"/"Array(3)" label, since the rows already convey that)
- * once the user has explicitly toggled it open.
+ * `previewSection`.
  *
- * Returns `Children` rather than a single `Vnode`: an expanded non-root
- * container's toggle button and its entries are returned as sibling items
- * (not one wrapping element) so they land directly in the entry's own
- * `<li>`/`.mi-preview-entry` — a flex row — letting the toggle stay put right
- * after "key: " while a container-valued item forces itself onto its own
- * indented line below via `.mi-preview-row`'s `flex-basis: 100%` (§7.4, see
- * styles.ts and `previewEntries` above).
- *
- * A plain object whose fields are all primitive (`fitsExpandedInline`, no
- * `maxDepth`/pagination round-trip needed) skips the collapsed state and its
- * toggle entirely: its flat field list is already no wider than the "+ { ...
- * }" summary it would otherwise show, so the toggle would only cost a click
- * for no space saved.
+ * Any other, nested container first asks `containerNeedsToggle`: if its
+ * collapsed compact summary already shows everything there is to show (no
+ * entries elided, no nested container/getter hiding further content), it
+ * renders that summary as plain static text with no "+" at all — expanding
+ * would add nothing (e.g. `grammarSlugs: [ "personal-pronouns" ]`). Otherwise
+ * it defaults to the collapsed one-line summary above, and once the user
+ * explicitly toggles it open, renders its own indented `<ul>` of rows (again
+ * with no redundant "Object"/"Array(3)" label, since the rows already convey
+ * that) wrapped in `.mi-preview-row` — `flex-basis: 100%` in styles.ts forces
+ * that `<ul>` onto its own line below the "key: −", indented under it, with
+ * each further-nested expansion compounding its own 14px of indent the same
+ * way.
  */
 function previewNodeView(ctx: PreviewContext, node: PreviewNode, isRoot = false): Children {
   if (node.kind === "getter" || node.kind === "max-depth") {
     const resolved = ctx.overrides.get(pathKey(node.path))
     if (resolved !== undefined) return previewNodeView(ctx, resolved, isRoot)
+    const label = node.kind === "getter" ? "Evaluate" : "Expand"
     return m("span.mi-preview-getter", [
       m("span.mi-muted", summarizeNode(node)),
-      m(
-        "button.mi-btn.mi-btn-small",
-        { type: "button", onclick: () => ctx.controller.expandComponentPreview(ctx.target, node.path) },
-        node.kind === "getter" ? "Evaluate" : "Expand",
-      ),
+      toggleGlyphButton("+", label, () => ctx.controller.expandComponentPreview(ctx.target, node.path)),
     ])
   }
   if (isContainerNode(node)) {
     const paged = node.truncated ? ctx.overrides.get(pathKey(node.path)) : undefined
     const effective = paged !== undefined && isContainerNode(paged) ? paged : node
-    const autoExpand = fitsExpandedInline(effective)
-    if (!isRoot && !autoExpand && !ctx.expandedPaths.has(pathKey(node.path))) {
-      return collapsedContainerPreview(ctx, node, effective)
-    }
     if (isRoot) {
-      const entriesList = m("ul.mi-preview-entries.mi-preview-root", previewEntries(ctx, effective, false))
+      const entriesList = m("ul.mi-preview-entries.mi-preview-root", previewEntries(ctx, effective))
       return m("div.mi-preview-node", [entriesList, showMoreButton(ctx, node, effective)])
     }
-    if (autoExpand) return previewEntries(ctx, effective, true)
-    return [collapseToggleButton(ctx, node), previewEntries(ctx, effective, true), showMoreButton(ctx, node, effective)]
+    if (!containerNeedsToggle(effective)) {
+      return m("span.mi-preview-value", compactContainerPreview(effective))
+    }
+    if (!ctx.expandedPaths.has(pathKey(node.path))) {
+      return collapsedContainerPreview(ctx, node, effective)
+    }
+    return [
+      collapseToggleButton(ctx, node),
+      m("div.mi-preview-row", [m("ul.mi-preview-entries", previewEntries(ctx, effective)), showMoreButton(ctx, node, effective)]),
+    ]
   }
   if (node.kind === "component" && node.location !== null) {
     const location = node.location

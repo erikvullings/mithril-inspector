@@ -570,46 +570,33 @@ export function overlayCss(): string {
 
 /* --- Attrs/state preview tree (§7.4, task 0020/0022) -------------------- */
 .mi-preview-node { font-family: var(--mi-mono); font-size: 12px; }
-/* Only ever the root Attrs/State field list (view.ts's previewNodeView) — a
- * nested container's own entries flow as .mi-preview-entry spans instead,
- * see below. */
-.mi-preview-entries.mi-preview-root {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.mi-preview-entries.mi-preview-root > li {
+/*
+ * Every entry -- root Attrs/State field and any nested container's expanded
+ * child alike (view.ts's previewEntries) -- is a block li row, so a
+ * key/value pair always sits on its own line rather than flowing into a
+ * wrapping paragraph. Nesting reads as indentation (see .mi-preview-row
+ * below), not extra punctuation.
+ */
+.mi-preview-entries { list-style: none; margin: 0; padding: 0; }
+.mi-preview-entries > li {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px;
+  padding: 2px 0;
+}
+.mi-preview-entries.mi-preview-root > li {
   padding: 4px 0;
   border-bottom: 1px solid var(--mi-border);
 }
 .mi-preview-entries.mi-preview-root > li:last-child { border-bottom: 0; }
 .mi-preview-key { color: var(--mi-muted); flex: 0 0 auto; }
 /*
- * A nested (non-root) container's expanded entry — returned as a sibling of
- * its own collapse toggle within the same flex-wrap parent <li> (view.ts) —
- * so "0: −" and its fields read as one flowing, wrapping line (e.g. "0: −
- * id: 1, label: "…", done: false"), the same shape the collapsed compact
- * preview had, rather than a separate one-field-per-row block underneath.
- */
-.mi-preview-entry { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
-/*
- * Comma separator between flowing (same-line) entries. Attached via ::after
- * on the entry *before* the gap, not ::before on the one after — so when the
- * flex-wrap row breaks between two entries, the comma stays glued to the end
- * of the previous line instead of starting the new line orphaned. A
- * .mi-preview-row (below) is excluded on the left: it already sits on its own
- * full-width line, so it neither gets nor needs a comma of its own.
- */
-.mi-preview-entry:not(.mi-preview-row):has(+ .mi-preview-entry)::after { content: ","; color: var(--mi-muted); }
-/*
- * An array/map/set item that is itself a container (view.ts's previewEntries):
- * forced onto its own line within the parent's flex-wrap row via
- * flex-basis: 100% and indented, so sibling items line up in a column below
- * the parent key instead of wrapping back to the row's own left edge mid-item.
+ * A nested container's expanded child list (view.ts's previewNodeView):
+ * flex-basis: 100% forces the <ul> onto its own line below the "key: -" row
+ * instead of flowing inline next to it, and padding-left indents it under
+ * that key -- each further level of expansion nests its own .mi-preview-row
+ * inside this one, so indentation naturally compounds with depth.
  */
 .mi-preview-row { flex-basis: 100%; padding-left: 14px; margin-top: 2px; }
 .mi-preview-getter { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mi-mono); }
@@ -626,8 +613,23 @@ export function overlayCss(): string {
   text-decoration-color: transparent;
 }
 .mi-preview-component-link:hover, .mi-preview-component-link:focus-visible { text-decoration-color: var(--mi-accent); }
-.mi-preview-collapsed { display: inline-flex; align-items: baseline; gap: 5px; }
-.mi-preview-inline { color: var(--mi-muted); word-break: break-word; }
+/*
+ * A collapsed container's one-line compact summary (view.ts's
+ * collapsedContainerPreview), rendered as a sibling of its "+" toggle rather
+ * than wrapped with it: flex: 1 1 0% (zero basis) keeps it from ever
+ * claiming its natural content width, so the flex-wrap row never bumps the
+ * whole "+ { ... }" pair down to a new line once the text is too long --
+ * instead the text alone truncates with an ellipsis at whatever width is
+ * left on the current line, right after the toggle.
+ */
+.mi-preview-inline {
+  color: var(--mi-muted);
+  flex: 1 1 0%;
+  min-width: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .mi-preview-toggle {
   appearance: none;
   border: 1px solid var(--mi-border);

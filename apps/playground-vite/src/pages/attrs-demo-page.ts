@@ -6,11 +6,25 @@ interface Address {
   readonly zip: string
 }
 
+interface Session {
+  /** Deliberately named like the real-world false positive that used to trip up §15's substring-based redaction — plural "tokens" now stays visible, only actual secret-shaped keys (authToken) get redacted. */
+  readonly tokens: readonly string[]
+  readonly authToken: string
+  readonly scopes: readonly string[]
+}
+
+interface Profile {
+  readonly bio: string
+  readonly badges: readonly string[]
+}
+
 interface UserCardAttrs {
   readonly name: string
   readonly age: number
   readonly roles: readonly string[]
   readonly address: Address
+  readonly profile: Profile
+  readonly session: Session
   readonly active: boolean
   readonly onGreet: () => void
 }
@@ -21,6 +35,11 @@ interface UserCardAttrs {
  * inspect in the overlay's Components tab to see a rich Attrs panel: string,
  * number, boolean, array, nested object and callback props all as real
  * key/value entries, contrasted with the State demo's own component state.
+ * `profile`/`session` are kept as siblings (not nested in each other) so
+ * `session`'s fields land at serializer depth 2, safely under the default
+ * `maxDepth` of 3 — nesting them further would tip `tokens` into a
+ * `max-depth` stub and hide the very redaction contrast (`tokens` staying
+ * visible, `authToken` redacted) they're here to demonstrate.
  */
 const UserCard: Component<UserCardAttrs> = {
   view: ({ attrs }) =>
@@ -29,6 +48,7 @@ const UserCard: Component<UserCardAttrs> = {
       m("p", `${attrs.age} years old · ${attrs.active ? "active" : "inactive"}`),
       m("p", `Roles: ${attrs.roles.join(", ")}`),
       m("p", `${attrs.address.city}, ${attrs.address.zip}`),
+      m("p", attrs.profile.bio),
       m("button#greet-btn", { onclick: attrs.onGreet }, "Greet"),
     ]),
 }
@@ -83,6 +103,15 @@ export const AttrsDemoPage = (): Component & DemoState => {
           age: this.age,
           roles: ["admin", "reviewer"],
           address: { city: "Arlington", zip: "22201" },
+          profile: {
+            bio: "Pioneering computer scientist and Navy rear admiral.",
+            badges: ["COBOL", "Navy", "Turing Award", "Debugging", "Compilers", "Mentor"],
+          },
+          session: {
+            tokens: ["read:profile", "write:profile"],
+            authToken: "sk-demo-abc123",
+            scopes: ["profile"],
+          },
           active: this.active,
           onGreet: () => (this.greetCount += 1),
         }),

@@ -7,11 +7,19 @@ interface Task {
   done: boolean
 }
 
+interface Session {
+  /** Deliberately named like the real-world false positive that used to trip up §15's substring-based redaction — plural "tokens" now stays visible, only actual secret-shaped keys (authToken) get redacted. */
+  readonly tokens: readonly string[]
+  readonly authToken: string
+  readonly lastLogin: { readonly device: string; readonly ip: string }
+}
+
 interface DemoState {
   count: number
   label: string
   notificationsEnabled: boolean
   tasks: Task[]
+  session: Session
 }
 
 /**
@@ -26,7 +34,10 @@ interface DemoState {
  * `tasks`) sit alongside `view` exactly like the idiomatic pattern the
  * runtime's state preview (task 0020/0022) is built to surface: primitives,
  * a boolean, and a nested array of objects, all visible as real key/value
- * entries in the overlay's Components tab State panel.
+ * entries in the overlay's Components tab State panel. `session` nests an
+ * object two levels deep and includes a redacted-looking `authToken`
+ * alongside a plain `tokens` field, to exercise the preview tree's
+ * expand/collapse and §15 redaction together.
  */
 export const StateDemoPage = (): Component & DemoState => {
   let nextId = 3
@@ -38,10 +49,16 @@ export const StateDemoPage = (): Component & DemoState => {
       { id: 1, label: "Write the changelog", done: false },
       { id: 2, label: "Review the PR", done: true },
     ],
+    session: {
+      tokens: ["read:tasks", "write:tasks"],
+      authToken: "sk-demo-xyz789",
+      lastLogin: { device: "MacBook Pro", ip: "10.0.0.42" },
+    },
     view(this: DemoState, _vnode: Vnode) {
       return m("div#state-demo-page.page", [
         m("h2", "State demo"),
         m("p", "A closure component with real object-literal state — inspect it in the overlay's Components tab."),
+        m("p", `Last login: ${this.session.lastLogin.device} (${this.session.lastLogin.ip})`),
         m("div", [
           m("button#decrement-btn", { onclick: () => (this.count -= 1) }, "−"),
           m("span#count-value", ` ${this.count} `),

@@ -67,20 +67,37 @@ export function isContainerNode(node: PreviewNode): node is ContainerNode {
   }
 }
 
+/** A container's own direct child nodes, regardless of kind — used by {@link containerNeedsToggle}. */
+function childNodesOf(node: ContainerNode): readonly PreviewNode[] {
+  switch (node.kind) {
+    case "object":
+      return node.entries.map((entry) => entry.node)
+    case "map":
+      return node.entries.flatMap((entry) => [entry.key, entry.value])
+    case "array":
+    case "typed-array":
+    case "set":
+      return node.items
+  }
+}
+
 /**
- * Whether a container's own fields are simple enough that rendering them
- * expanded — flat key/value pairs, no braces, no toggle button — is strictly
- * more compact than the "+ { ... }" collapsed summary it would otherwise
- * replace. Restricted to plain objects with only primitive-leaf fields: an
- * object's compact preview already spells out every key (`{ id: 1, ... }`),
- * so dropping the braces/button on expansion only removes text. An
- * array/map/set's compact preview omits its index/key labels, so expanding
- * one adds text (`0: 1, 1: 2, …`) rather than removing it — those keep the
- * regular click-to-expand toggle.
+ * Whether expanding `node` would reveal anything not already visible in its
+ * collapsed `compactContainerPreview` summary — i.e. whether a "+"
+ * expand/collapse toggle is worth showing at all. False when the compact
+ * preview already spells out every entry in full (nothing paginated away,
+ * no entry count elided past {@link COMPACT_PREVIEW_MAX_ENTRIES}) and none
+ * of those entries is itself a container or a getter/max-depth stub that
+ * only shows a shallow one-line summary — e.g. `grammarSlugs: [
+ * "personal-pronouns" ]` needs no toggle, the compact form already is the
+ * full picture. A container whose count is hidden, or that holds a nested
+ * container/expandable value only reachable by expanding this one first,
+ * still needs the toggle.
  */
-export function fitsExpandedInline(node: ContainerNode): boolean {
-  if (node.truncated || node.kind !== "object" || node.className !== "Object") return false
-  return node.entries.every((entry) => !isContainerNode(entry.node) && !isExpandable(entry.node))
+export function containerNeedsToggle(node: ContainerNode): boolean {
+  if (node.truncated) return true
+  if (totalCountOf(node) > COMPACT_PREVIEW_MAX_ENTRIES) return true
+  return childNodesOf(node).some((child) => isContainerNode(child) || isExpandable(child))
 }
 
 /** How many entries/items a container has already fetched, for the "N more" pagination label. */
@@ -122,9 +139,17 @@ function joinCompact(parts: readonly string[], hasMore: boolean): string {
  * shown via their own `summarizeNode` type summary (`Array(2)`, `User`, …),
  * not recursed into, matching the one-level-deep convention of a devtools
  * console object preview.
+ *
+ * A non-object's `TypeName(N)` count prefix (`Array(14)`, `Map(2)`, …) is
+ * only included when {@link containerNeedsToggle} would show a "+" for this
+ * same node: once every entry is already spelled out in full, the bracket
+ * body itself conveys the count (and a bare `{ a => 1 }` vs `[ 1, 2 ]` is
+ * already unambiguous between map/set/array), so the prefix would only
+ * repeat information the toggle-less summary already shows in full.
  */
 export function compactContainerPreview(node: ContainerNode): string {
   const shownMore = (total: number, shown: number): boolean => node.truncated || total > shown
+  const countPrefix = containerNeedsToggle(node) ? `${summarizeNode(node)} ` : ""
   switch (node.kind) {
     case "object": {
       const shown = node.entries.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
@@ -139,8 +164,7 @@ export function compactContainerPreview(node: ContainerNode): string {
     case "typed-array": {
       const shown = node.items.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
       const body = joinCompact(shown.map((item) => summarizeNode(item)), shownMore(node.items.length, shown.length))
-      const prefix = `${summarizeNode(node)} `
-      return body === "" ? `${prefix}[]` : `${prefix}[ ${body} ]`
+      return body === "" ? `${countPrefix}[]` : `${countPrefix}[ ${body} ]`
     }
     case "map": {
       const shown = node.entries.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
@@ -148,12 +172,12 @@ export function compactContainerPreview(node: ContainerNode): string {
         shown.map((entry) => `${summarizeNode(entry.key)} => ${summarizeNode(entry.value)}`),
         shownMore(node.entries.length, shown.length),
       )
-      return body === "" ? `${summarizeNode(node)} {}` : `${summarizeNode(node)} { ${body} }`
+      return body === "" ? `${countPrefix}{}` : `${countPrefix}{ ${body} }`
     }
     case "set": {
       const shown = node.items.slice(0, COMPACT_PREVIEW_MAX_ENTRIES)
       const body = joinCompact(shown.map((item) => summarizeNode(item)), shownMore(node.items.length, shown.length))
-      return body === "" ? `${summarizeNode(node)} {}` : `${summarizeNode(node)} { ${body} }`
+      return body === "" ? `${countPrefix}{}` : `${countPrefix}{ ${body} }`
     }
   }
 }

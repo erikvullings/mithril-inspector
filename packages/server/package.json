@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/server",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Open-in-editor middleware for Mithril Inspector (VS Code / VS Code Insiders / custom editors).",
   "type": "module",
   "license": "MIT",

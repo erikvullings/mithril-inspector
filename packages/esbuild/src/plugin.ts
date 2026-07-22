@@ -1,8 +1,16 @@
-import { readFile } from "node:fs/promises"
-import { dirname, extname } from "node:path"
-import { fileURLToPath } from "node:url"
+import { readFile } from "node:fs/promises";
+import { dirname, extname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import type { BuildResult, Loader, OnLoadArgs, OnLoadResult, OnResolveArgs, Plugin, PluginBuild } from "esbuild"
+import type {
+  BuildResult,
+  Loader,
+  OnLoadArgs,
+  OnLoadResult,
+  OnResolveArgs,
+  Plugin,
+  PluginBuild,
+} from "esbuild";
 
 import {
   loadVirtualModule,
@@ -15,13 +23,13 @@ import {
   toTransformOptions,
   type MithrilInspectorOptions,
   type VirtualModuleDeps,
-} from "@mithril-inspector/adapter-kit"
-import { transformMithrilModule } from "@mithril-inspector/transform"
+} from "@mithril-inspector/adapter-kit";
+import { transformMithrilModule } from "@mithril-inspector/transform";
 
-import { createEsbuildDevServer } from "./dev-server.js"
-import type { EsbuildDevServerHandle } from "./dev-server.js"
+import { createEsbuildDevServer } from "./dev-server.js";
+import type { EsbuildDevServerHandle } from "./dev-server.js";
 
-export type { MithrilInspectorOptions }
+export type { MithrilInspectorOptions };
 
 /** esbuild-specific option: opt in to the helper open-in-editor dev server (§12.4). */
 export interface MithrilInspectorEsbuildOptions extends MithrilInspectorOptions {
@@ -32,12 +40,12 @@ export interface MithrilInspectorEsbuildOptions extends MithrilInspectorOptions 
    * it is opt-in rather than automatic (§12.4: "a helper development server
    * *may* be provided").
    */
-  devServer?: { servedir: string; host?: string; port?: number } | false
+  devServer?: { servedir: string; host?: string; port?: number } | false;
 }
 
-const VIRTUAL_NAMESPACE = "mithril-inspector-virtual"
-const VIRTUAL_FILTER = /^virtual:mithril-inspector\//
-const TRANSFORM_FILTER = /\.[cm]?[jt]sx?$/
+const VIRTUAL_NAMESPACE = "mithril-inspector-virtual";
+const VIRTUAL_FILTER = /^virtual:mithril-inspector\//;
+const TRANSFORM_FILTER = /\.[cm]?[jt]sx?$/;
 
 const LOADER_BY_EXT: Readonly<Record<string, Loader>> = {
   ".ts": "ts",
@@ -48,10 +56,10 @@ const LOADER_BY_EXT: Readonly<Record<string, Loader>> = {
   ".mjs": "js",
   ".cjs": "js",
   ".jsx": "jsx",
-}
+};
 
 function loaderForPath(path: string): Loader {
-  return LOADER_BY_EXT[extname(path)] ?? "js"
+  return LOADER_BY_EXT[extname(path)] ?? "js";
 }
 
 /**
@@ -63,7 +71,7 @@ function loaderForPath(path: string): Loader {
  * dependencies (unlike Rollup/Vite, esbuild's `onLoad` never infers a
  * resolve directory for namespaced, non-`file` modules).
  */
-const PACKAGE_DIR = dirname(fileURLToPath(import.meta.url))
+const PACKAGE_DIR = dirname(fileURLToPath(import.meta.url));
 
 /**
  * The esbuild integration for Mithril Inspector (§4, §12.4): a single plugin
@@ -106,83 +114,99 @@ export function mithrilInspector(
   options: MithrilInspectorEsbuildOptions = {},
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Plugin {
-  const resolved = resolveInspectorOptions(options, env)
+  const resolved = resolveInspectorOptions(options, env);
 
   const virtualDeps: VirtualModuleDeps = {
     runtimeConfig: toRuntimeBootstrapConfig(resolved),
     overlayOptions: toOverlayOptionsInput(resolved),
-  }
+  };
 
   return {
     name: "mithril-inspector",
     setup(build: PluginBuild) {
-      const root = resolved.root ?? build.initialOptions.absWorkingDir ?? process.cwd()
-      const transformOptions = toTransformOptions(resolved, root)
-      const isMinified = build.initialOptions.minify === true
-      const isActive = resolved.enabled && (!isMinified || resolved.includeInProduction)
+      const root =
+        resolved.root ?? build.initialOptions.absWorkingDir ?? process.cwd();
+      const transformOptions = toTransformOptions(resolved, root);
+      const isMinified = build.initialOptions.minify === true;
+      const isActive =
+        resolved.enabled && (!isMinified || resolved.includeInProduction);
 
-      if (!isActive) return
+      if (!isActive) return;
 
       build.onResolve({ filter: VIRTUAL_FILTER }, (args: OnResolveArgs) => {
-        const resolvedId = resolveVirtualId(args.path)
-        return resolvedId === null ? null : { path: resolvedId, namespace: VIRTUAL_NAMESPACE }
-      })
+        const resolvedId = resolveVirtualId(args.path);
+        return resolvedId === null
+          ? null
+          : { path: resolvedId, namespace: VIRTUAL_NAMESPACE };
+      });
 
-      build.onLoad({ filter: /.*/, namespace: VIRTUAL_NAMESPACE }, (args: OnLoadArgs): OnLoadResult | null => {
-        const code = loadVirtualModule(args.path, virtualDeps)
-        return code === null ? null : { contents: code, loader: "js", resolveDir: PACKAGE_DIR }
-      })
+      build.onLoad(
+        { filter: /.*/, namespace: VIRTUAL_NAMESPACE },
+        (args: OnLoadArgs): OnLoadResult | null => {
+          const code = loadVirtualModule(args.path, virtualDeps);
+          return code === null
+            ? null
+            : { contents: code, loader: "js", resolveDir: PACKAGE_DIR };
+        },
+      );
 
-      build.onLoad({ filter: TRANSFORM_FILTER }, async (args: OnLoadArgs): Promise<OnLoadResult | null> => {
-        if (!shouldAttemptTransform(args.path)) return null
-        const code = await readFile(args.path, "utf8")
-        const result = transformMithrilModule({ id: args.path, code, ...transformOptions })
-        if (result === null) return null
-        let contents = result.code
-        // Normalize sourcesContent: esbuild/magic-string expects string[] not (string | null)[]
-        if (result.map !== undefined) {
-          const sourcesContent = result.map.sourcesContent?.filter((s): s is string => s !== null)
-          const map = {
-            version: result.map.version,
-            file: result.map.file,
-            sources: result.map.sources,
-            sourcesContent,
-            names: result.map.names,
-            mappings: result.map.mappings,
-          }
-          contents = `${result.code}\n//# sourceMappingURL=${(map as any).toUrl()}\n`
-        }
-        return { contents, loader: loaderForPath(args.path), resolveDir: dirname(args.path) }
-      })
+      build.onLoad(
+        { filter: TRANSFORM_FILTER },
+        async (args: OnLoadArgs): Promise<OnLoadResult | null> => {
+          if (!shouldAttemptTransform(args.path)) return null;
+          const code = await readFile(args.path, "utf8");
+          const result = transformMithrilModule({
+            id: args.path,
+            code,
+            ...transformOptions,
+          });
+          if (result === null) return null;
+          const contents =
+            result.map !== undefined
+              ? `${result.code}\n//# sourceMappingURL=${result.map.toUrl()}\n`
+              : result.code;
+          return {
+            contents,
+            loader: loaderForPath(args.path),
+            resolveDir: dirname(args.path),
+          };
+        },
+      );
 
-      const devServerOption = options.devServer
+      const devServerOption = options.devServer;
       if (devServerOption !== undefined && devServerOption !== false) {
-        let handle: EsbuildDevServerHandle | undefined
-        let starting: Promise<void> | undefined
+        let handle: EsbuildDevServerHandle | undefined;
+        let starting: Promise<void> | undefined;
 
         build.onEnd((_result: BuildResult) => {
-          if (starting !== undefined) return undefined
+          if (starting !== undefined) return undefined;
           starting = createEsbuildDevServer({
             servedir: devServerOption.servedir,
-            ...(devServerOption.host !== undefined ? { host: devServerOption.host } : {}),
-            ...(devServerOption.port !== undefined ? { port: devServerOption.port } : {}),
+            ...(devServerOption.host !== undefined
+              ? { host: devServerOption.host }
+              : {}),
+            ...(devServerOption.port !== undefined
+              ? { port: devServerOption.port }
+              : {}),
             inspector: toServerOptions(resolved, root),
           }).then((startedHandle) => {
-            handle = startedHandle
-            console.log(`[mithril-inspector] open-in-editor endpoint ready: ${startedHandle.url}`)
-          })
+            handle = startedHandle;
+            console.log(
+              `[mithril-inspector] open-in-editor endpoint ready: ${startedHandle.url}`,
+            );
+          });
           // esbuild awaits a returned Promise before the build is considered
           // finished, so the "ready" log (and the server itself) is
           // guaranteed up by the time `onEnd` resolves, on this first call
           // only — later rebuilds see `starting` already set and return
           // immediately rather than re-awaiting an already-settled promise.
-          return starting
-        })
+          return starting;
+        });
 
         build.onDispose(() => {
-          void starting?.then(() => handle?.close())
-        })
+          void starting?.then(() => handle?.close());
+        });
       }
     },
-  }
+  };
 }

@@ -29,6 +29,7 @@ export {
 export type {
   MithrilInspectorOptions,
   ResolvedComponentTreeOptions,
+  ResolvedElementsPaneOptions,
   ResolvedInspectorOptions,
   ResolvedPickerOptions,
   ResolvedRedrawFlashOptions,

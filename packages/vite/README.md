@@ -45,6 +45,7 @@ mithrilInspector({
   ui:            { enabled, defaultOpen, theme, zIndex },
   picker:        { enabled, toggleShortcut, holdShortcut, openOnClick, continuous },
   componentTree: { enabled, captureAttrs, captureState },
+  elementsPane:  { showTagName }, // Elements tab hyperscript labels (default true: "div.scroll" vs. ".scroll")
   source:        { elements, components, attributes, textExpressions, exposeDomAttributes },
   mithrilImports, hyperscriptIdentifiers, // Mithril import/alias detection
   debug,              // gate the diagnostics endpoint and runtime log-once

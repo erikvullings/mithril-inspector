@@ -12,6 +12,7 @@ import type {
 import { createDiagnostics, type Diagnostic, type DiagnosticsLog } from "./diagnostics.js"
 import { describeElement, eligibleElementAt, isWithinHost } from "./element-info.js"
 import { createEditorClient, type OpenInEditor } from "./editor.js"
+import { buildChildBoundaries, buildElementsTree, type ElementsPaneNode } from "./elements.js"
 import {
   createHistoryStore,
   hasMeaningfulHistoryData,
@@ -47,7 +48,7 @@ import {
 } from "./shortcuts.js"
 import { createComponentTreeStore, type ComponentTreeStore, type PinnedRow, type TreeRow } from "./tree.js"
 
-export type OverlayTab = "components" | "history" | "settings"
+export type OverlayTab = "components" | "elements" | "history" | "settings"
 
 /**
  * A resolved component display name plus whether it's a §9.2 fallback tier
@@ -169,6 +170,19 @@ export interface HistoryViewState {
 }
 
 /**
+ * The Elements pane's state (task 0031, §9.1's optional "expansion of a
+ * component into its owned vnode/element tree"): the selected component's own
+ * rendered DOM/vnode tree, recursively walked from its `domRange` (see
+ * `elements.ts`'s `buildElementsTree`) — empty (not gated) when nothing is
+ * selected or the selection has no DOM of its own.
+ */
+export interface ElementsPaneViewState {
+  readonly nodes: readonly ElementsPaneNode[]
+  /** `true` once the walk's node/depth caps cut it short (`elements.ts`'s `ElementsWalkLimits`) — the view shows a truncation notice. */
+  readonly truncated: boolean
+}
+
+/**
  * A component whose own DOM actually mutated on a recent redraw (task 0030),
  * still within its brief on-screen fade window. `seq` is a monotonically
  * increasing per-occurrence id (not just per-component) so a component that
@@ -210,6 +224,10 @@ export interface OverlayViewState {
   readonly componentTree: ComponentTreeViewState
   /** The State History tab's state (task 0027). */
   readonly history: HistoryViewState
+  /** The Elements tab's state (task 0031): the selected component's own owned DOM/vnode tree. */
+  readonly elementsPane: ElementsPaneViewState
+  /** Whether the Elements tab's rows show their tag name (task 0031, Settings tab checkbox); seeded from `options.elementsPane.showTagName`, live-toggleable, persists across reloads. */
+  readonly showElementTagName: boolean
   /** The picker's current shortcut/modifier settings — app-configured defaults, live-overridable from the Settings tab. */
   readonly pickerShortcuts: PickerShortcutSettings
   /** The user's live on/off preference for the picking banner (§18, Settings tab checkbox) — independent of its momentary auto-hide timing. */
@@ -335,6 +353,8 @@ export interface OverlayController {
   setShowPickingBanner(show: boolean): void
   /** Turn redraw-flash visualization on/off (task 0030, Settings tab); persists across reloads. Only visible in `mode: "full"` — see {@link OverlayViewState.redrawFlashEnabled}. */
   setRedrawFlashEnabled(enabled: boolean): void
+  /** Show/hide the tag name in the Elements tab's hyperscript labels (task 0031, Settings tab); persists across reloads. */
+  setShowElementTagName(show: boolean): void
   /** Override the theme (§8.1) from the Settings tab; persists and takes effect immediately. */
   setTheme(theme: OverlayTheme): void
   /** Revert to the app-configured `options.theme`, discarding any Settings-tab override. */
@@ -557,6 +577,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
   let redrawFlashEnabled = persisted.redrawFlashEnabled ?? options.redrawFlash.enabled
   const isRedrawFlashActive = (): boolean =>
     redrawFlashEnabled && hook !== null && hook !== undefined && hook.getMode() === "full"
+  let showElementTagName = persisted.showElementTagName ?? options.elementsPane.showTagName
   let theme: OverlayTheme = persisted.theme ?? options.theme
 
   // §15: extra redaction keys added from the Settings tab persist across
@@ -738,6 +759,7 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         pickerShortcuts: shortcutSettings,
         showPickingBanner: showBanner,
         redrawFlashEnabled,
+        showElementTagName,
         theme,
         extraRedactKeys: addedRedactionKeys,
       },
@@ -820,6 +842,23 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         sources,
       }
 
+      // The Elements tab (task 0031): recursively walk the selected
+      // component's own domRange, stopping at any direct child component's
+      // own domRange.first (rendered as a link back into the Components tree
+      // instead — see elements.ts). Empty rather than gated: unlike
+      // attrs/state, this has no mode/capture dependency of its own.
+      const elementsPane: ElementsPaneViewState =
+        selectedId === null
+          ? { nodes: [], truncated: false }
+          : ((): ElementsPaneViewState => {
+              const record = hook?.componentRecord(selectedId)
+              if (record === undefined || record.domRange == null) return { nodes: [], truncated: false }
+              const children = (record.childIds ?? [])
+                .map((childId) => hook?.componentRecord(childId))
+                .filter((child): child is ComponentRecord => child !== undefined)
+              return buildElementsTree(record.domRange, buildChildBoundaries(children))
+            })()
+
       return {
         picker: picker.getState(),
         picking: picker.isPicking(),
@@ -838,6 +877,8 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         diagnosticsUnreadCount: diagnosticsUnread(),
         componentTree,
         history,
+        elementsPane,
+        showElementTagName,
         pickerShortcuts: shortcutSettings,
         showPickingBanner: showBanner,
         pickingBannerVisible: picker.isPicking() && showBanner && !bannerDismissed,
@@ -1274,6 +1315,11 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
         for (const { timer } of flashesById.values()) clearTimeout(timer)
         flashesById.clear()
       }
+      persist()
+      redraw()
+    },
+    setShowElementTagName(show) {
+      showElementTagName = show
       persist()
       redraw()
     },

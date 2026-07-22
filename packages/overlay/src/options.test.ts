@@ -65,6 +65,16 @@ describe("resolveOverlayOptions", () => {
     expect(DEFAULT_OVERLAY_OPTIONS.picker.enabled).toBe(true)
   })
 
+  it("defaults elementsPane.showTagName to true (task 0031, matching current div.scroll-style labels elsewhere in the panel)", () => {
+    const options = resolveOverlayOptions()
+    expect(options.elementsPane).toEqual({ showTagName: true })
+  })
+
+  it("lets elementsPane.showTagName be turned off explicitly", () => {
+    const options = resolveOverlayOptions({ elementsPane: { showTagName: false } })
+    expect(options.elementsPane).toEqual({ showTagName: false })
+  })
+
   it("defaults editorCommand to \"code\" and lets an adapter override it (§10.3)", () => {
     expect(resolveOverlayOptions().editorCommand).toBe("code")
     expect(resolveOverlayOptions({ editorCommand: "webstorm" }).editorCommand).toBe("webstorm")

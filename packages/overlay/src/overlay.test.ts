@@ -135,14 +135,14 @@ describe("mountInspectorOverlay — host & isolation", () => {
 })
 
 describe("mountInspectorOverlay — panel (§8.3)", () => {
-  it("expands to a docked panel with a Components/History/Settings sidebar", () => {
+  it("expands to a docked panel with a Components/Elements/History/Settings sidebar", () => {
     handle = mountInspectorOverlay({}, { hook: fakeHook() })
     handle!.controller.setCollapsed(false)
     render()
     const sidebarLabels = Array.from(handle!.shadowRoot.querySelectorAll(".mi-sidebar-btn")).map((b) =>
       b.getAttribute("aria-label"),
     )
-    expect(sidebarLabels).toEqual(["Components", "History", "Settings"])
+    expect(sidebarLabels).toEqual(["Components", "Elements", "History", "Settings"])
     expect(handle!.shadowRoot.querySelector('[role="dialog"]')).not.toBeNull()
   })
 
@@ -1092,6 +1092,138 @@ describe("mountInspectorOverlay — State History tab (task 0027)", () => {
     const narrowedRows = Array.from(handle!.shadowRoot.querySelectorAll(".mi-history-diff li"))
     expect(narrowedRows).toHaveLength(1)
     expect(narrowedRows[0]?.textContent).toContain("name")
+  })
+})
+
+describe("mountInspectorOverlay — Elements tab (task 0031, §9.1 optional 'owned vnode/element tree' expansion)", () => {
+  function snapshotOf(records: ComponentRecord[]) {
+    return {
+      components: new Map(records.map((r) => [r.id, r] as const)),
+      vnodes: new Map(),
+      modules: new Map(),
+      domAssociations: new Map(),
+    }
+  }
+
+  it("shows an empty-state message until a component is selected", () => {
+    handle = mountInspectorOverlay({}, { hook: fakeHook() })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.setActiveTab("elements")
+    render()
+
+    expect(handle!.shadowRoot.textContent).toContain("No component selected.")
+  })
+
+  it("shows the same left tree pane the Components tab uses, in sync with the current selection (mirrors task 0028's History-tab precedent)", () => {
+    const appEl = document.createElement("div")
+    document.body.appendChild(appEl)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: appEl, last: appEl } })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app]), componentRecord: () => app })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("elements")
+    render()
+
+    expect(handle!.shadowRoot.querySelector('[role="tree"]')).not.toBeNull()
+    expect(handle!.shadowRoot.textContent).toContain("Elements rendered by: App")
+  })
+
+  it("renders the selected component's own DOM as mithril hyperscript labels, tag name on by default", () => {
+    const root = document.createElement("div")
+    root.id = "app"
+    root.className = "scroll"
+    document.body.appendChild(root)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: root, last: root } })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app]), componentRecord: () => app })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("elements")
+    render()
+
+    expect(handle!.shadowRoot.querySelector(".mi-elements-row")?.textContent).toBe("div#app.scroll")
+  })
+
+  it("omits the tag name once the Settings-tab toggle is turned off, live, without remounting", () => {
+    const root = document.createElement("div")
+    root.className = "scroll"
+    document.body.appendChild(root)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: { first: root, last: root } })
+    const hook = fakeHook({ getSnapshot: () => snapshotOf([app]), componentRecord: () => app })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("elements")
+    render()
+    expect(handle!.shadowRoot.querySelector(".mi-elements-row")?.textContent).toBe("div.scroll")
+
+    handle!.controller.setShowElementTagName(false)
+    render()
+    expect(handle!.shadowRoot.querySelector(".mi-elements-row")?.textContent).toBe(".scroll")
+  })
+
+  it("renders a direct child component as a clickable link, and clicking it re-selects that child via the shared selection (§9.3)", () => {
+    const parentEl = document.createElement("ul")
+    const childEl = document.createElement("li")
+    document.body.appendChild(parentEl)
+    parentEl.appendChild(childEl)
+    const child = componentRecord({
+      id: "c:2" as ComponentId,
+      displayName: "Row",
+      parentId: "c:1" as ComponentId,
+      domRange: { first: childEl, last: childEl },
+    })
+    const parent = componentRecord({
+      id: "c:1" as ComponentId,
+      displayName: "List",
+      childIds: ["c:2" as ComponentId],
+      domRange: { first: parentEl, last: parentEl },
+    })
+    const hook = fakeHook({
+      getSnapshot: () => snapshotOf([parent, child]),
+      componentRecord: (id) => (id === "c:2" ? child : parent),
+    })
+    handle = mountInspectorOverlay({}, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    handle!.controller.setActiveTab("elements")
+    render()
+
+    const link = handle!.shadowRoot.querySelector(".mi-preview-component-link") as HTMLButtonElement
+    expect(link?.textContent).toBe("Row")
+    link.click()
+    render()
+
+    expect(handle!.controller.getState().selection.componentId).toBe("c:2")
+  })
+
+  it("shows a message instead of a tree once a component is selected with no associated DOM", () => {
+    // selectComponent() itself refuses to select a component with a null
+    // domRange (it has no representative element to highlight), so this
+    // state is only reachable via a raw DOM pick, which resolves componentId
+    // independently of domRange — resolveDomComponent can name a component
+    // whose own domRange hasn't been computed (or is genuinely null, e.g. a
+    // component whose view() returned null).
+    const target = document.createElement("button")
+    stubRect(target, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(target)
+    const app = componentRecord({ id: "c:1" as ComponentId, displayName: "App", domRange: null })
+    const hook = fakeHook({
+      resolveDomComponent: () => "c:1" as ComponentId,
+      componentRecord: () => app,
+    })
+    handle = mountInspectorOverlay({ picker: { openOnClick: false } }, { hook })
+    handle!.controller.setCollapsed(false)
+    handle!.controller.startPicker()
+    originalEfp = document.elementsFromPoint
+    document.elementsFromPoint = () => [target]
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
+    handle!.controller.setActiveTab("elements")
+    render()
+
+    expect(handle!.controller.getState().selection.componentId).toBe("c:1")
+    expect(handle!.shadowRoot.textContent).toContain("This component has no associated DOM to show.")
   })
 })
 

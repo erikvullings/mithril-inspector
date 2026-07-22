@@ -11,11 +11,14 @@ import { PICKER_SHORTCUT_KEYS, type PickerShortcutKey, type PickerShortcutSettin
 
 /**
  * Local mirror of `OverlayTab` (`./controller.js`) — not imported, to avoid a
- * circular dependency (the controller already imports this module).
+ * circular dependency (the controller already imports this module). Keep this
+ * in lockstep with `OverlayTab` itself: an id present there but missing here
+ * gets silently rejected on load, falling back to the default tab (task 0031
+ * added `"elements"` here alongside the controller's own union).
  */
-type PersistedTab = "components" | "history" | "settings"
+type PersistedTab = "components" | "elements" | "history" | "settings"
 
-const PERSISTED_TABS: ReadonlySet<string> = new Set<PersistedTab>(["components", "history", "settings"])
+const PERSISTED_TABS: ReadonlySet<string> = new Set<PersistedTab>(["components", "elements", "history", "settings"])
 const PICKER_SHORTCUT_KEY_SET: ReadonlySet<string> = new Set(PICKER_SHORTCUT_KEYS)
 const PERSISTED_THEMES: ReadonlySet<string> = new Set<OverlayTheme>(["system", "light", "dark"])
 
@@ -42,6 +45,8 @@ export interface OverlayPersistedState {
   showPickingBanner?: boolean
   /** Whether redraw-flash visualization is on (task 0030, Settings tab); absent keeps the app-configured `redrawFlash.enabled` default. */
   redrawFlashEnabled?: boolean
+  /** Whether the Elements pane shows each row's tag name (task 0031, Settings tab); absent keeps the app-configured `elementsPane.showTagName` default. */
+  showElementTagName?: boolean
   /** A user-picked theme override (Settings tab); absent keeps the app-configured `OverlayOptions.theme` default. */
   theme?: OverlayTheme
   /**
@@ -123,6 +128,7 @@ export function loadOverlayState(storage: StorageLike | null = defaultStorage())
 
   if (typeof record.showPickingBanner === "boolean") state.showPickingBanner = record.showPickingBanner
   if (typeof record.redrawFlashEnabled === "boolean") state.redrawFlashEnabled = record.redrawFlashEnabled
+  if (typeof record.showElementTagName === "boolean") state.showElementTagName = record.showElementTagName
 
   if (typeof record.theme === "string" && PERSISTED_THEMES.has(record.theme)) {
     state.theme = record.theme as OverlayTheme

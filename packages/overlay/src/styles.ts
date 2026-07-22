@@ -749,14 +749,23 @@ tr.mi-history-compare-removed td.mi-history-compare-key::before { background: va
 tr.mi-history-compare-changed td.mi-history-compare-key::before { background: var(--mi-inferred); }
 .mi-history-compare-unchanged { opacity: 0.6; }
 
+/* --- Elements tab (task 0031, §9.1 optional DOM/vnode expansion) --------- */
+.mi-elements { flex: 1; min-width: 0; padding: 10px 14px; overflow: auto; }
+/* Nesting reads as indentation via plain nested <ul>s (view.ts's elementsPaneNodeRow) rather than a flattened aria-level list — no search/collapse/keyboard nav here, just a read-only mirror of what got rendered. */
+.mi-elements-tree { list-style: none; margin: 0; padding-left: 14px; }
+.mi-elements-tree-root { padding-left: 0; }
+.mi-elements-row { display: inline-block; }
+.mi-elements-text { display: inline-block; }
+
 /* --- Scrollbars (task 0028): theme-matched thin scrollbars instead of the default browser chrome, which looks out of place against the dark theme --- */
-.mi-tree-pane, .mi-detail-pane, .mi-history, .mi-settings, .mi-history-list {
+.mi-tree-pane, .mi-detail-pane, .mi-history, .mi-elements, .mi-settings, .mi-history-list {
   scrollbar-width: thin;
   scrollbar-color: var(--mi-border) transparent;
 }
 .mi-tree-pane::-webkit-scrollbar,
 .mi-detail-pane::-webkit-scrollbar,
 .mi-history::-webkit-scrollbar,
+.mi-elements::-webkit-scrollbar,
 .mi-settings::-webkit-scrollbar,
 .mi-history-list::-webkit-scrollbar {
   width: 10px;
@@ -765,6 +774,7 @@ tr.mi-history-compare-changed td.mi-history-compare-key::before { background: va
 .mi-tree-pane::-webkit-scrollbar-track,
 .mi-detail-pane::-webkit-scrollbar-track,
 .mi-history::-webkit-scrollbar-track,
+.mi-elements::-webkit-scrollbar-track,
 .mi-settings::-webkit-scrollbar-track,
 .mi-history-list::-webkit-scrollbar-track {
   background: transparent;
@@ -772,6 +782,7 @@ tr.mi-history-compare-changed td.mi-history-compare-key::before { background: va
 .mi-tree-pane::-webkit-scrollbar-thumb,
 .mi-detail-pane::-webkit-scrollbar-thumb,
 .mi-history::-webkit-scrollbar-thumb,
+.mi-elements::-webkit-scrollbar-thumb,
 .mi-settings::-webkit-scrollbar-thumb,
 .mi-history-list::-webkit-scrollbar-thumb {
   background-color: var(--mi-border);
@@ -781,6 +792,7 @@ tr.mi-history-compare-changed td.mi-history-compare-key::before { background: va
 .mi-tree-pane::-webkit-scrollbar-thumb:hover,
 .mi-detail-pane::-webkit-scrollbar-thumb:hover,
 .mi-history::-webkit-scrollbar-thumb:hover,
+.mi-elements::-webkit-scrollbar-thumb:hover,
 .mi-settings::-webkit-scrollbar-thumb:hover,
 .mi-history-list::-webkit-scrollbar-thumb:hover {
   background-color: var(--mi-muted);

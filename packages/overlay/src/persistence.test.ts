@@ -72,6 +72,21 @@ describe("overlay persistence", () => {
     expect(loadOverlayState(bad)).toEqual({})
   })
 
+  it("round-trips showElementTagName and ignores a non-boolean value (task 0031)", () => {
+    const storage = memoryStorage()
+    saveOverlayState({ showElementTagName: false }, storage)
+    expect(loadOverlayState(storage)).toEqual({ showElementTagName: false })
+
+    const bad = memoryStorage({ [OVERLAY_STORAGE_KEY]: JSON.stringify({ showElementTagName: "no" }) })
+    expect(loadOverlayState(bad)).toEqual({})
+  })
+
+  it("round-trips activeTab: \"elements\" (task 0031's new sidebar tab)", () => {
+    const storage = memoryStorage()
+    saveOverlayState({ activeTab: "elements" }, storage)
+    expect(loadOverlayState(storage)).toEqual({ activeTab: "elements" })
+  })
+
   it("round-trips picker shortcut overrides (Settings tab live editing)", () => {
     const storage = memoryStorage()
     saveOverlayState(

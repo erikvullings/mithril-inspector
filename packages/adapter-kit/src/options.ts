@@ -57,6 +57,11 @@ export interface MithrilInspectorOptions {
     enabled?: boolean
   }
 
+  /** Elements tab display preferences (task 0031, §9.1's optional DOM/vnode expansion). No performance/gating implications, unlike `redrawFlash` — a pure label-formatting default. */
+  elementsPane?: {
+    showTagName?: boolean
+  }
+
   source?: {
     elements?: boolean
     components?: boolean
@@ -117,6 +122,10 @@ export interface ResolvedRedrawFlashOptions {
   readonly enabled: boolean
 }
 
+export interface ResolvedElementsPaneOptions {
+  readonly showTagName: boolean
+}
+
 export interface ResolvedSourceOptions {
   readonly elements: boolean
   readonly components: boolean
@@ -141,6 +150,7 @@ export interface ResolvedInspectorOptions {
   readonly picker: ResolvedPickerOptions
   readonly componentTree: ResolvedComponentTreeOptions
   readonly redrawFlash: ResolvedRedrawFlashOptions
+  readonly elementsPane: ResolvedElementsPaneOptions
   readonly source: ResolvedSourceOptions
   readonly mithrilImports: readonly string[]
   readonly hyperscriptIdentifiers: readonly string[]
@@ -174,6 +184,7 @@ export function resolveInspectorOptions(
   const picker = options.picker ?? {}
   const componentTree = options.componentTree ?? {}
   const redrawFlash = options.redrawFlash ?? {}
+  const elementsPane = options.elementsPane ?? {}
   const source = options.source ?? {}
   const redact = options.redact ?? {}
   const mode = options.mode ?? "full"
@@ -217,6 +228,12 @@ export function resolveInspectorOptions(
     // to be opt-in, not just gated by mode.
     redrawFlash: {
       enabled: redrawFlash.enabled ?? false,
+    },
+    // Task 0031 / REQUIREMENTS.md §9.1: a pure display default, not gated by
+    // mode — `showTagName` just controls whether the Elements tab's rows
+    // include the tag name (`div.scroll` vs `.scroll`).
+    elementsPane: {
+      showTagName: elementsPane.showTagName ?? true,
     },
     source: {
       elements: source.elements ?? true,
@@ -265,6 +282,9 @@ export function toOverlayOptionsInput(resolved: ResolvedInspectorOptions): Overl
     },
     redrawFlash: {
       enabled: resolved.redrawFlash.enabled,
+    },
+    elementsPane: {
+      showTagName: resolved.elementsPane.showTagName,
     },
     editorCommand: resolved.editorCommand,
   }

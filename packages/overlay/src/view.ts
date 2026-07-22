@@ -5,11 +5,13 @@ import type { Children, Component, Vnode } from "mithril"
 import type {
   AncestryEntry,
   ComponentTreeGating,
+  ElementsPaneViewState,
   HistoryViewState,
   OverlayController,
   OverlayTab,
   OverlayViewState,
 } from "./controller.js"
+import { formatElementLabel, type ElementsPaneNode } from "./elements.js"
 import {
   alignContainerEntries,
   containerEntries,
@@ -24,6 +26,7 @@ import {
   iconClose,
   iconCode,
   iconComponents,
+  iconElements,
   iconEye,
   iconFileText,
   iconFocus,
@@ -979,6 +982,16 @@ function redrawFlashToggleRow(controller: OverlayController, state: OverlayViewS
   )
 }
 
+/** Toggle for the Elements tab's tag-name visibility (task 0031) — `div.scroll` on, `.scroll` off (mithril's own selector shorthand treats `div` as the implicit default tag). A plain on/off, nothing to gate. */
+function elementTagNameToggleRow(controller: OverlayController, state: OverlayViewState): Vnode {
+  return checkboxSettingRow(
+    "mi-show-element-tag-name",
+    state.showElementTagName,
+    'Show the tag name in the Elements tab (e.g. "div.scroll" vs. ".scroll")',
+    (checked) => controller.setShowElementTagName(checked),
+  )
+}
+
 /**
  * Read-only editor display (§10.3): the browser can never choose what the
  * open-in-editor endpoint launches (§10.2 forbids the client from picking a
@@ -1096,6 +1109,9 @@ function settingsView(controller: OverlayController, state: OverlayViewState): V
     m("hr.mi-hr"),
     m("div.mi-section-title", "Redraw flash"),
     redrawFlashToggleRow(controller, state),
+    m("hr.mi-hr"),
+    m("div.mi-section-title", "Elements"),
+    elementTagNameToggleRow(controller, state),
     m("hr.mi-hr"),
     m("div.mi-section-title", "Privacy"),
     redactionToggleRow(controller, state),
@@ -1363,6 +1379,76 @@ function historyView(controller: OverlayController, state: OverlayViewState): Vn
 }
 
 /**
+ * One row of the Elements tab's recursive DOM/vnode tree (task 0031, §9.1's
+ * optional "expansion of a component into its owned vnode/element tree").
+ * Nesting is expressed via plain nested `<ul>`s (indented by
+ * `.mi-elements-tree`'s own CSS padding) rather than a flattened
+ * `aria-level` list like `treeRow`'s — there's no search/collapse/keyboard
+ * nav here, just a read-only mirror of what got rendered, so the simpler
+ * recursive structure is all this needs.
+ */
+function elementsPaneNodeRow(controller: OverlayController, state: OverlayViewState, node: ElementsPaneNode, key: number): Vnode {
+  if (node.kind === "text") {
+    return m("li", { key: `t:${key}` }, m("span.mi-elements-text.mi-mono.mi-muted", `"${node.text}"`))
+  }
+  if (node.kind === "component") {
+    return m(
+      "li",
+      { key: `c:${key}` },
+      m(
+        "button.mi-preview-component-link.mi-mono",
+        { type: "button", onclick: () => controller.selectComponent(node.componentId) },
+        node.displayName,
+      ),
+    )
+  }
+  return m("li", { key: `e:${key}` }, [
+    m("span.mi-elements-row.mi-mono", formatElementLabel(node.tag, node.id, node.classes, state.showElementTagName)),
+    node.children.length > 0
+      ? m(
+          "ul.mi-elements-tree",
+          node.children.map((child, index) => elementsPaneNodeRow(controller, state, child, index)),
+        )
+      : null,
+  ])
+}
+
+/**
+ * The right-hand side of the Elements tab (task 0031): mirrors
+ * `historyDetailPane`'s role next to `treePane` — same left tree, so the
+ * Elements tab drills into whatever's already selected there rather than
+ * requiring a separate pick.
+ */
+function elementsDetailPane(controller: OverlayController, state: OverlayViewState): Vnode {
+  const { selection } = state
+  if (selection.node === null) {
+    if (selection.stale) return m("div.mi-elements", [staleNotice(controller)])
+    return m("div.mi-elements.mi-detail-empty", [
+      m("p.mi-muted", "No component selected."),
+      m("p.mi-muted", "Pick an element on the page, or choose a component from the tree on the left, to see what it rendered."),
+    ])
+  }
+  const watchedName = state.selectedComponentName?.name ?? "component"
+  const heading = m("div.mi-detail-meta", [m("span.mi-mono", `Elements rendered by: ${watchedName}`)])
+  const { nodes, truncated }: ElementsPaneViewState = state.elementsPane
+  if (nodes.length === 0) {
+    return m("div.mi-elements", [heading, m("p.mi-muted", "This component has no associated DOM to show.")])
+  }
+  return m("div.mi-elements", [
+    heading,
+    m(
+      "ul.mi-elements-tree.mi-elements-tree-root",
+      nodes.map((node, index) => elementsPaneNodeRow(controller, state, node, index)),
+    ),
+    truncated ? m("p.mi-muted", "Output truncated — this component's rendered tree is very large.") : null,
+  ])
+}
+
+function elementsView(controller: OverlayController, state: OverlayViewState): Vnode {
+  return m("div.mi-main", [treePane(controller, state), elementsDetailPane(controller, state)])
+}
+
+/**
  * The sidebar's own themed hover tooltip (task 0028), in addition to the
  * native `title` (kept for assistive tech / non-hover input): a CSS-only
  * `::after` driven by `data-tooltip` (see `styles.ts`) so it matches the
@@ -1415,6 +1501,7 @@ function sidebar(
       "M",
     ),
     sidebarButton(iconComponents({ size: 20 }), { label: "Components", active: tab === "components", onclick: () => setTab("components") }),
+    sidebarButton(iconElements({ size: 20 }), { label: "Elements", active: tab === "elements", onclick: () => setTab("elements") }),
     sidebarButton(iconHistory({ size: 20 }), { label: "History", active: tab === "history", onclick: () => setTab("history") }),
     m("div.mi-sidebar-spacer"),
     sidebarButton(iconSettings({ size: 20 }), {
@@ -1432,7 +1519,9 @@ function dockedPanel(controller: OverlayController, state: OverlayViewState): Vn
       ? settingsView(controller, state)
       : state.activeTab === "history"
         ? historyView(controller, state)
-        : m("div.mi-main", [treePane(controller, state), detailPane(controller, state)])
+        : state.activeTab === "elements"
+          ? elementsView(controller, state)
+          : m("div.mi-main", [treePane(controller, state), detailPane(controller, state)])
 
   return m(
     "section.mi-dock",

@@ -90,6 +90,20 @@ export interface RedrawFlashOptions {
   readonly enabled: boolean
 }
 
+/**
+ * Elements pane display preferences (task 0031, §9.1's optional "expansion
+ * of a component into its owned vnode/element tree"). Unlike
+ * {@link RedrawFlashOptions}, this carries no performance/gating
+ * implications — it's a pure label-formatting preference — but is still
+ * routed through the same `OverlayOptions`/adapter-kit chain so a host app
+ * can set a project-wide default, live-toggleable per-session from the
+ * Settings tab thereafter (`OverlayController.setShowElementTagName`).
+ */
+export interface ElementsPaneOptions {
+  /** Show the tag name in each row's hyperscript label (`div.scroll`) vs. omitting mithril's implicit default tag (`.scroll`). */
+  readonly showTagName: boolean
+}
+
 export interface OverlayOptions {
   readonly enabled: boolean
   /** Start expanded to the docked panel rather than collapsed to the toggle (§8.1). */
@@ -101,6 +115,7 @@ export interface OverlayOptions {
   readonly picker: PickerOptions
   readonly componentTree: ComponentTreeOptions
   readonly redrawFlash: RedrawFlashOptions
+  readonly elementsPane: ElementsPaneOptions
   /** Rolling buffer size for the State History tab (task 0027) — oldest snapshots drop once exceeded. */
   readonly historyLimit: number
   /**
@@ -146,6 +161,10 @@ export const DEFAULT_REDRAW_FLASH_OPTIONS: RedrawFlashOptions = {
   enabled: false,
 }
 
+export const DEFAULT_ELEMENTS_PANE_OPTIONS: ElementsPaneOptions = {
+  showTagName: true,
+}
+
 export const DEFAULT_OVERLAY_OPTIONS: OverlayOptions = {
   enabled: true,
   defaultOpen: false,
@@ -157,19 +176,27 @@ export const DEFAULT_OVERLAY_OPTIONS: OverlayOptions = {
   picker: DEFAULT_PICKER_OPTIONS,
   componentTree: DEFAULT_COMPONENT_TREE_OPTIONS,
   redrawFlash: DEFAULT_REDRAW_FLASH_OPTIONS,
+  elementsPane: DEFAULT_ELEMENTS_PANE_OPTIONS,
   historyLimit: 50,
   editorCommand: "code",
 }
 
 /** Merge partial input over the defaults, resolving the nested picker/componentTree blocks. */
 export function resolveOverlayOptions(input: OverlayOptionsInput = {}): OverlayOptions {
-  const { picker: pickerInput, componentTree: componentTreeInput, redrawFlash: redrawFlashInput, ...rest } = input
+  const {
+    picker: pickerInput,
+    componentTree: componentTreeInput,
+    redrawFlash: redrawFlashInput,
+    elementsPane: elementsPaneInput,
+    ...rest
+  } = input
   return {
     ...DEFAULT_OVERLAY_OPTIONS,
     ...omitUndefined(rest),
     picker: { ...DEFAULT_PICKER_OPTIONS, ...omitUndefined(pickerInput ?? {}) },
     componentTree: { ...DEFAULT_COMPONENT_TREE_OPTIONS, ...omitUndefined(componentTreeInput ?? {}) },
     redrawFlash: { ...DEFAULT_REDRAW_FLASH_OPTIONS, ...omitUndefined(redrawFlashInput ?? {}) },
+    elementsPane: { ...DEFAULT_ELEMENTS_PANE_OPTIONS, ...omitUndefined(elementsPaneInput ?? {}) },
   }
 }
 

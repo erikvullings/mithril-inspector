@@ -145,3 +145,11 @@ export function iconComponents(options?: IconOptions): Vnode {
 export function iconHistory(options?: IconOptions): Vnode {
   return icon([m("circle", { cx: 12, cy: 12, r: 9 }), m("polyline", { points: "12,7 12,12 16,14" })], options)
 }
+
+/** The "Elements" sidebar entry (task 0031, §9.1's optional DOM/vnode expansion) — nested frames, distinct from `iconComponents`' branching-tree glyph and `iconCode`'s already-spoken-for `</>` (open in editor). */
+export function iconElements(options?: IconOptions): Vnode {
+  return icon(
+    [m("rect", { x: 3, y: 3, width: 18, height: 18, rx: 2 }), m("rect", { x: 7.5, y: 7.5, width: 9, height: 9, rx: 1 })],
+    options,
+  )
+}

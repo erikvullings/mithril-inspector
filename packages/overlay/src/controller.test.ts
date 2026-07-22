@@ -455,6 +455,29 @@ describe("overlay controller — keyboard (§8.4)", () => {
     expect(openInEditor).toHaveBeenCalledWith({ file: "src/UserCard.ts", line: 17, column: 5 })
   })
 
+  it("warns to the console (unconditionally, not just diagnostics) when the editor fails to launch", async () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const openInEditor = vi.fn(async () => ({
+      ok: false,
+      error: { code: "EDITOR_LAUNCH_FAILED", message: "spawn code ENOENT" },
+    }))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    const { controller, setHits } = setup({ openInEditor })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleKeyDown(keyEvent({ key: "Enter" }))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0]?.[0])).toContain("spawn code ENOENT")
+    expect(controller.getState().diagnostics.length).toBeGreaterThan(0)
+    warn.mockRestore()
+  })
+
   it("respects disabled shortcuts (§18)", () => {
     // With both the toggle chord and the modifier hold disabled, Alt+Shift+M
     // must do nothing.
@@ -700,6 +723,29 @@ describe("overlay controller — resilience (§16)", () => {
     setHits([el])
     expect(() => controller.handlePointerMove(1, 1)).not.toThrow()
     expect(controller.getState().hover?.mapping.precision).toBe("none")
+  })
+
+  it("counts recorded diagnostics as unread (sidebar badge) until the Settings tab is opened", () => {
+    const el = document.createElement("article")
+    document.body.appendChild(el)
+    const hook = fakeHook({
+      resolveDomSource: () => {
+        throw new Error("hook exploded")
+      },
+    })
+    const { controller, setHits } = setup({ hook })
+    expect(controller.getState().diagnosticsUnreadCount).toBe(0)
+
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    expect(controller.getState().diagnosticsUnreadCount).toBe(1)
+
+    controller.setActiveTab("settings")
+    expect(controller.getState().diagnosticsUnreadCount).toBe(0)
+
+    controller.setActiveTab("components")
+    expect(controller.getState().diagnosticsUnreadCount).toBe(0)
   })
 })
 
@@ -1185,6 +1231,99 @@ describe("Components tab: tree/search/pin/attrs+state (task 0022)", () => {
     const { controller } = setup({ hook })
     controller.dispose()
     expect(unsubscribe).toHaveBeenCalledOnce()
+  })
+})
+
+describe("Elements pane (task 0031, §9.1 optional 'owned vnode/element tree' expansion)", () => {
+  it("is empty with nothing selected", () => {
+    const { controller } = setup()
+    expect(controller.getState().elementsPane).toEqual({ nodes: [], truncated: false })
+  })
+
+  it("is empty when the selected component has no domRange", () => {
+    const record = componentRecord({ id: "c:5" as ComponentId, domRange: null })
+    const { controller } = setup({ hook: fakeHook({ componentRecord: () => record }) })
+    controller.selectComponent("c:5" as ComponentId)
+    // selectComponent itself no-ops (records a diagnostic) when domRange is
+    // null, so getState().selection.componentId stays null and the pane
+    // reads the same as "nothing selected" above — confirmed explicitly
+    // rather than assumed, since selectComponent's own guard is what's
+    // actually responsible here, not elementsPane's own logic.
+    expect(controller.getState().elementsPane).toEqual({ nodes: [], truncated: false })
+  })
+
+  it("walks the selected component's own domRange into element/text nodes", () => {
+    const root = document.createElement("div")
+    root.id = "app"
+    const span = document.createElement("span")
+    span.appendChild(document.createTextNode("hi"))
+    root.appendChild(span)
+    document.body.appendChild(root)
+    const record = componentRecord({ id: "c:5" as ComponentId, domRange: { first: root, last: root } })
+    const { controller } = setup({ hook: fakeHook({ componentRecord: () => record }) })
+
+    controller.selectComponent("c:5" as ComponentId)
+    expect(controller.getState().elementsPane).toEqual({
+      nodes: [
+        {
+          kind: "element",
+          tag: "div",
+          id: "app",
+          classes: [],
+          children: [{ kind: "element", tag: "span", id: null, classes: [], children: [{ kind: "text", text: "hi" }] }],
+        },
+      ],
+      truncated: false,
+    })
+  })
+
+  it("renders a direct child component's own domRange.first as a link node instead of descending into its markup", () => {
+    const parentEl = document.createElement("ul")
+    const childEl = document.createElement("li")
+    childEl.appendChild(document.createElement("span")) // must not appear in the parent's own tree
+    parentEl.appendChild(childEl)
+    document.body.appendChild(parentEl)
+
+    const childRecord = componentRecord({
+      id: "c:2" as ComponentId,
+      displayName: "Row",
+      parentId: "c:1" as ComponentId,
+      domRange: { first: childEl, last: childEl },
+    })
+    const parentRecord = componentRecord({
+      id: "c:1" as ComponentId,
+      displayName: "List",
+      childIds: ["c:2" as ComponentId],
+      domRange: { first: parentEl, last: parentEl },
+    })
+    const hook = fakeHook({
+      componentRecord: (id) => (id === "c:2" ? childRecord : parentRecord),
+    })
+    const { controller } = setup({ hook })
+
+    controller.selectComponent("c:1" as ComponentId)
+    const { elementsPane } = controller.getState()
+    expect(elementsPane.truncated).toBe(false)
+    const root = elementsPane.nodes[0]
+    if (root === undefined || root.kind !== "element") throw new Error("expected an element node")
+    expect(root.children).toEqual([{ kind: "component", componentId: "c:2", displayName: "Row" }])
+  })
+
+  it("showElementTagName defaults from options.elementsPane.showTagName", () => {
+    const { controller } = setup({ options: { elementsPane: { showTagName: false } } })
+    expect(controller.getState().showElementTagName).toBe(false)
+  })
+
+  it("setShowElementTagName(false) flips the live state immediately and persists across a fresh controller", () => {
+    const storage = memoryStorage()
+    const first = setup({ storage })
+    expect(first.controller.getState().showElementTagName).toBe(true)
+
+    first.controller.setShowElementTagName(false)
+    expect(first.controller.getState().showElementTagName).toBe(false)
+
+    const second = setup({ storage })
+    expect(second.controller.getState().showElementTagName).toBe(false)
   })
 })
 

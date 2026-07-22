@@ -178,6 +178,22 @@ runtime stripped). `deps` lets you inject a `hook`, `document` and
   ~400ms and clears itself on a timer independent of whether it animates, so
   `prefers-reduced-motion` is satisfied by the existing global
   `.mi-root` reduced-motion rule alone — no separate check needed.
+- **Elements tab (task 0031):** §9.1's own optional "expansion of a component
+  into its owned vnode/element tree" — the Components tab's tree deliberately
+  hides plain DOM elements, so this is a separate tab (reusing the same left
+  tree pane the Components/History tabs do — selecting a component anywhere
+  keeps this in sync) that recursively walks the selected component's own
+  `domRange` and renders it as mithril hyperscript shorthand (`div.scroll`,
+  `span#counter-value`) rather than a raw tag/attribute dump. A direct child
+  component's own rendered range (found via `domRange.first`, without
+  descending into it) shows as a clickable name instead of its DOM, so nested
+  components stay one click away in the Components tree rather than being
+  shown twice. The walk is capped on both total node count and nesting depth,
+  degrading to a truncation notice rather than rendering an unbounded subtree.
+  Tag-name visibility (`div.scroll` vs. the tag-omitted `.scroll`, matching
+  mithril's own selector shorthand) is a Settings-tab toggle
+  (`elementsPane.showTagName`, on by default) — a pure display preference with
+  no `mode`/capture gating, unlike attrs/state or redraw-flash.
 - **Accessibility:** semantic controls, ARIA roles (`dialog`, `status`,
   `tree`, `treeitem`), visible focus indicators, WCAG AA contrast,
   reduced-motion support (also respected by "Scroll into view", via
@@ -196,9 +212,11 @@ Mithril component), `resolveOverlayOptions`, `getOverlayHook`, `describeMapping`
 `createEditorClient`, `parseShortcut`, the persistence helpers, (task 0022)
 `createComponentTreeStore` plus the preview-tree formatters `summarizeNode`,
 `isExpandable` and `pathKey`, (task 0027/0028) `createHistoryStore`,
-`diffPreviewNodes`, `containerEntries` and `alignContainerEntries`, and (task
-0030) `componentsWithMutatedDom` — the pure DOM-mutation-to-component
-attribution logic behind redraw-flash detection.
+`diffPreviewNodes`, `containerEntries` and `alignContainerEntries`, (task 0030)
+`componentsWithMutatedDom` — the pure DOM-mutation-to-component attribution
+logic behind redraw-flash detection — and (task 0031) `buildElementsTree`,
+`buildChildBoundaries` and `formatElementLabel` — the pure DOM-walk and
+hyperscript-formatting logic behind the Elements tab.
 
 ## Editor endpoint
 

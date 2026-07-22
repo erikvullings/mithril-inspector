@@ -30,6 +30,7 @@ describe("resolveInspectorOptions", () => {
     })
     expect(resolved.componentTree).toEqual({ enabled: true, captureAttrs: true, captureState: true })
     expect(resolved.redrawFlash).toEqual({ enabled: false })
+    expect(resolved.elementsPane).toEqual({ showTagName: true })
     expect(resolved.source).toEqual({
       elements: true,
       components: true,
@@ -87,6 +88,15 @@ describe("resolveInspectorOptions", () => {
   it("lets redrawFlash be turned on explicitly", () => {
     const resolved = resolveInspectorOptions({ redrawFlash: { enabled: true } }, { NODE_ENV: "development" })
     expect(resolved.redrawFlash).toEqual({ enabled: true })
+  })
+
+  it("defaults elementsPane.showTagName to true regardless of mode (task 0031 — a pure display default, not mode-gated like componentTree)", () => {
+    expect(resolveInspectorOptions({ mode: "source" }, { NODE_ENV: "development" }).elementsPane).toEqual({ showTagName: true })
+  })
+
+  it("lets elementsPane.showTagName be turned off explicitly", () => {
+    const resolved = resolveInspectorOptions({ elementsPane: { showTagName: false } }, { NODE_ENV: "development" })
+    expect(resolved.elementsPane).toEqual({ showTagName: false })
   })
 
   it("defaults `enabled` off in production (§2.1)", () => {
@@ -202,6 +212,16 @@ describe("derived configuration builders", () => {
   it("toOverlayOptionsInput passes through an explicit redrawFlash opt-in", () => {
     const resolved = resolveInspectorOptions({ redrawFlash: { enabled: true } }, { NODE_ENV: "development" })
     expect(toOverlayOptionsInput(resolved).redrawFlash).toEqual({ enabled: true })
+  })
+
+  it("toOverlayOptionsInput maps elementsPane, defaulting showTagName on (task 0031)", () => {
+    const resolved = toOverlayOptionsInput(resolveInspectorOptions({}, { NODE_ENV: "development" }))
+    expect(resolved.elementsPane).toEqual({ showTagName: true })
+  })
+
+  it("toOverlayOptionsInput passes through an explicit elementsPane.showTagName override", () => {
+    const resolved = resolveInspectorOptions({ elementsPane: { showTagName: false } }, { NODE_ENV: "development" })
+    expect(toOverlayOptionsInput(resolved).elementsPane).toEqual({ showTagName: false })
   })
 
   it("toOverlayOptionsInput passes the resolved editor command through for the Settings tab (§10.3)", () => {

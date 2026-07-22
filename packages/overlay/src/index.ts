@@ -6,6 +6,7 @@ export type { OverlayHandle, OverlayMountDeps } from "./overlay.js"
 
 // --- Options ----------------------------------------------------------------
 export {
+  DEFAULT_ELEMENTS_PANE_OPTIONS,
   DEFAULT_OVERLAY_OPTIONS,
   DEFAULT_PICKER_OPTIONS,
   DEFAULT_REDRAW_FLASH_OPTIONS,
@@ -13,6 +14,7 @@ export {
 } from "./options.js"
 export type {
   DeepPartial,
+  ElementsPaneOptions,
   OverlayOptions,
   OverlayOptionsInput,
   OverlayTheme,
@@ -28,6 +30,7 @@ export type { OverlayHook } from "./hook.js"
 export { createOverlayController } from "./controller.js"
 export type {
   ClickEvent,
+  ElementsPaneViewState,
   FlashEntry,
   HoverInfo,
   OverlayController,
@@ -73,6 +76,13 @@ export { loadOverlayState, OVERLAY_STORAGE_KEY, saveOverlayState } from "./persi
 export type { OverlayPersistedState, StorageLike } from "./persistence.js"
 export { createComponentTreeStore } from "./tree.js"
 export type { ComponentTreeStore, PinnedRow, TreeRow } from "./tree.js"
+export {
+  buildChildBoundaries,
+  buildElementsTree,
+  DEFAULT_ELEMENTS_WALK_LIMITS,
+  formatElementLabel,
+} from "./elements.js"
+export type { ChildBoundary, ChildRecordLike, ElementsPaneNode, ElementsTreeResult, ElementsWalkLimits } from "./elements.js"
 export { componentsWithMutatedDom } from "./redraw-flash.js"
 export type { DomMutationLike } from "./redraw-flash.js"
 export { isExpandable, pathKey, summarizeNode } from "./preview.js"

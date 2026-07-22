@@ -9,6 +9,8 @@ reused via `@mithril-inspector/adapter-kit` rather than reimplemented
 against real `webpack()` **and** `rspack()` compilations in
 `tests/integration/`, not just documented as "should work".
 
+![Mithril Inspector: picking a component, drilling into its rendered DOM via the Elements tab, watching its attrs/state History timeline, and the redraw-flash visualization](https://raw.githubusercontent.com/erikvullings/mithril-inspector/main/docs/media/inspector-demo.gif)
+
 ## Usage
 
 ```ts

@@ -10,11 +10,14 @@
     "test:browser": "pnpm --filter @mithril-inspector/browser-tests test",
     "typecheck": "pnpm -r typecheck",
     "release": "node scripts/release.mjs",
-    "release:dry-run": "node scripts/release.mjs patch --dry-run"
+    "release:dry-run": "node scripts/release.mjs patch --dry-run",
+    "demo:record": "node scripts/record-demo.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "puppeteer": "^25.3.0",
     "typescript": "^7.0.2",
+    "vite": "^8.1.5",
     "vitest": "^4.1.10"
   }
 }

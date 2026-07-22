@@ -6,6 +6,8 @@ The Vite integration for Mithril Inspector. It only
 overlay (`@mithril-inspector/overlay`) and the open-in-editor server
 (`@mithril-inspector/server`) — and adds no transform or editor logic of its own.
 
+![Mithril Inspector: picking a component, drilling into its rendered DOM via the Elements tab, watching its attrs/state History timeline, and the redraw-flash visualization](https://raw.githubusercontent.com/erikvullings/mithril-inspector/main/docs/media/inspector-demo.gif)
+
 ## Zero-config usage
 
 ```ts

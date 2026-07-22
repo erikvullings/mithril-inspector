@@ -6,6 +6,8 @@ runtime (`@mithril-inspector/runtime`) — same option shape and instrumentation
 behaviour as `@mithril-inspector/vite`/`@mithril-inspector/rollup`, reused via
 `@mithril-inspector/adapter-kit` rather than reimplemented (ADR-004).
 
+![Mithril Inspector: picking a component, drilling into its rendered DOM via the Elements tab, watching its attrs/state History timeline, and the redraw-flash visualization](https://raw.githubusercontent.com/erikvullings/mithril-inspector/main/docs/media/inspector-demo.gif)
+
 ## Usage
 
 ```ts

@@ -2,7 +2,7 @@
 
 Developer tooling for inspecting Mithril.js applications.
 
-![Mithril Inspector: selecting a component, watching its attrs/state history, and the redraw-flash visualization](docs/media/inspector-demo.gif)
+![Mithril Inspector: picking a component, drilling into its rendered DOM via the Elements tab, watching its attrs/state History timeline, and the redraw-flash visualization](docs/media/inspector-demo.gif)
 
 ## Quick start
 
@@ -122,6 +122,16 @@ pnpm test:browser
 ```
 
 The packages under `packages/` are strict TypeScript, modern ESM modules. Playground applications live under `apps/`, while shared fixtures and integration suites live under `tests/`. Technical spikes are private workspace packages under `tests/fixtures/spikes/`; the decisions they validate are recorded in `docs/adr/`.
+
+### Re-recording the demo GIF
+
+`docs/media/inspector-demo.gif` (embedded above, and reused by the `vite`, `rollup`, `esbuild` and `webpack` package READMEs via a raw GitHub URL) is generated, not hand-captured: `scripts/record-demo.mjs` boots a real Vite dev server for `apps/playground-vite` and drives a real headless-Chromium tab with Puppeteer — picking a component, drilling into it via the Elements tab, watching the History tab's diff timeline fill in, and toggling on redraw-flash — while `page.screencast({ format: "gif" })` records straight through ffmpeg. Requires `pnpm build` first (same as any other consumer of the built packages):
+
+```sh
+pnpm build
+pnpm demo:record                    # writes docs/media/inspector-demo.gif
+node scripts/record-demo.mjs --headful --out /tmp/preview.gif   # watch it run, write elsewhere
+```
 
 ## Testing a package locally before it's on npm
 

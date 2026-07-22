@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { Plugin, PluginContext } from "rollup"
 
 import {
@@ -98,6 +98,32 @@ describe("virtual module resolution (§12.3 runtime import resolution)", () => {
     expect(call<unknown>(plugin, "resolveId", true, RUNTIME_MODULE_ID as never)).toBe(RESOLVED_RUNTIME_ID)
     expect(call<unknown>(plugin, "resolveId", true, OVERLAY_MODULE_ID as never)).toBe(RESOLVED_OVERLAY_ID)
     expect(call<unknown>(plugin, "resolveId", true, "mithril" as never)).toBeNull()
+  })
+
+  it("resolves the virtual modules' own @mithril-inspector/runtime bare import against a real file in this package, not the consuming project (regression: pnpm's isolated node_modules leaves it unresolvable from the project root)", async () => {
+    const plugin = makePlugin()
+    const resolve = vi.fn(async (id: string, _importer?: string, _options?: unknown) => ({ id: `/resolved/${id}` }))
+    const context = { meta: { watchMode: true, rollupVersion: "4.0.0" }, resolve } as unknown as PluginContext
+    const fn = hookFn<(...a: never[]) => unknown>(plugin.resolveId)
+    const result = await fn.apply(context, ["@mithril-inspector/runtime", RESOLVED_RUNTIME_ID] as never)
+
+    expect(resolve).toHaveBeenCalledTimes(1)
+    const [id, importer, options] = resolve.mock.calls[0]!
+    expect(id).toBe("@mithril-inspector/runtime")
+    expect(String(importer)).toMatch(/plugin\.(ts|js)$/)
+    expect(options).toMatchObject({ skipSelf: true })
+    expect(result).toEqual({ id: "/resolved/@mithril-inspector/runtime" })
+  })
+
+  it("does not intercept a direct project import of the runtime package (only imports from inside the virtual modules)", () => {
+    const plugin = makePlugin()
+    const resolve = vi.fn()
+    const context = { meta: { watchMode: true, rollupVersion: "4.0.0" }, resolve } as unknown as PluginContext
+    const fn = hookFn<(...a: never[]) => unknown>(plugin.resolveId)
+    const result = fn.apply(context, ["@mithril-inspector/runtime", "/repo/src/App.ts"] as never)
+
+    expect(resolve).not.toHaveBeenCalled()
+    expect(result).toBeNull()
   })
 
   it("loads the runtime and overlay bootstrap modules", () => {

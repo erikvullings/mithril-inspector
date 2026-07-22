@@ -3,9 +3,11 @@ import type { OverlayOptionsInput } from "@mithril-inspector/overlay"
 import { HMR_INVALIDATE_EVENT } from "./hmr-protocol.js"
 import {
   OVERLAY_MODULE_ID,
+  OVERLAY_PACKAGE_ID,
   RESOLVED_OVERLAY_ID,
   RESOLVED_RUNTIME_ID,
   RUNTIME_MODULE_ID,
+  RUNTIME_PACKAGE_ID,
 } from "./ids.js"
 import type { RuntimeBootstrapConfig } from "./options.js"
 
@@ -26,8 +28,8 @@ export function resolveVirtualId(id: string): string | null {
  * invalidation channel (ADR-106).
  */
 export function runtimeModuleCode(config: RuntimeBootstrapConfig): string {
-  return `import { createRuntime } from "@mithril-inspector/runtime";
-export { registerModule, source, component } from "@mithril-inspector/runtime";
+  return `import { createRuntime } from ${JSON.stringify(RUNTIME_PACKAGE_ID)};
+export { registerModule, source, component } from ${JSON.stringify(RUNTIME_PACKAGE_ID)};
 
 const __miConfig = ${JSON.stringify(config)};
 const __miScope = /* global hook host */ typeof globalThis !== "undefined" ? globalThis : window;
@@ -54,7 +56,7 @@ if (import.meta.hot) {
  */
 export function overlayModuleCode(overlay: OverlayOptionsInput): string {
   return `import ${JSON.stringify(RUNTIME_MODULE_ID)};
-import { mountInspectorOverlay } from "@mithril-inspector/overlay";
+import { mountInspectorOverlay } from ${JSON.stringify(OVERLAY_PACKAGE_ID)};
 
 const __miOverlayOptions = ${JSON.stringify(overlay)};
 const __miStart = () => {

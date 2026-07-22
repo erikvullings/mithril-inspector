@@ -1,13 +1,24 @@
 import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 
-import { overlayModuleCode, runtimeModuleCode, RUNTIME_MODULE_ID } from "@mithril-inspector/adapter-kit"
+import {
+  overlayModuleCode,
+  OVERLAY_PACKAGE_ID,
+  runtimeModuleCode,
+  RUNTIME_MODULE_ID,
+  RUNTIME_PACKAGE_ID,
+} from "@mithril-inspector/adapter-kit"
 import type { RuntimeBootstrapConfig } from "@mithril-inspector/adapter-kit"
 import type { OverlayOptionsInput } from "@mithril-inspector/overlay"
 
 export interface WrittenBootstrapFiles {
   readonly runtimePath: string
   readonly overlayPath: string
+  /** Real absolute file `@mithril-inspector/runtime` resolves to from *this* package's own dependencies (see below). */
+  readonly runtimePackageEntry: string
+  /** Real absolute file `@mithril-inspector/overlay` resolves to from *this* package's own dependencies (see below). */
+  readonly overlayPackageEntry: string
 }
 
 /**
@@ -36,12 +47,20 @@ export const WEBPACK_SAFE_OVERLAY_SPECIFIER = "mithril-inspector/virtual-overlay
  * Rspack, `NormalModuleFactory.hooks.resolve`, only *redirects* an existing
  * request, it cannot serve in-memory content). So instead of an in-memory
  * virtual module, the runtime/overlay bootstrap source is written to real
- * files under the consuming project's own `node_modules/.cache` — a
- * directory both bundlers' standard `node_modules` resolution walks through
- * on the way up from any nested path, so the bootstrap's own bare
- * `@mithril-inspector/runtime`/`overlay` imports resolve without any extra
- * `resolveDir`-style configuration (§11.2 analog). `resolve.alias` (wired by
- * the plugin) then maps the webpack-safe specifiers above onto these paths.
+ * files under the consuming project's own `node_modules/.cache`.
+ *
+ * Writing them there does *not* make their own bare `@mithril-inspector/
+ * runtime`/`overlay` imports resolvable, though: under a strict/isolated
+ * `node_modules` layout (pnpm's default), those packages are only
+ * transitive dependencies of this adapter, not hoisted to the consuming
+ * project's root — the same failure the Vite/Rollup adapters hit before
+ * their `resolveId` fix, and that esbuild avoids via `onLoad`'s
+ * `resolveDir`. `plugin.ts` resolves it the same way `resolve.alias`
+ * resolves the webpack-safe specifiers below, pointing the two bare
+ * specifiers straight at `runtimePackageEntry`/`overlayPackageEntry` —
+ * real paths resolved here via `import.meta.resolve()` (ESM-native
+ * resolution anchored to *this* package's own dependencies, which do list
+ * them) rather than left to webpack's default resolution.
  */
 export function writeBootstrapFiles(
   root: string,
@@ -62,5 +81,10 @@ export function writeBootstrapFiles(
     ),
   )
 
-  return { runtimePath, overlayPath }
+  return {
+    runtimePath,
+    overlayPath,
+    runtimePackageEntry: fileURLToPath(import.meta.resolve(RUNTIME_PACKAGE_ID)),
+    overlayPackageEntry: fileURLToPath(import.meta.resolve(OVERLAY_PACKAGE_ID)),
+  }
 }

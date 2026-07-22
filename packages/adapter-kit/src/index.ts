@@ -1,6 +1,14 @@
 export const packageName = "@mithril-inspector/adapter-kit" as const
 
-export { RESOLVED_OVERLAY_ID, RESOLVED_RUNTIME_ID, OVERLAY_MODULE_ID, RUNTIME_MODULE_ID } from "./ids.js"
+export {
+  isVirtualModuleDependencyImport,
+  OVERLAY_MODULE_ID,
+  OVERLAY_PACKAGE_ID,
+  RESOLVED_OVERLAY_ID,
+  RESOLVED_RUNTIME_ID,
+  RUNTIME_MODULE_ID,
+  RUNTIME_PACKAGE_ID,
+} from "./ids.js"
 
 export { HMR_INVALIDATE_EVENT } from "./hmr-protocol.js"
 export type { HmrInvalidatePayload } from "./hmr-protocol.js"

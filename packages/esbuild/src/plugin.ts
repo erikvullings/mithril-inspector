@@ -66,10 +66,13 @@ function loaderForPath(path: string): Loader {
  * Directory the virtual runtime/overlay bootstrap modules resolve their own
  * `@mithril-inspector/runtime`/`overlay` imports against. Those bare
  * specifiers aren't necessarily resolvable from the *consuming* project (they
- * may not depend on those packages directly), so `onLoad` needs an explicit
- * `resolveDir` — this package's own directory, which does declare them as
- * dependencies (unlike Rollup/Vite, esbuild's `onLoad` never infers a
- * resolve directory for namespaced, non-`file` modules).
+ * may not depend on those packages directly, e.g. under pnpm's isolated
+ * `node_modules`), so `onLoad` needs an explicit `resolveDir` — this
+ * package's own directory, which does declare them as dependencies. The
+ * Vite/Rollup adapters need the analogous fix via `resolveId`/`this.resolve`
+ * (see `@mithril-inspector/vite`'s `plugin.ts`) — their default resolution
+ * falls back to the project root for a non-file importer, which has the same
+ * failure mode as esbuild's lack of an inferred `resolveDir`.
  */
 const PACKAGE_DIR = dirname(fileURLToPath(import.meta.url));
 

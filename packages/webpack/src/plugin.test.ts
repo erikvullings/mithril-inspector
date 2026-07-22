@@ -4,6 +4,8 @@ import { join } from "node:path"
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { OVERLAY_PACKAGE_ID, RUNTIME_PACKAGE_ID } from "@mithril-inspector/adapter-kit"
+
 import { mithrilInspector } from "./plugin.js"
 
 interface FakeRule {
@@ -134,6 +136,17 @@ describe("mithrilInspector webpack plugin (§12.5)", () => {
     expect(alias?.["mithril-inspector/virtual-overlay$"]).toBe(
       join(root, "node_modules", ".cache", "mithril-inspector", "overlay-bootstrap.js"),
     )
+  })
+
+  it("also aliases the bootstrap files' own @mithril-inspector/runtime and /overlay bare imports to their real resolved paths (regression: pnpm's isolated node_modules leaves them unresolvable from the bootstrap files' own location)", () => {
+    const compiler = makeCompiler({}, root)
+    compiler.webpack = { EntryPlugin: makeEntryPluginSpy().ctor }
+
+    mithrilInspector({ root }, { NODE_ENV: "development" }).apply(compiler as never)
+
+    const alias = compiler.options.resolve.alias
+    expect(alias?.[`${RUNTIME_PACKAGE_ID}$`]).toMatch(/[/\\]runtime[/\\]dist[/\\]index\.js$/)
+    expect(alias?.[`${OVERLAY_PACKAGE_ID}$`]).toMatch(/[/\\]overlay[/\\]dist[/\\]index\.js$/)
   })
 
   it("injects the overlay bootstrap entry into every named entry via EntryPlugin, without editing app-entry config", () => {

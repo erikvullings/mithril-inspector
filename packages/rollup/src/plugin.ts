@@ -1,6 +1,9 @@
+import { fileURLToPath } from "node:url"
+
 import type { Plugin } from "rollup"
 
 import {
+  isVirtualModuleDependencyImport,
   loadVirtualModule,
   resolveInspectorOptions,
   resolveVirtualId,
@@ -14,6 +17,19 @@ import {
 import { transformMithrilModule } from "@mithril-inspector/transform"
 
 export type { MithrilInspectorOptions }
+
+/**
+ * A real file inside this package's own installed directory — see the
+ * identical comment in `@mithril-inspector/vite`'s `plugin.ts` for why the
+ * virtual modules' bare `@mithril-inspector/runtime`/`overlay` imports need
+ * an explicit real-file importer rather than relying on Rollup's default
+ * resolution (which falls back to the project root for a non-file importer).
+ * Note this still requires the consuming project's Rollup config to include
+ * a node-resolution plugin (e.g. `@rollup/plugin-node-resolve`) — Rollup
+ * core has no bare-specifier/`node_modules` resolution of its own, with or
+ * without this fix.
+ */
+const PACKAGE_FILE = fileURLToPath(import.meta.url)
 
 /**
  * The Rollup integration for Mithril Inspector (§4, §12.3): a thin adapter
@@ -58,9 +74,14 @@ export function mithrilInspector(
   return {
     name: "mithril-inspector",
 
-    resolveId(id) {
+    resolveId(id, importer) {
       if (!isActive(this.meta.watchMode)) return null
-      return resolveVirtualId(id)
+      const virtualId = resolveVirtualId(id)
+      if (virtualId !== null) return virtualId
+      if (isVirtualModuleDependencyImport(id, importer)) {
+        return this.resolve(id, PACKAGE_FILE, { skipSelf: true })
+      }
+      return null
     },
 
     load(id) {

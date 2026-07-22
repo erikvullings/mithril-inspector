@@ -86,6 +86,30 @@ describe("virtual module serving (§11.2)", () => {
     expect(hookFn(p.resolveId)("mithril" as never)).toBeNull()
   })
 
+  it("resolves the virtual modules' own @mithril-inspector/runtime and /overlay bare imports against a real file in this package, not the consuming project (regression: pnpm's isolated node_modules leaves these unresolvable from the project root)", () => {
+    const p = pre()
+    const resolve = vi.fn(async (id: string, _importer?: string, _options?: unknown) => ({ id: `/resolved/${id}` }))
+    const result = hookFn(p.resolveId).call({ resolve } as never, "@mithril-inspector/runtime" as never, RESOLVED_RUNTIME_ID as never)
+    expect(resolve).toHaveBeenCalledTimes(1)
+    const [id, importer, options] = resolve.mock.calls[0]!
+    expect(id).toBe("@mithril-inspector/runtime")
+    expect(String(importer)).toMatch(/plugin\.(ts|js)$/)
+    expect(options).toMatchObject({ skipSelf: true })
+    return expect(result).resolves.toEqual({ id: "/resolved/@mithril-inspector/runtime" })
+  })
+
+  it("does not intercept a direct project import of the runtime/overlay packages (only imports from inside the virtual modules)", () => {
+    const p = pre()
+    const resolve = vi.fn()
+    const result = hookFn(p.resolveId).call(
+      { resolve } as never,
+      "@mithril-inspector/runtime" as never,
+      "/repo/src/App.ts" as never,
+    )
+    expect(resolve).not.toHaveBeenCalled()
+    expect(result).toBeNull()
+  })
+
   it("loads the runtime and overlay bootstraps", () => {
     const p = pre({ mode: "full", source: { exposeDomAttributes: true } })
     const runtime = hookFn(p.load)(RESOLVED_RUNTIME_ID as never) as string

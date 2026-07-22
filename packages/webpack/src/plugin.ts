@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url"
 import type { Compiler, Configuration, RuleSetRule } from "webpack"
 
 import {
+  OVERLAY_PACKAGE_ID,
   resolveInspectorOptions,
+  RUNTIME_PACKAGE_ID,
   toOverlayOptionsInput,
   toRuntimeBootstrapConfig,
   toServerOptions,
@@ -71,7 +73,11 @@ export interface MithrilInspectorWebpackPlugin {
  *   serving new in-memory content), so the runtime/overlay bootstrap modules
  *   are written to real files under the project's own
  *   `node_modules/.cache/mithril-inspector` (`virtual-files.ts`) and wired
- *   in via `resolve.alias` instead.
+ *   in via `resolve.alias` instead — which also aliases the bootstrap
+ *   files' own `@mithril-inspector/runtime`/`overlay` imports straight to
+ *   their real resolved paths, since those aren't guaranteed to be
+ *   reachable via plain `node_modules` resolution from the bootstrap
+ *   files' location (see `writeBootstrapFiles`).
  * - Entries are injected with `EntryPlugin` rather than by editing
  *   `compiler.options.entry` — Rspack explicitly forbids mutating `entry`
  *   after the compiler is constructed; `EntryPlugin` is the common,
@@ -106,7 +112,7 @@ export function mithrilInspector(
 
       const root = resolved.root ?? compiler.context
 
-      const { runtimePath, overlayPath } = writeBootstrapFiles(
+      const { runtimePath, overlayPath, runtimePackageEntry, overlayPackageEntry } = writeBootstrapFiles(
         root,
         toRuntimeBootstrapConfig(resolved),
         toOverlayOptionsInput(resolved),
@@ -129,6 +135,12 @@ export function mithrilInspector(
         ...compiler.options.resolve.alias,
         [`${WEBPACK_SAFE_RUNTIME_SPECIFIER}$`]: runtimePath,
         [`${WEBPACK_SAFE_OVERLAY_SPECIFIER}$`]: overlayPath,
+        // The bootstrap files above bare-import these two packages; alias
+        // them straight to their real resolved paths so that import works
+        // regardless of whether the consuming project's node_modules
+        // happens to hoist them (see the comment on writeBootstrapFiles).
+        [`${RUNTIME_PACKAGE_ID}$`]: runtimePackageEntry,
+        [`${OVERLAY_PACKAGE_ID}$`]: overlayPackageEntry,
       }
 
       const { names, dynamic } = resolveEntryNames(compiler.options.entry)

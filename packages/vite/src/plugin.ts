@@ -1,6 +1,9 @@
+import { fileURLToPath } from "node:url"
+
 import type { ConfigEnv, HmrContext, Plugin, PluginOption, ResolvedConfig, ViteDevServer } from "vite"
 
 import {
+  isVirtualModuleDependencyImport,
   loadVirtualModule,
   resolveInspectorOptions,
   resolveVirtualId,
@@ -22,6 +25,21 @@ import {
   HMR_INVALIDATE_EVENT,
   type HmrInvalidatePayload,
 } from "./hmr.js"
+
+/**
+ * A real file inside this package's own installed directory. The generated
+ * virtual runtime/overlay modules bare-import `@mithril-inspector/runtime`/
+ * `overlay`, which aren't necessarily resolvable from the *consuming*
+ * project (it may not depend on those packages directly) — Vite's default
+ * resolver falls back to the project root for a non-file importer like the
+ * virtual modules' NUL-prefixed id, which fails under a strict/isolated
+ * `node_modules` layout (pnpm's default) where transitive deps aren't
+ * hoisted. Passing this file as the importer to `this.resolve` instead
+ * anchors resolution to `@mithril-inspector/vite`'s own directory, which
+ * does declare those packages as dependencies (mirrors esbuild's `onLoad`
+ * `resolveDir`).
+ */
+const PACKAGE_FILE = fileURLToPath(import.meta.url)
 
 /**
  * The Vite integration for Mithril Inspector (§4, §11). Zero-config:
@@ -72,8 +90,13 @@ export function mithrilInspector(
       state.root = config.root
     },
 
-    resolveId(id) {
-      return resolveVirtualId(id)
+    resolveId(id, importer) {
+      const virtualId = resolveVirtualId(id)
+      if (virtualId !== null) return virtualId
+      if (isVirtualModuleDependencyImport(id, importer)) {
+        return this.resolve(id, PACKAGE_FILE, { skipSelf: true })
+      }
+      return null
     },
 
     load(id) {

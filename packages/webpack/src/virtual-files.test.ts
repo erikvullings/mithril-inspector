@@ -17,7 +17,7 @@ afterEach(() => {
 })
 
 describe("writeBootstrapFiles (§12.5 — virtual/runtime entry injection)", () => {
-  it("writes the runtime and overlay bootstrap files under node_modules/.cache so package resolution reaches the project's own node_modules", () => {
+  it("writes the runtime and overlay bootstrap files under node_modules/.cache", () => {
     const written = writeBootstrapFiles(
       root,
       { mode: "source", debug: false, exposeDomAttributes: false, redact: { keys: [], replacement: "[redacted]" } },
@@ -40,6 +40,17 @@ describe("writeBootstrapFiles (§12.5 — virtual/runtime entry injection)", () 
     // specifier so it stays alias-resolvable (§25.9 divergence).
     expect(overlayCode).not.toContain("virtual:mithril-inspector/runtime")
     expect(overlayCode).toContain(WEBPACK_SAFE_RUNTIME_SPECIFIER)
+  })
+
+  it("resolves the runtime/overlay package entries via this package's own dependencies, regardless of the (possibly nonexistent) project root (regression: pnpm's isolated node_modules leaves them unresolvable from the bootstrap files' own location)", () => {
+    const written = writeBootstrapFiles(
+      root,
+      { mode: "source", debug: false, exposeDomAttributes: false, redact: { keys: [], replacement: "[redacted]" } },
+      { enabled: true, defaultOpen: false, theme: "system" },
+    )
+
+    expect(written.runtimePackageEntry).toMatch(/[/\\]runtime[/\\]dist[/\\]index\.js$/)
+    expect(written.overlayPackageEntry).toMatch(/[/\\]overlay[/\\]dist[/\\]index\.js$/)
   })
 
   it("creates the cache directory when it does not exist yet", () => {

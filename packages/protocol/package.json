@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/protocol",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Shared serializable types and protocol constants for Mithril Inspector, with no bundler dependencies.",
   "type": "module",
   "license": "MIT",

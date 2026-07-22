@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/transform",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Bundler-neutral AST source instrumentation for Mithril Inspector component detection.",
   "type": "module",
   "license": "MIT",

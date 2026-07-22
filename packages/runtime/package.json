@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/runtime",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Runtime source registry, component registry and lifecycle-hook composition for Mithril Inspector.",
   "type": "module",
   "license": "MIT",

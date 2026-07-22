@@ -4,6 +4,7 @@
     "declarationMap": true,
     "exactOptionalPropertyTypes": true,
     "forceConsistentCasingInFileNames": true,
+    "inlineSources": true,
     "isolatedModules": true,
     "lib": ["ES2022", "ESNext.Disposable", "DOM"],
     "module": "NodeNext",

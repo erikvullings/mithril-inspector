@@ -1339,6 +1339,38 @@ describe("mountInspectorOverlay — redraw-flash visualization (task 0030)", () 
     expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(1)
   })
 
+  it("still shows the flash when a component is selected (frozen selection rect present alongside it)", async () => {
+    // Regression test: `highlightLayer` mixed keyed flash-rect vnodes with
+    // unkeyed hover/frozen-rect vnodes in the same children array. Mithril
+    // doesn't support mixing keyed and unkeyed siblings — it silently
+    // dropped the flash vnodes (no error, no warning) whenever a frozen
+    // rect (i.e. a selected component) was also present, which permanently
+    // broke flash rendering for the rest of the session since selecting a
+    // component is exactly what a user does to watch it in the tree.
+    const target = trackedTarget()
+    handle = mountInspectorOverlay(
+      { redrawFlash: { enabled: true } },
+      {
+        hook: fakeHook({
+          getMode: () => "full",
+          resolveDomComponent: (node) => (node === target ? ("c:1" as ComponentId) : null),
+          componentRecord: (id) => componentRecord({ id, domRange: { first: target, last: target } }),
+        }),
+      },
+    )
+
+    handle!.controller.selectComponent("c:1" as ComponentId)
+    render()
+    expect(handle!.shadowRoot.querySelectorAll(".mi-rect-frozen").length).toBe(1)
+
+    target.setAttribute("data-x", "1")
+    await waitForFlashProcessing()
+    render()
+
+    expect(handle!.shadowRoot.querySelectorAll(".mi-flash-rect").length).toBe(1)
+    expect(handle!.shadowRoot.querySelectorAll(".mi-rect-frozen").length).toBe(1)
+  })
+
   it("hides an in-flight flash immediately when turned off mid-animation, instead of waiting out its timer", async () => {
     const target = trackedTarget()
     handle = mountInspectorOverlay(

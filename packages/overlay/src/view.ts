@@ -126,9 +126,18 @@ function iconButton(
 }
 
 function highlightLayer(state: OverlayViewState): Vnode {
+  // Every rect below carries a `key`: Mithril doesn't support mixing keyed
+  // and unkeyed vnodes as siblings in the same children array, and this
+  // array combines hover/frozen rects (no natural per-render identity of
+  // their own) with the flash rects' `componentId:seq:index` keys (below).
+  // Leaving hover/frozen unkeyed reproduced silently — no error, no warning
+  // — as Mithril's diff dropping the flash vnodes entirely whenever a frozen
+  // rect (i.e. a selected component) was present in the same array.
   const rects: Vnode[] = []
-  for (const rect of state.hoverRects) rects.push(m("div.mi-rect", { style: rectStyle(rect) }))
-  for (const rect of state.frozenRects) rects.push(m("div.mi-rect.mi-rect-frozen", { style: rectStyle(rect) }))
+  state.hoverRects.forEach((rect, index) => rects.push(m("div.mi-rect", { key: `hover:${index}`, style: rectStyle(rect) })))
+  state.frozenRects.forEach((rect, index) =>
+    rects.push(m("div.mi-rect.mi-rect-frozen", { key: `frozen:${index}`, style: rectStyle(rect) })),
+  )
   // Keyed on `componentId:seq:index` (task 0030): `seq` bumps every time a
   // still-flashing component mutates again, forcing Mithril to insert a
   // fresh element rather than diff-reuse the previous one — the CSS fade

@@ -82,13 +82,52 @@ function gitStatusPorcelain() {
   return execFileSync("git", ["status", "--porcelain"], { cwd: ROOT }).toString()
 }
 
+/**
+ * Publish every package back-to-back with a single OTP (§ "publish" mode
+ * below). npm's 2FA one-time password is only valid ~30s — prompting once
+ * per package (10 packages) across a normal interactive `npm publish` almost
+ * guarantees most of the codes expire before they're used. Passing one OTP
+ * once and firing off all ten `pnpm publish` calls immediately in sequence
+ * fits comfortably inside that window instead.
+ */
+function publishAll(otp) {
+  const versions = new Set(PACKAGES.map((name) => readPkgJson(name).version))
+  if (versions.size !== 1) {
+    console.error(`Package versions are out of sync: ${[...versions].join(", ")}`)
+    console.error("Align them manually before publishing.")
+    process.exit(1)
+  }
+  const version = [...versions][0]
+  console.log(`\nPublishing ${PACKAGES.length} packages at v${version}...`)
+  for (const name of PACKAGES) {
+    const args = ["--filter", `@mithril-inspector/${name}`, "publish", "--access", "public"]
+    if (otp) args.push("--otp", otp)
+    run("pnpm", args)
+  }
+  console.log(`\nDone. Review the tag, then push:\n  git push && git push origin v${version}`)
+}
+
 function main() {
   const [releaseTypeArg, ...rest] = process.argv.slice(2)
   const dryRun = rest.includes("--dry-run")
+  const otpIndex = rest.indexOf("--otp")
+  const otp = otpIndex !== -1 ? rest[otpIndex + 1] : undefined
 
   if (!releaseTypeArg) {
-    console.error("Usage: pnpm release <patch|minor|major|<version>> [--dry-run]")
+    console.error("Usage: pnpm release <patch|minor|major|<version>|publish> [--dry-run] [--otp <code>]")
     process.exit(1)
+  }
+
+  // Version already bumped, built, tested, committed and tagged by a prior
+  // `pnpm release <type>` — this mode only (re-)runs the publish loop, so a
+  // retry after an expired OTP never re-bumps the version.
+  if (releaseTypeArg === "publish") {
+    if (!otp) {
+      console.error("`publish` needs --otp <code> (get a fresh one from your authenticator right before running).")
+      process.exit(1)
+    }
+    publishAll(otp)
+    return
   }
 
   if (!dryRun && gitStatusPorcelain().trim()) {
@@ -138,12 +177,13 @@ function main() {
     console.log(`Tag v${nextVersion} already exists, skipping.`)
   }
 
-  console.log(`\nPublishing ${PACKAGES.length} packages — npm may prompt for a 2FA one-time password for each.`)
-  for (const name of PACKAGES) {
-    run("pnpm", ["--filter", `@mithril-inspector/${name}`, "publish", "--access", "public"])
+  if (!otp) {
+    console.log(`\nBuilt, tested, committed and tagged as v${nextVersion} — not yet published.`)
+    console.log(`Publish when ready: pnpm release publish --otp <code>`)
+    return
   }
 
-  console.log(`\nDone. Review the commit and tag, then push:\n  git push && git push origin v${nextVersion}`)
+  publishAll(otp)
 }
 
 main()

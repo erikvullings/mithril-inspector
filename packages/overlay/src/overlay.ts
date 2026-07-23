@@ -145,9 +145,24 @@ export function mountInspectorOverlay(
   // never observes inside the overlay's own shadow root (shadow boundaries
   // are opaque to a light-DOM `MutationObserver`), so it cannot loop back on
   // the overlay's own re-renders.
+  //
+  // The same callback also re-attaches `host` if it was disconnected. Mithril's
+  // own `m.mount(document.body, …)`/`m.route(document.body, …)` — its own
+  // quick-start pattern — clears *every* child of `document.body` via
+  // `textContent = ""` the first time it renders into a root it hasn't
+  // rendered into before (`render()`'s `dom.vnodes == null` branch), with no
+  // regard for siblings it doesn't own. If that first app render lands after
+  // the overlay has already appended `host`, it takes the overlay down with
+  // it, silently. `appendChild` on an already-connected node is a no-op move,
+  // so re-running it unconditionally whenever `host` is disconnected is safe
+  // and idempotent.
   const MutationObserverImplForDom = (globalThis as unknown as { MutationObserver?: typeof MutationObserver })
     .MutationObserver
-  const domObserver = MutationObserverImplForDom ? new MutationObserverImplForDom(onScrollOrResize) : null
+  const onBodyMutation = (): void => {
+    if (!host.isConnected) doc.body.appendChild(host)
+    onScrollOrResize()
+  }
+  const domObserver = MutationObserverImplForDom ? new MutationObserverImplForDom(onBodyMutation) : null
   domObserver?.observe(doc.body, { childList: true, subtree: true })
 
   // --- Modal <dialog> detection (known Phase-1 limitation, §8.2) ---------

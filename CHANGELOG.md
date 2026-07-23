@@ -4,7 +4,22 @@ All notable changes to this project are documented here. This project follows
 [Semantic Versioning](https://semver.org/); pre-1.0 versions may include
 breaking changes between minor releases.
 
-## 0.3.1 — Editor-launch failures no longer fail silently
+## 0.3.2 — Overlay survives a host app mounting on `document.body`
+
+### Fixed
+
+- **The overlay no longer disappears when the host app mounts its own
+  Mithril root directly on `document.body`** (`m.mount(document.body, …)` /
+  `m.route(document.body, …)` — Mithril's own quick-start pattern, used
+  across all five bundler adapters via the shared `@mithril-inspector/overlay`
+  package). Mithril's `render()` clears every child of a root the first time
+  it renders into it (`dom.textContent = ""`), with no regard for siblings it
+  doesn't own — including the overlay's host `<div>`, silently wiping it out
+  moments after mount. `mountInspectorOverlay` now watches for the host being
+  disconnected (via the same `MutationObserver` already used for
+  stale-highlight cleanup on SPA navigation) and re-attaches it.
+
+
 
 ### Fixed
 

@@ -411,6 +411,25 @@ describe("mountInspectorOverlay — picker wiring (§8.4–8.7)", () => {
     expect(document.querySelectorAll(`#${HOST_ID}`).length).toBe(1)
     second?.dispose()
   })
+
+  it("re-attaches the host after a host app wipes document.body (regression: m.mount/m.route(document.body, …))", async () => {
+    handle = mountInspectorOverlay({}, { hook: fakeHook() })
+    expect(document.getElementById(HOST_ID)).not.toBeNull()
+
+    // Mirrors what Mithril's own `render()` does the first time it renders
+    // into a root it hasn't rendered into before: `dom.textContent = ""`,
+    // wiping every child of `document.body` with no regard for siblings it
+    // doesn't own — this is exactly what `m.mount(document.body, …)` /
+    // `m.route(document.body, …)` (Mithril's own quick-start pattern) does.
+    document.body.textContent = ""
+    expect(document.getElementById(HOST_ID)).toBeNull()
+
+    // The observer callback lands in a microtask.
+    await new Promise<void>((resolve) => queueMicrotask(resolve))
+
+    expect(document.getElementById(HOST_ID)).toBe(handle!.host)
+    expect(handle!.host.isConnected).toBe(true)
+  })
 })
 
 describe("mountInspectorOverlay — ancestry breadcrumb & detail toolbar (§8.3, §9.1, §9.3, task 0019)", () => {

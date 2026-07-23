@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/webpack",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "The Webpack and Rspack integration for Mithril Inspector — a thin adapter over the shared transform, runtime and server packages (§4, §12.5).",
   "type": "module",
   "license": "MIT",

@@ -100,6 +100,62 @@ writes the runtime/overlay bootstrap to real files under
 divergences, all verified against real `webpack()` and `rspack()` builds in
 `tests/integration/`.
 
+## Monorepo workspace packages
+
+If your app imports a sibling workspace package (pnpm/yarn/npm workspaces,
+`workspace:*`) that ships a built `dist` — a component library, a shared UI
+kit — you can hit two related symptoms:
+
+- **"Open in editor" jumps into a compiled bundle** (`dist/index.esm.js`)
+  instead of the package's real `.ts`/`.tsx` source. The inspector's
+  `node_modules` filter is a path-based check, but bundlers resolve a linked
+  workspace package's symlink to its real, on-disk location — which lives
+  outside any `node_modules` folder — before handing the file to the
+  inspector, so the filter never excludes it. It gets instrumented like any
+  other project file, just using whatever file the bundler actually loaded
+  (the built bundle, not the source it was built from).
+- That bundle lives in the other package's own directory (e.g.
+  `../my-ui-lib/dist/index.esm.js`), outside your app's project root, so
+  clicking through fails with `FILE_OUTSIDE_ROOT` — *"The requested file is
+  outside the configured project root."*
+
+Two independent fixes, and you likely want both:
+
+1. **Widen `projectRoots`** so the open-in-editor endpoint accepts files from
+   the workspace package's directory, wherever the bundler ends up resolving
+   it to:
+
+   ```ts
+   mithrilInspector({
+     projectRoots: [path.resolve(__dirname, "../my-ui-lib")],
+   })
+   ```
+
+2. **Alias the package to its source in dev**, so the bundler transforms the
+   real `.ts`/`.tsx` files directly instead of the built bundle — this is what
+   actually gets you accurate component names and source lines instead of
+   positions inside generated output. Keep it dev-only so production builds
+   still resolve the package normally:
+
+   ```ts
+   export default defineConfig(({ command }) => ({
+     resolve: {
+       alias:
+         command === "build"
+           ? {}
+           : { "my-ui-lib": path.resolve(__dirname, "../my-ui-lib/src/index.ts") },
+     },
+     plugins: [
+       mithrilInspector({ projectRoots: [path.resolve(__dirname, "../my-ui-lib")] }),
+     ],
+   }))
+   ```
+
+   Watch for subpath exports the aliased package relies on (e.g. a separate
+   `my-ui-lib/index.css` built as a side effect of bundling the library's own
+   entry point) — those need their own dev-only alias to the equivalent
+   source file, since they won't exist until that package's own build runs.
+
 ## Status: 0.2.0
 
 Implemented in the current version:

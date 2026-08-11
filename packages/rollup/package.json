@@ -39,7 +39,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
-    "rollup": "^3.0.0 || ^4.0.0"
+    "rollup": "^4.62.4"
   },
   "dependencies": {
     "@mithril-inspector/adapter-kit": "workspace:*",
@@ -51,9 +51,9 @@
   },
   "devDependencies": {
     "@types/mithril": "^2.2.8",
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.2.0",
     "mithril": "^2.3.8",
-    "rollup": "^4.62.2",
+    "rollup": "^4.62.4",
     "vitest": "^4.1.10"
   }
 }

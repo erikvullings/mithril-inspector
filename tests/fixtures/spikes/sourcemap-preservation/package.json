@@ -12,9 +12,9 @@
     "@babel/parser": "^8.0.4",
     "@babel/types": "^8.0.4",
     "@jridgewell/trace-mapping": "^0.3.31",
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "@types/mithril": "^2.2.8",
-    "magic-string": "^1.0.0",
+    "magic-string": "^1.1.0",
     "mithril": "^2.3.8",
     "vitest": "^4.1.10"
   }

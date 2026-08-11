@@ -13,13 +13,13 @@
     "@mithril-inspector/webpack": "workspace:*"
   },
   "devDependencies": {
-    "@rspack/core": "^2.1.5",
+    "@rspack/core": "^2.1.8",
     "@types/mithril": "^2.2.8",
-    "@types/node": "^26.1.1",
-    "esbuild": "^0.28.1",
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.28.2",
     "mithril": "^2.3.8",
-    "rollup": "^4.62.2",
+    "rollup": "^4.62.4",
     "vitest": "^4.1.10",
-    "webpack": "^5.108.4"
+    "webpack": "^5.109.2"
   }
 }

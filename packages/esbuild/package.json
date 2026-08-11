@@ -39,7 +39,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
-    "esbuild": ">=0.17.0"
+    "esbuild": "^0.28.2"
   },
   "dependencies": {
     "@mithril-inspector/adapter-kit": "workspace:*",
@@ -51,8 +51,8 @@
   },
   "devDependencies": {
     "@types/mithril": "^2.2.8",
-    "@types/node": "^26.1.1",
-    "esbuild": "^0.28.1",
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.28.2",
     "mithril": "^2.3.8",
     "vitest": "^4.1.10"
   }

@@ -45,7 +45,7 @@
   "devDependencies": {
     "@mithril-inspector/runtime": "workspace:*",
     "@types/mithril": "^2.2.8",
-    "jsdom": "^29.1.1",
+    "jsdom": "^30.0.1",
     "vitest": "^4.1.10"
   }
 }

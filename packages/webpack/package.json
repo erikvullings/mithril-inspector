@@ -41,8 +41,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
-    "webpack": ">=5.0.0",
-    "@rspack/core": ">=1.0.0"
+    "webpack": ">=5.109.2",
+    "@rspack/core": ">=2.1.8"
   },
   "peerDependenciesMeta": {
     "webpack": {
@@ -61,11 +61,11 @@
     "@mithril-inspector/transform": "workspace:*"
   },
   "devDependencies": {
-    "@rspack/core": "^2.1.5",
+    "@rspack/core": "^2.1.8",
     "@types/mithril": "^2.2.8",
-    "@types/node": "^26.1.1",
+    "@types/node": "^26.2.0",
     "mithril": "^2.3.8",
     "vitest": "^4.1.10",
-    "webpack": "^5.108.4"
+    "webpack": "^5.109.2"
   }
 }

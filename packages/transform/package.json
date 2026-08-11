@@ -42,14 +42,14 @@
     "@babel/parser": "^8.0.4",
     "@mithril-inspector/protocol": "workspace:*",
     "@rollup/pluginutils": "^5.4.0",
-    "magic-string": "^1.0.0"
+    "magic-string": "^1.1.0"
   },
   "devDependencies": {
     "@ampproject/remapping": "^2.3.0",
     "@babel/types": "^8.0.4",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@types/mithril": "^2.2.8",
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "mithril": "^2.3.8",
     "vitest": "^4.1.10"
   }

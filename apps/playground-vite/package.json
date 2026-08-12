@@ -20,7 +20,7 @@
     "@mithril-inspector/server": "workspace:*",
     "@mithril-inspector/transform": "workspace:*",
     "@mithril-inspector/vite": "workspace:*",
-    "@types/mithril": "^2.2.8",
+    "@types/mithril": "^2.2.9",
     "vite": "^8.2.1"
   }
 }

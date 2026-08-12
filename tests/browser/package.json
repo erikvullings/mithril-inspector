@@ -16,7 +16,7 @@
     "@mithril-inspector/vite": "workspace:*"
   },
   "devDependencies": {
-    "@types/mithril": "^2.2.8",
+    "@types/mithril": "^2.2.9",
     "@types/node": "^26.2.0",
     "mithril": "^2.3.8",
     "puppeteer": "^25.5.0",

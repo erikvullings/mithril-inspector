@@ -50,7 +50,7 @@
     "@mithril-inspector/transform": "workspace:*"
   },
   "devDependencies": {
-    "@types/mithril": "^2.2.8",
+    "@types/mithril": "^2.2.9",
     "@types/node": "^26.2.0",
     "mithril": "^2.3.8",
     "rollup": "^4.62.4",

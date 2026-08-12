@@ -24,6 +24,10 @@ minimumReleaseAgeExclude:
   - '@rspack/binding-win32-x64-msvc@2.1.5'
   - '@rspack/binding@2.1.5'
   - '@rspack/core@2.1.5'
+  - '@types/mithril@2.2.9'
+  - '@puppeteer/browsers@3.2.0'
+  - puppeteer-core@25.6.0
+  - puppeteer@25.6.0
 
 # Puppeteer's postinstall script downloads its bundled Chromium (tests/browser, task 0015).
 onlyBuiltDependencies:

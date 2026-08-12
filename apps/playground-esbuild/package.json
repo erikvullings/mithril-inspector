@@ -19,7 +19,7 @@
     "@mithril-inspector/runtime": "workspace:*",
     "@mithril-inspector/server": "workspace:*",
     "@mithril-inspector/transform": "workspace:*",
-    "@types/mithril": "^2.2.8",
+    "@types/mithril": "^2.2.9",
     "esbuild": "^0.28.2"
   }
 }

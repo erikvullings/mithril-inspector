@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/rollup",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "The Rollup integration for Mithril Inspector — a thin adapter over the shared transform, runtime and server packages (§4, §12.3).",
   "type": "module",
   "license": "MIT",

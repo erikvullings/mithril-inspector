@@ -1,6 +1,6 @@
 {
   "name": "@mithril-inspector/adapter-kit",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Shared, bundler-neutral option resolution and virtual-module utilities for Mithril Inspector's build-tool adapters (Vite, Rollup, ...).",
   "type": "module",
   "license": "MIT",

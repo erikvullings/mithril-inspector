@@ -305,6 +305,49 @@ describe("overlay controller — selection (§8.7)", () => {
     expect(controller.getState().selection.node).toBe(el)
   })
 
+  it("does not expand the docked panel on a Meta+Click open by default", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const { controller, setHits } = setup({ options: { picker: { openOnClick: false } }, openInEditor })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent({ metaKey: true }))
+    expect(openInEditor).toHaveBeenCalled()
+    expect(controller.getState().collapsed).toBe(true)
+  })
+
+  it("expands the docked panel on a Meta+Click open when openPanelOnEditorOpen is enabled", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const openInEditor = vi.fn(async () => ({ ok: true }))
+    const { controller, setHits } = setup({
+      options: { picker: { openOnClick: false, openPanelOnEditorOpen: true } },
+      openInEditor,
+    })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent({ metaKey: true }))
+    expect(openInEditor).toHaveBeenCalled()
+    expect(controller.getState().collapsed).toBe(false)
+  })
+
+  it("still expands the docked panel on a plain click regardless of openPanelOnEditorOpen", () => {
+    const el = document.createElement("article")
+    stubRect(el, { left: 0, top: 0, width: 10, height: 10 })
+    document.body.appendChild(el)
+    const { controller, setHits } = setup({ options: { picker: { openPanelOnEditorOpen: false } } })
+    controller.startPicker()
+    setHits([el])
+    controller.handlePointerMove(1, 1)
+    controller.handleClick(clickEvent())
+    expect(controller.getState().collapsed).toBe(false)
+  })
+
   it("does not use Ctrl+Click to open the editor — macOS intercepts it as a secondary click before it ever reaches a page", () => {
     const el = document.createElement("article")
     stubRect(el, { left: 0, top: 0, width: 10, height: 10 })

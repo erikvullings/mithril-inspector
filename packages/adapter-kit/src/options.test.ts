@@ -27,6 +27,7 @@ describe("resolveInspectorOptions", () => {
       holdShortcut: "Alt",
       openOnClick: false,
       continuous: false,
+      openPanelOnEditorOpen: false,
     })
     expect(resolved.componentTree).toEqual({ enabled: true, captureAttrs: true, captureState: true })
     expect(resolved.redrawFlash).toEqual({ enabled: false })
@@ -202,6 +203,19 @@ describe("derived configuration builders", () => {
     expect(overlay.zIndex).toBe(10)
     expect(overlay.picker?.continuous).toBe(true)
     expect(overlay.picker?.toggleShortcut).toBe("Alt+Shift+M")
+  })
+
+  it("toOverlayOptionsInput maps openPanelOnEditorOpen, defaulting it off", () => {
+    const resolved = toOverlayOptionsInput(resolveInspectorOptions({}, { NODE_ENV: "development" }))
+    expect(resolved.picker?.openPanelOnEditorOpen).toBe(false)
+  })
+
+  it("toOverlayOptionsInput passes through an explicit openPanelOnEditorOpen opt-in", () => {
+    const resolved = resolveInspectorOptions(
+      { picker: { openPanelOnEditorOpen: true } },
+      { NODE_ENV: "development" },
+    )
+    expect(toOverlayOptionsInput(resolved).picker?.openPanelOnEditorOpen).toBe(true)
   })
 
   it("toOverlayOptionsInput maps componentTree, defaulting the tree on (task 0022)", () => {

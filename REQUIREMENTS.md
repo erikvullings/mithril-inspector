@@ -845,7 +845,9 @@ On click in picker mode:
 * stop propagation;
 * select the mapped element;
 * freeze the current highlight;
-* show the details panel;
+* show the details panel — except when the click also opens the source via
+  the open-editor modifier (see below), where the panel stays as-is by
+  default (configurable: `picker.openPanelOnEditorOpen`);
 * optionally open the source immediately based on settings;
 * leave picker mode unless “continuous inspection” is enabled.
 

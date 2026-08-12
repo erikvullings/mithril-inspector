@@ -991,7 +991,11 @@ export function createOverlayController(deps: OverlayControllerDeps): OverlayCon
           frozenRects = [rectOfElement(target)]
           resetPreviewOverrides()
           watchComponent(data.componentId)
-          collapsed = false // show the details panel (§8.7)
+          // Show the details panel (§8.7) — except when this pick is jumping
+          // straight to the editor via the modifier (openDirectly), in which
+          // case popping the panel open too is just noise unless the app has
+          // opted back into it via openPanelOnEditorOpen.
+          if (!openDirectly || options.picker.openPanelOnEditorOpen) collapsed = false
           // The merged tree/detail view is where a pick's result shows (§8.3)
           // — but the History tab also reflects the newly-watched component
           // (via `watchComponent` above), so a pick started from there should

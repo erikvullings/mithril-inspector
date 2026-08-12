@@ -44,6 +44,16 @@ export interface PickerOptions {
    */
   readonly openEditorModifier: string
   /**
+   * Also expand the docked panel (§8.1/§8.7) when a pick opens the editor via
+   * {@link openEditorModifier} (e.g. Cmd/Win+Click). Off by default — jumping
+   * straight to the editor is the whole point of the modifier, so popping the
+   * panel open at the same time is usually just noise; set this to `true` to
+   * restore the panel-always-opens behavior for that gesture too. This has no
+   * effect on a plain pick (no modifier), which always expands the panel to
+   * show its result regardless of this setting.
+   */
+  readonly openPanelOnEditorOpen: boolean
+  /**
    * Show the "Inspecting…" banner while picking (§18). It auto-hides itself
    * a few seconds after each fresh pick session starts (the toggle/crosshair
    * icon's own active styling still indicates picking is on) — this only
@@ -148,6 +158,7 @@ export const DEFAULT_PICKER_OPTIONS: PickerOptions = {
   // from openEditorModifier's default (Meta) so neither shadows the other.
   passThroughModifier: "Alt+Shift",
   openEditorModifier: "Meta",
+  openPanelOnEditorOpen: false,
   showBanner: true,
 }
 

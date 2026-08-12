@@ -55,9 +55,11 @@ runtime stripped). `deps` lets you inject a `hook`, `document` and
   (`"none"`). Picking never jumps to the editor by itself (`picker.openOnClick`
   defaults to `false`) — a pick lands its result in the docked panel in place;
   `picker.openEditorModifier` (default Meta/Cmd/Win) jumps straight to the
-  editor on click instead, and `picker.passThroughModifier` (default
-  `Alt+Shift`) lets one click through to the app underneath without leaving
-  picking mode.
+  editor on click instead — the docked panel does *not* auto-expand for that
+  gesture (`picker.openPanelOnEditorOpen` defaults to `false`, since jumping
+  to the editor is already the point); set it to `true` to also pop the panel
+  open — and `picker.passThroughModifier` (default `Alt+Shift`) lets one
+  click through to the app underneath without leaving picking mode.
 - **Hover & highlight:** a capture-phase pointer listener uses
   `document.elementsFromPoint`, ignores the overlay host, resolves the best
   source/component mapping through the hook, and draws separate fixed-position

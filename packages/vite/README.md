@@ -45,7 +45,7 @@ mithrilInspector({
   pathMappings,       // remote-path rewrites
   mode,               // "source" | "components" | "full" (default "full")
   ui:            { enabled, defaultOpen, theme, zIndex },
-  picker:        { enabled, toggleShortcut, holdShortcut, openOnClick, continuous },
+  picker:        { enabled, toggleShortcut, holdShortcut, openOnClick, continuous, openPanelOnEditorOpen },
   componentTree: { enabled, captureAttrs, captureState },
   elementsPane:  { showTagName }, // Elements tab hyperscript labels (default true: "div.scroll" vs. ".scroll")
   source:        { elements, components, attributes, textExpressions, exposeDomAttributes },

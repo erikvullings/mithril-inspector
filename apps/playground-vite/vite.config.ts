@@ -9,6 +9,7 @@ export default defineConfig({
   plugins: [
     mithrilInspector({
       editor: "code",
+      picker: { openPanelOnEditorOpen: false }
     }),
   ],
 });

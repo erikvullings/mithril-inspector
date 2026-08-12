@@ -12,68 +12,95 @@ import { RUNTIME_MODULE_ID } from "./ids.js"
  * `mithrilInspector()` works with zero configuration (§2.2).
  */
 export interface MithrilInspectorOptions {
-  /** Master switch; defaults to `process.env.NODE_ENV !== "production"` (§2.1). */
+  /** Master switch for the whole inspector; defaults to `process.env.NODE_ENV !== "production"` (§2.1). */
   enabled?: boolean
-  /** Keep the inspector in production builds (off by default, §2.1). */
+  /** Keep the inspector in production builds instead of stripping it from production bundles (off by default, §2.1). */
   includeInProduction?: boolean
 
+  /** Only instrument matching files; follows Vite-style `include` semantics. */
   include?: FilterPattern
+  /** Skip matching files during instrumentation; `node_modules` is always excluded implicitly. */
   exclude?: FilterPattern
 
   /** Override the project root the editor endpoint validates against (§10.2). */
   root?: string
-  /** Additional roots for monorepos (§10.4). */
+  /** Additional roots the open-in-editor endpoint accepts, useful for workspace packages (§10.4). */
   projectRoots?: string[]
 
+  /** Which GUI editor to launch for "Open in editor" (§10.3). */
   editor?: EditorOption
+  /** Rewrite file paths before they reach the editor command (useful for Docker/WSL path mapping). */
   pathMappings?: PathMapping[]
 
   /** Performance/feature mode (§17). Defaults to `"full"`; users can dial it back per §17's budget. */
   mode?: InspectorMode
 
   ui?: {
+    /** Enable or disable the docked overlay UI entirely. */
     enabled?: boolean
+    /** Start the overlay expanded instead of collapsed to the toggle. */
     defaultOpen?: boolean
+    /** Force the overlay theme, or follow the system theme. */
     theme?: OverlayTheme
+    /** Raise or lower the overlay root above app UI by setting its z-index. */
     zIndex?: number
   }
 
   picker?: {
+    /** Enable or disable element picking. */
     enabled?: boolean
+    /** Sticky toggle shortcut for picking. */
     toggleShortcut?: string
+    /** Momentary hold shortcut for picking. */
     holdShortcut?: string
+    /** Open the selected source immediately on a normal click. */
     openOnClick?: boolean
+    /** Keep picking active after each selection. */
     continuous?: boolean
+    /** Also expand the docked panel when Cmd/Win+Click opens the editor. Off by default. */
+    openPanelOnEditorOpen?: boolean
   }
 
   componentTree?: {
+    /** Enable or disable the component tree panel. */
     enabled?: boolean
+    /** Capture attrs snapshots for the component detail/history views. */
     captureAttrs?: boolean
+    /** Capture state snapshots for the component detail/history views. */
     captureState?: boolean
   }
 
   /** Redraw-flash visualization (§21 Phase 5, task 0030). Off by default — unlike `componentTree`, `mode: "full"` alone never turns it on. */
   redrawFlash?: {
+    /** Enable or disable redraw-flash highlighting. */
     enabled?: boolean
   }
 
-  /** Elements tab display preferences (task 0031, §9.1's optional DOM/vnode expansion). No performance/gating implications, unlike `redrawFlash` — a pure label-formatting default. */
+  /** Elements tab display preferences (task 0031, §9.1's optional DOM/vnode expansion). */
   elementsPane?: {
+    /** Show the HTML tag name in each row's label. */
     showTagName?: boolean
   }
 
   source?: {
+    /** Instrument element vnodes (`m("div")`). */
     elements?: boolean
+    /** Instrument component vnodes (`m(MyComp)`). */
     components?: boolean
+    /** Instrument attribute expressions. */
     attributes?: boolean
+    /** Instrument inline text expressions. */
     textExpressions?: boolean
     /** Add a compact `data-mi` attribute to element vnodes (§13). Off by default. */
     exposeDomAttributes?: boolean
   }
 
+  /** Additional module specifiers treated as Mithril imports. */
   mithrilImports?: string[]
+  /** Additional identifiers treated as hyperscript calls. */
   hyperscriptIdentifiers?: string[]
 
+  /** Emit verbose inspector debug logs to the browser console. */
   debug?: boolean
 
   /** Attrs/state redaction policy (§15); defaults to {@link DEFAULT_REDACT_KEYS}. */
@@ -110,6 +137,7 @@ export interface ResolvedPickerOptions {
   readonly holdShortcut: string
   readonly openOnClick: boolean
   readonly continuous: boolean
+  readonly openPanelOnEditorOpen: boolean
 }
 
 export interface ResolvedComponentTreeOptions {
@@ -233,6 +261,7 @@ export function resolveInspectorOptions(
       holdShortcut: picker.holdShortcut ?? "Alt",
       openOnClick: picker.openOnClick ?? false,
       continuous: picker.continuous ?? false,
+      openPanelOnEditorOpen: picker.openPanelOnEditorOpen ?? false,
     },
     componentTree: {
       enabled: componentTree.enabled ?? true,
@@ -294,6 +323,7 @@ export function toOverlayOptionsInput(resolved: ResolvedInspectorOptions): Overl
       holdShortcut: resolved.picker.holdShortcut,
       openOnClick: resolved.picker.openOnClick,
       continuous: resolved.picker.continuous,
+      openPanelOnEditorOpen: resolved.picker.openPanelOnEditorOpen,
     },
     componentTree: {
       enabled: resolved.componentTree.enabled,

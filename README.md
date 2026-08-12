@@ -65,6 +65,22 @@ Settings tab — changes apply immediately and persist across reloads. Not
 `Ctrl` for either click modifier: macOS intercepts `Ctrl`+click as a secondary
 click (opening the native context menu) before it ever reaches the page.
 
+### Picker options
+
+```ts
+mithrilInspector({
+  picker: {
+    openOnClick: false,            // normal click selects only
+    openPanelOnEditorOpen: false,  // Meta/Cmd+click jumps to the editor without opening the panel
+    continuous: false,            // stop picking after each selection
+  },
+})
+```
+
+`picker.openPanelOnEditorOpen` is the key toggle for your Meta+click workflow:
+leave it `false` to keep the docked panel closed when the click opens the editor,
+or set it to `true` if you want the panel to expand alongside the editor jump.
+
 The plugin is dev-only by default (`enabled` follows `NODE_ENV`) and adds no
 runtime, overlay or editor endpoint to production builds.
 

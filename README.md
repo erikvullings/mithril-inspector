@@ -308,8 +308,21 @@ pnpm release <patch|minor|major|<version>>
 2. writes the new version into all ten `package.json` files and refreshes `pnpm-lock.yaml`;
 3. runs `pnpm -r build`, `pnpm -r typecheck` and `pnpm -r test` — the same gate CI runs;
 4. commits the version bump, then tags `vX.Y.Z` (skipped if the tag already exists);
-5. runs `pnpm publish --access public` for each package in dependency order (`protocol` first, `vite`/`rollup`/`esbuild`/`webpack` last), rewriting `workspace:*` ranges to the pinned version as it goes.
+5. stops and prints a reminder to publish separately (see below).
 
-npm/pnpm prompts for a 2FA one-time password per package when the terminal is interactive — that's expected during step 5, just type the code each time. Nothing is pushed automatically: review the commit and tag, then `git push && git push origin vX.Y.Z` yourself.
+Nothing is pushed automatically: review the commit and tag, then push:
+
+```sh
+git push && git push origin vX.Y.Z
+```
+
+**Publishing** is intentionally a separate step. npm 2FA one-time passwords expire in ~30 s, so prompting once per package across ten sequential publishes almost guarantees codes expire mid-run. Instead, grab a fresh OTP immediately before running the publish command, which passes the single code to all ten `pnpm publish` calls in rapid succession:
+
+```sh
+npm login
+pnpm release publish --otp <code>
+```
+
+> **Prerequisite:** your npm auth token must be valid. If you see a `404 Not Found` on `PUT` (npm returns 404 rather than 401 for unauthorised scoped-package publishes), your token has expired — run `npm login` to refresh it, then retry.
 
 `pnpm test:browser` runs the headless-Chromium integration suite in `tests/browser` (Puppeteer, no Playwright) against real, in-process Vite dev servers and a real production build — see `tests/browser/README.md`. It needs `pnpm build` to have run first, since it consumes the built `@mithril-inspector/vite` package like any other consumer.
